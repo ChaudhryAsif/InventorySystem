@@ -1,0 +1,67 @@
+﻿@model IEnumerable<InventorySystem.Core.Models.Invoice>
+@{
+    Layout = "_Layout";
+}
+<h2>Customer Ledger</h2>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-md-6">
+        <select class="form-control" name="customerId">
+            <option value="">-- Select Customer --</option>
+            @foreach (var c in ViewBag.Customers)
+            {
+                <option value="@c.Id">@c.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-primary">View</button>
+    </div>
+</form>
+
+@if (!Model.Any())
+{
+    <div class="text-muted">No sale invoices to display.</div>
+}
+else
+{
+    <h5>@ViewBag.CustomerName</h5>
+    <table class="table table-bordered">
+        <thead class="table-light">
+            <tr><th>Date</th><th>Ref</th><th>Description</th><th class="text-end">Amount</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var inv in Model)
+            {
+                <tr>
+                    <td>@inv.Date.ToString("yyyy-MM-dd")</td>
+                    <td>@inv.Id</td>
+                    <td>Sale Invoice</td>
+                    <td class="text-end">@inv.TotalAmount.ToString("N2")</td>
+                </tr>
+                @if (inv.Items != null && inv.Items.Any())
+                {
+                    <tr>
+                        <td colspan="4">
+                            <strong>Items:</strong>
+                            <table class="table table-sm table-borderless mb-0">
+                                <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Rate</th><th class="text-end">Total</th></tr></thead>
+                                <tbody>
+                                    @foreach (var it in inv.Items)
+                                    {
+                                        <tr>
+                                            <td>@it.Product?.Name</td>
+                                            <td class="text-end">@it.Quantity</td>
+                                            <td class="text-end">@it.Rate.ToString("N2")</td>
+                                            <td class="text-end">@((it.Quantity * it.Rate).ToString("N2"))</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+}

@@ -1,0 +1,11 @@
+D:\WebPOS\InventorySystem\InventorySystem.Services\bin\Debug\net8.0\InventorySystem.Services.deps.json
+D:\WebPOS\InventorySystem\InventorySystem.Services\bin\Debug\net8.0\InventorySystem.Services.dll
+D:\WebPOS\InventorySystem\InventorySystem.Services\bin\Debug\net8.0\InventorySystem.Services.pdb
+D:\WebPOS\InventorySystem\InventorySystem.Services\obj\Debug\net8.0\InventorySystem.Services.GeneratedMSBuildEditorConfig.editorconfig
+D:\WebPOS\InventorySystem\InventorySystem.Services\obj\Debug\net8.0\InventorySystem.Services.AssemblyInfoInputs.cache
+D:\WebPOS\InventorySystem\InventorySystem.Services\obj\Debug\net8.0\InventorySystem.Services.AssemblyInfo.cs
+D:\WebPOS\InventorySystem\InventorySystem.Services\obj\Debug\net8.0\InventorySystem.Services.csproj.CoreCompileInputs.cache
+D:\WebPOS\InventorySystem\InventorySystem.Services\obj\Debug\net8.0\InventorySystem.Services.dll
+D:\WebPOS\InventorySystem\InventorySystem.Services\obj\Debug\net8.0\refint\InventorySystem.Services.dll
+D:\WebPOS\InventorySystem\InventorySystem.Services\obj\Debug\net8.0\InventorySystem.Services.pdb
+D:\WebPOS\InventorySystem\InventorySystem.Services\obj\Debug\net8.0\ref\InventorySystem.Services.dll
