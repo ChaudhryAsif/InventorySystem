@@ -1,0 +1,89 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@ViewData["Title"] - POS System</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+    <!-- Header -->
+    <header class="main-header">
+        <div class="header-content">
+            <div class="header-left">
+                <button class="menu-toggle">☰</button>
+                <div class="header-logo">
+                    <span style="font-size: 1.8rem;">📦</span>
+                    <h1>POS System</h1>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebarId">
+        <ul class="sidebar-menu">
+            <li class="sidebar-item">
+                <a asp-controller="Home" asp-action="Index"
+                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Home" ? "active" : "")">
+                    <span class="sidebar-icon">📊</span>
+                    <span class="sidebar-text">Dashboard</span>
+                </a>
+            </li>
+            <li class="sidebar-item">
+                <a asp-controller="Category" asp-action="Index"
+                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Category" ? "active" : "")">
+                    <span class="sidebar-icon">📊</span>
+                    <span class="sidebar-text">Item Category</span>
+                </a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#" class="sidebar-link">
+                    <span class="sidebar-icon">🏷️</span>
+                    <span>Item Management</span>
+                </a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#" class="sidebar-link">
+                    <span class="sidebar-icon">💰</span>
+                    <span>Item Rate</span>
+                </a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#" class="sidebar-link">
+                    <span class="sidebar-icon">📝</span>
+                    <span>Purchase Invoice</span>
+                </a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#" class="sidebar-link">
+                    <span class="sidebar-icon">🧾</span>
+                    <span>Issue Invoice</span>
+                </a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#" class="sidebar-link">
+                    <span class="sidebar-icon">📈</span>
+                    <span>Reports</span>
+                </a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span>
+                    <span>Settings</span>
+                </a>
+            </li>
+        </ul>
+    </aside>
+
+    <!-- Main Content Wrapper -->
+    <div class="main-wrapper" id="mainWrapper">
+        <div class="content-area">
+            @RenderBody()
+        </div>
+    </div>
+
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
