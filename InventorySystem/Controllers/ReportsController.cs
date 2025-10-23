@@ -19,7 +19,7 @@ namespace InventorySystem.Controllers
                 {
                     p.SKU,
                     p.Name,
-                    Category = p.Category!.Name,
+                    Category = p.Category!.CategoryName,
                     p.CurrentStock,
                     p.ReorderLevel,
                     p.CostPrice,

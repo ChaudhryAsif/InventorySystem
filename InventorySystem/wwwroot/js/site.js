@@ -23,8 +23,17 @@ window.addEventListener('resize', function () {
 //    document.getElementById(modalId).classList.add('show');
 //}
 
-function closeModal(modalId) {
-    document.getElementById(modalId).classList.remove('show');
+//function closeModal(modalId) {
+//    document.getElementById(modalId).classList.remove('show');
+//}
+
+function closeModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) {
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
 }
 
 // Close modal on outside click

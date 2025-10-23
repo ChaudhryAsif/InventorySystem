@@ -33,20 +33,22 @@
             <li class="sidebar-item">
                 <a asp-controller="Category" asp-action="Index"
                    class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Category" ? "active" : "")">
-                    <span class="sidebar-icon">📊</span>
+                    <span class="sidebar-icon">📦</span>
                     <span class="sidebar-text">Item Category</span>
                 </a>
             </li>
             <li class="sidebar-item">
-                <a href="#" class="sidebar-link">
+                <a asp-controller="Item" asp-action="Index"
+                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Item" ? "active" : "")">
                     <span class="sidebar-icon">🏷️</span>
-                    <span>Item Management</span>
+                    <span class="sidebar-text">Item Management</span>
                 </a>
             </li>
             <li class="sidebar-item">
-                <a href="#" class="sidebar-link">
+                <a asp-controller="ItemRateList" asp-action="Index"
+                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "ItemRateList" ? "active" : "")">
                     <span class="sidebar-icon">💰</span>
-                    <span>Item Rate</span>
+                    <span class="sidebar-text">Item Rate</span>
                 </a>
             </li>
             <li class="sidebar-item">
@@ -84,6 +86,7 @@
     </div>
 
     <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

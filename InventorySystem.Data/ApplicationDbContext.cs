@@ -9,7 +9,8 @@ namespace InventorySystem.Data
             : base(options) { }
 
         public DbSet<Product> Products => Set<Product>();
-        public DbSet<Category> Categories => Set<Category>();
+        public DbSet<ItemCategory> ItemCategory => Set<ItemCategory>();
+        public DbSet<Items> Items => Set<Items>();
         public DbSet<Supplier> Suppliers => Set<Supplier>();
         public DbSet<Customer> Customers => Set<Customer>();
         public DbSet<Invoice> Invoices => Set<Invoice>();
