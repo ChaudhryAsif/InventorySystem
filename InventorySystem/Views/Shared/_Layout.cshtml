@@ -52,9 +52,18 @@
                 </a>
             </li>
             <li class="sidebar-item">
-                <a href="#" class="sidebar-link">
+                <a asp-controller="Parties" asp-action="Index"
+                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Parties" ? "active" : "")">
+                    <span class="sidebar-icon">👥</span>
+                    <span class="sidebar-text">Parties (Accounts)</span>
+                </a>
+            </li>
+
+            <li class="sidebar-item">
+                <a asp-controller="Purchase" asp-action="Index"
+                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Purchase" ? "active" : "")">
                     <span class="sidebar-icon">📝</span>
-                    <span>Purchase Invoice</span>
+                    <span class="sidebar-text">Purchase Invoice</span>
                 </a>
             </li>
             <li class="sidebar-item">

@@ -1,0 +1,406 @@
+﻿@{
+    Layout = "_Layout";
+}
+
+<link href="~/css/parties.css" rel="stylesheet" />
+
+<div class="main-wrapper">
+    <div class="page-header">
+        <div class="page-title">
+            <h2>Parties Management (Accounts)</h2>
+            <p>Manage suppliers and customers for your business</p>
+        </div>
+        <button class="btn btn-success" id="addPartyBtn">
+            ➕ Add New Party
+        </button>
+    </div>
+
+    <div class="tabs-container">
+        <div class="tabs">
+            <button class="tab active" data-tab="all">All Parties</button>
+            <button class="tab" data-tab="supplier">Suppliers</button>
+            <button class="tab" data-tab="customer">Customers</button>
+        </div>
+    </div>
+
+    <div class="filter-section">
+        <div class="filter-grid">
+            <input type="text" class="form-control" placeholder="🔍 Search parties..." id="searchInput">
+            <select class="form-control" id="filterStatus">
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">ID</th>
+                        <th>Party Name</th>
+                        <th>Type</th>
+                        <th>Contact Person</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                        <th style="width: 120px;">Balance</th>
+                        <th style="width: 100px;">Status</th>
+                        <th style="width: 200px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="partiesTableBody">
+                    <tr data-type="supplier" data-status="active">
+                        <td>1</td>
+                        <td>ABC Suppliers Ltd</td>
+                        <td><span class="badge badge-supplier">Supplier</span></td>
+                        <td>John Doe</td>
+                        <td>+1 234-567-8900</td>
+                        <td>john@abc.com</td>
+                        <td>$5,000.00</td>
+                        <td><span class="badge badge-success">Active</span></td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="btn btn-primary btn-sm" onclick="editParty(1)">✏️ Edit</button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteParty(1)">🗑️ Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr data-type="customer" data-status="active">
+                        <td>2</td>
+                        <td>XYZ Retail Store</td>
+                        <td><span class="badge badge-customer">Customer</span></td>
+                        <td>Jane Smith</td>
+                        <td>+1 234-567-8901</td>
+                        <td>jane@xyz.com</td>
+                        <td>$2,500.00</td>
+                        <td><span class="badge badge-success">Active</span></td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="btn btn-primary btn-sm" onclick="editParty(2)">✏️ Edit</button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteParty(2)">🗑️ Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="partyModal">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modalTitle">Add New Party</h3>
+            <button class="modal-close" id="closeModalBtn">&times;</button>
+        </div>
+        <form id="partyForm">
+            <div class="modal-body">
+                <input type="hidden" id="partyId">
+
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <h4 class="section-title">Basic Information</h4>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Party Code</label>
+                        <input type="text" class="form-control" id="partyCode" value="Auto-generated" readonly>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label required">Party Type</label>
+                        <select class="form-control" id="partyType" required>
+                            <option value="">Select Type</option>
+                            <option value="supplier">Supplier</option>
+                            <option value="customer">Customer</option>
+                            <option value="both">Both</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label class="form-label required">Party Name</label>
+                        <input type="text" class="form-control" id="partyName" placeholder="Enter party/business name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Contact Person</label>
+                        <input type="text" class="form-control" id="contactPerson" placeholder="Enter contact person">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Designation</label>
+                        <input type="text" class="form-control" id="designation" placeholder="Enter designation">
+                    </div>
+
+                    <div class="section-divider">
+                        <h4 class="section-title">Contact Information</h4>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label required">Phone</label>
+                        <input type="tel" class="form-control" id="phone" placeholder="+1 234-567-8900" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Mobile</label>
+                        <input type="tel" class="form-control" id="mobile" placeholder="+1 234-567-8901">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" placeholder="email@example.com">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Website</label>
+                        <input type="url" class="form-control" id="website" placeholder="https://example.com">
+                    </div>
+
+                    <div class="section-divider">
+                        <h4 class="section-title">Address Information</h4>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label class="form-label">Address</label>
+                        <textarea class="form-control" id="address" placeholder="Enter complete address"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">City</label>
+                        <input type="text" class="form-control" id="city" placeholder="Enter city">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">State/Province</label>
+                        <input type="text" class="form-control" id="state" placeholder="Enter state">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">ZIP Code</label>
+                        <input type="text" class="form-control" id="zipCode" placeholder="Enter ZIP">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Country</label>
+                        <select class="form-control" id="country">
+                            <option>United States</option>
+                            <option>Canada</option>
+                            <option>Pakistan</option>
+                            <option>India</option>
+                        </select>
+                    </div>
+
+                    <div class="section-divider">
+                        <h4 class="section-title">Financial Information</h4>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Opening Balance</label>
+                        <input type="number" class="form-control" id="openingBalance" value="0" step="0.01">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Credit Limit</label>
+                        <input type="number" class="form-control" id="creditLimit" value="0" step="0.01">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Payment Terms (Days)</label>
+                        <input type="number" class="form-control" id="paymentTerms" value="30">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Tax ID / NTN</label>
+                        <input type="text" class="form-control" id="taxId" placeholder="Enter tax ID">
+                    </div>
+
+                    <div class="section-divider">
+                        <h4 class="section-title">Additional</h4>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" id="notes" placeholder="Enter notes"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select class="form-control" id="status">
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" id="cancelBtn">✖ Cancel</button>
+                <button type="submit" class="btn btn-success">💾 Save Party</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    let isEditMode = false;
+    let currentTab = 'all';
+
+    // Add Party Button
+    document.getElementById('addPartyBtn').addEventListener('click', function() {
+        isEditMode = false;
+        document.getElementById('modalTitle').textContent = 'Add New Party';
+        document.getElementById('partyForm').reset();
+        document.getElementById('partyCode').value = 'Auto-generated';
+        document.getElementById('partyModal').classList.add('show');
+    });
+
+    // Close Modal
+    document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+    document.getElementById('cancelBtn').addEventListener('click', closeModal);
+
+    function closeModal() {
+        document.getElementById('partyModal').classList.remove('show');
+    }
+
+    // Edit Party
+    function editParty(id) {
+        isEditMode = true;
+        document.getElementById('modalTitle').textContent = 'Edit Party';
+        document.getElementById('partyId').value = id;
+        document.getElementById('partyModal').classList.add('show');
+    }
+
+    // Delete Party
+    function deleteParty(id) {
+        if (confirm('Delete this party?')) {
+            const rows = document.querySelectorAll('#partiesTableBody tr');
+            rows.forEach(row => {
+                if (row.cells[0].textContent == id) {
+                    row.remove();
+                }
+            });
+            alert('Party deleted!');
+        }
+    }
+
+    // Form Submit
+    document.getElementById('partyForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const partyData = {
+            partyType: document.getElementById('partyType').value,
+            partyName: document.getElementById('partyName').value,
+            contactPerson: document.getElementById('contactPerson').value,
+            phone: document.getElementById('phone').value,
+            email: document.getElementById('email').value,
+            openingBalance: document.getElementById('openingBalance').value,
+            status: document.getElementById('status').value
+        };
+
+        if (!partyData.partyType || !partyData.partyName || !partyData.phone) {
+            alert('Please fill required fields!');
+            return;
+        }
+
+        if (isEditMode) {
+            alert('Party updated successfully!');
+        } else {
+            addPartyToTable(partyData);
+            alert('Party added successfully!');
+        }
+
+        closeModal();
+    });
+
+    function addPartyToTable(data) {
+        const tbody = document.getElementById('partiesTableBody');
+        const newId = tbody.rows.length + 1;
+
+        let typeBadge = '';
+        if (data.partyType === 'supplier') {
+            typeBadge = '<span class="badge badge-supplier">Supplier</span>';
+        } else if (data.partyType === 'customer') {
+            typeBadge = '<span class="badge badge-customer">Customer</span>';
+        } else {
+            typeBadge = '<span class="badge badge-both">Both</span>';
+        }
+
+        const statusBadge = data.status === 'active'
+            ? '<span class="badge badge-success">Active</span>'
+            : '<span class="badge badge-danger">Inactive</span>';
+
+        const newRow = document.createElement('tr');
+        newRow.setAttribute('data-type', data.partyType);
+        newRow.setAttribute('data-status', data.status);
+        newRow.innerHTML = `
+            <td>${newId}</td>
+            <td>${data.partyName}</td>
+            <td>${typeBadge}</td>
+            <td>${data.contactPerson || '-'}</td>
+            <td>${data.phone}</td>
+            <td>${data.email || '-'}</td>
+            <td>$${parseFloat(data.openingBalance).toFixed(2)}</td>
+            <td>${statusBadge}</td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-primary btn-sm" onclick="editParty(${newId})">✏️ Edit</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteParty(${newId})">🗑️ Delete</button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(newRow);
+    }
+
+    // Tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+
+            const tabType = this.getAttribute('data-tab');
+            currentTab = tabType;
+            filterTable();
+        });
+    });
+
+    // Search
+    document.getElementById('searchInput').addEventListener('keyup', filterTable);
+    document.getElementById('filterStatus').addEventListener('change', filterTable);
+
+    function filterTable() {
+        const searchText = document.getElementById('searchInput').value.toLowerCase();
+        const statusFilter = document.getElementById('filterStatus').value;
+        const rows = document.querySelectorAll('#partiesTableBody tr');
+
+        rows.forEach(row => {
+            const type = row.getAttribute('data-type');
+            const status = row.getAttribute('data-status');
+            const text = row.textContent.toLowerCase();
+
+            let showByTab = currentTab === 'all' || type === currentTab || (currentTab === 'customer' && type === 'both') || (currentTab === 'supplier' && type === 'both');
+            let showByStatus = !statusFilter || status === statusFilter;
+            let showBySearch = !searchText || text.includes(searchText);
+
+            if (showByTab && showByStatus && showBySearch) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+
+    // Close modal on outside click
+    document.getElementById('partyModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeModal();
+        }
+    });
+
+    // Close modal with Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeModal();
+        }
+    });
+</script>

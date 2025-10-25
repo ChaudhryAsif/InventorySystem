@@ -1,5 +1,6 @@
 ﻿using InventorySystem.Core.Models;
 using InventorySystem.Data;
+using InventorySystem.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,80 +9,70 @@ namespace InventorySystem.Controllers
     public class PurchaseController : Controller
     {
         private readonly ApplicationDbContext _context;
+
         public PurchaseController(ApplicationDbContext context)
         {
             _context = context;
         }
 
-        public async Task<IActionResult> Index()
+        [HttpGet]
+        public IActionResult Index()
         {
-            var purchases = await _context.Invoices
-                .Include(i => i.Supplier)
-                .Where(i => i.Type == "Purchase")
-                .OrderByDescending(i => i.Date)
-                .ToListAsync();
-            return View(purchases);
-        }
-
-        public IActionResult Create()
-        {
-            ViewBag.Suppliers = _context.Suppliers.ToList();
-            ViewBag.Products = _context.Products.ToList();
             return View();
         }
 
         [HttpPost]
-        public async Task<IActionResult> Create(int supplierId, List<int> productIds, List<int> qty, List<decimal> rate)
+        public IActionResult Save([FromBody] PurchaseInvoiceViewModel model)
         {
-            var invoice = new Invoice
+            if (model == null || model.Items == null || !model.Items.Any())
+                return BadRequest("Invalid invoice data.");
+
+            var invoice = new PurchaseInvoice
             {
-                Type = "Purchase",
-                SupplierId = supplierId,
-                Date = DateTime.Now,
-                Items = new List<InvoiceItem>()
+                PurchaseId = GetPurchaseInvoiceMaxItemId(),
+                PurchaseDate = model.PurchaseDate,
+                //VendorID = model.VendorID,
+                BillNo = model.BillNo,
+                //BranchID = model.BranchID,
+                PaymentMode = model.PaymentMode,
+                Remarks = model.Remarks,
+                GSTPer = model.GSTPer,
+                GSTAmount = model.GSTAmount,
+                FreightExp = model.FreightExp,
+                OtherExp = model.OtherExp,
+                Discount = model.Discount,
+                TotalAmount = model.TotalAmount,
+                AmountPaid = model.NetAmount
             };
 
-            decimal total = 0;
-            for (int i = 0; i < productIds.Count; i++)
-            {
-                var item = new InvoiceItem
-                {
-                    ProductId = productIds[i],
-                    Quantity = qty[i],
-                    Rate = rate[i]
-                };
-                invoice.Items.Add(item);
-                total += item.Total;
+            _context.PurchaseInvoice.Add(invoice);
+            _context.SaveChanges();
 
-                // Stock In
-                var product = await _context.Products.FindAsync(productIds[i]);
-                if (product != null)
-                    product.CurrentStock += qty[i];
+            foreach (var item in model.Items)
+            {
+                var body = new PurchaseInvoiceBody
+                {
+                    PurchaseId = invoice.PurchaseId,
+                    Itemid = item.Itemid,
+                    Descr = item.Desc,
+                    Quantity = item.Quantity,
+                    PurPrice = item.PurPrice,
+                    SalePrice = item.SalePrice,
+                    DiscPer = item.DiscPer,
+                    DiscAmt = item.DiscAmt
+                };
+                _context.PurchaseInvoiceBody.Add(body);
             }
 
-            invoice.TotalAmount = total;
-            _context.Invoices.Add(invoice);
-            await _context.SaveChangesAsync();
+            _context.SaveChanges();
 
-            // After await _context.SaveChangesAsync();
-            var purchaseAccount = _context.Accounts.FirstOrDefault(a => a.Name == "Purchases")
-                ?? new Account { Name = "Purchases", Type = "Expense" };
-            var cashAccount = _context.Accounts.FirstOrDefault(a => a.Name == "Cash")
-                ?? new Account { Name = "Cash", Type = "Asset" };
+            return Ok(new { success = true, message = "Invoice saved successfully", id = invoice.PurchaseId });
+        }
 
-            _context.Accounts.AttachRange(purchaseAccount, cashAccount);
-
-            _context.JournalEntries.Add(new JournalEntry
-            {
-                Date = DateTime.Now,
-                DebitAccountId = purchaseAccount.Id,
-                CreditAccountId = cashAccount.Id,
-                Amount = invoice.TotalAmount,
-                Description = $"Purchase #{invoice.Id}"
-            });
-            await _context.SaveChangesAsync();
-
-            return RedirectToAction(nameof(Index));
+        private int GetPurchaseInvoiceMaxItemId()
+        {
+            var maxId = _context.PurchaseInvoice.Max(c => (int?)c.PurchaseId) ?? 0;
+            return maxId + 1;
         }
     }
 }

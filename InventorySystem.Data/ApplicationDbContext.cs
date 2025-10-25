@@ -13,40 +13,24 @@ namespace InventorySystem.Data
         public DbSet<Items> Items => Set<Items>();
         public DbSet<Supplier> Suppliers => Set<Supplier>();
         public DbSet<Customer> Customers => Set<Customer>();
-        public DbSet<Invoice> Invoices => Set<Invoice>();
-        public DbSet<InvoiceItem> InvoiceItems => Set<InvoiceItem>();
+        public DbSet<PurchaseInvoice> PurchaseInvoice => Set<PurchaseInvoice>();
+        public DbSet<PurchaseInvoiceBody> PurchaseInvoiceBody => Set<PurchaseInvoiceBody>();
         public DbSet<Account> Accounts => Set<Account>();
         public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+
+            // 👇 This disables EF Core OUTPUT clause
+            modelBuilder.Entity<PurchaseInvoiceBody>()
+                .Property(p => p.Srno)
+                .ValueGeneratedNever();
+
+            modelBuilder.Entity<PurchaseInvoiceBody>()
+       .Property(p => p.Srno)
+       .ValueGeneratedOnAdd(); // ✅ Auto identity in SQL
+
             base.OnModelCreating(modelBuilder);
-
-            // InvoiceItem relationship
-            modelBuilder.Entity<InvoiceItem>()
-                .HasOne(i => i.Invoice)
-                .WithMany(p => p.Items)
-                .HasForeignKey(i => i.InvoiceId);
-
-            // Prevent multiple cascade paths for JournalEntry
-            modelBuilder.Entity<JournalEntry>()
-                .HasOne(j => j.DebitAccount)
-                .WithMany()
-                .HasForeignKey(j => j.DebitAccountId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            modelBuilder.Entity<JournalEntry>()
-                .HasOne(j => j.CreditAccount)
-                .WithMany()
-                .HasForeignKey(j => j.CreditAccountId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            // Optional: set decimal precision to avoid warnings
-            modelBuilder.Entity<Product>().Property(p => p.CostPrice).HasPrecision(18, 2);
-            modelBuilder.Entity<Product>().Property(p => p.SalePrice).HasPrecision(18, 2);
-            modelBuilder.Entity<Invoice>().Property(p => p.TotalAmount).HasPrecision(18, 2);
-            modelBuilder.Entity<InvoiceItem>().Property(p => p.Rate).HasPrecision(18, 2);
-            modelBuilder.Entity<JournalEntry>().Property(p => p.Amount).HasPrecision(18, 2);
         }
 
     }
