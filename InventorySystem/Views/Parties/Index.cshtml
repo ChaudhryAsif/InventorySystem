@@ -51,38 +51,7 @@
                     </tr>
                 </thead>
                 <tbody id="partiesTableBody">
-                    <tr data-type="supplier" data-status="active">
-                        <td>1</td>
-                        <td>ABC Suppliers Ltd</td>
-                        <td><span class="badge badge-supplier">Supplier</span></td>
-                        <td>John Doe</td>
-                        <td>+1 234-567-8900</td>
-                        <td>john@abc.com</td>
-                        <td>$5,000.00</td>
-                        <td><span class="badge badge-success">Active</span></td>
-                        <td>
-                            <div class="action-buttons">
-                                <button class="btn btn-primary btn-sm" onclick="editParty(1)">✏️ Edit</button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteParty(1)">🗑️ Delete</button>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr data-type="customer" data-status="active">
-                        <td>2</td>
-                        <td>XYZ Retail Store</td>
-                        <td><span class="badge badge-customer">Customer</span></td>
-                        <td>Jane Smith</td>
-                        <td>+1 234-567-8901</td>
-                        <td>jane@xyz.com</td>
-                        <td>$2,500.00</td>
-                        <td><span class="badge badge-success">Active</span></td>
-                        <td>
-                            <div class="action-buttons">
-                                <button class="btn btn-primary btn-sm" onclick="editParty(2)">✏️ Edit</button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteParty(2)">🗑️ Delete</button>
-                            </div>
-                        </td>
-                    </tr>
+                    <!--Via Ajax-->
                 </tbody>
             </table>
         </div>
@@ -235,7 +204,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-danger" id="cancelBtn">✖ Cancel</button>
+                <button type="button" class="btn btn-danger" id="cancelBtn" onclick="closeSaveModal('partyModal');">✖ Cancel</button>
                 <button type="submit" class="btn btn-success">💾 Save Party</button>
             </div>
         </form>
@@ -245,73 +214,142 @@
 <script>
     let isEditMode = false;
     let currentTab = 'all';
+    document.addEventListener('DOMContentLoaded', loadParties);
+    const apiUrl = '/Parties'; // base URL
+
+// Load all parties
+async function loadParties() {
+            const response = await fetch('/Parties/GetParties');
+    const data = await response.json();
+    renderPartiesTable(data);
+}
+
+// Render data into table
+function renderPartiesTable(data) {
+    const tbody = document.getElementById('partiesTableBody');
+    tbody.innerHTML = '';
+    data.forEach(party => {
+        const typeBadge = party.partyType === 'supplier'
+            ? '<span class="badge badge-supplier">Supplier</span>'
+            : (party.partyType === 'customer'
+                ? '<span class="badge badge-customer">Customer</span>'
+                : '<span class="badge badge-both">Both</span>');
+
+        const statusBadge = party.status === 'active'
+            ? '<span class="badge badge-success">Active</span>'
+            : '<span class="badge badge-danger">Inactive</span>';
+
+        const row = `
+            <tr data-type="${party.partyType}" data-status="${party.status}">
+                <td>${party.partyId}</td>
+                <td>${party.partyName}</td>
+                <td>${typeBadge}</td>
+                <td>${party.contactPerson || '-'}</td>
+                <td>${party.phone}</td>
+                <td>${party.email || '-'}</td>
+                <td>$${parseFloat(party.openingBalance || 0).toFixed(2)}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary btn-sm" onclick="editParty(${party.partyId})">✏️ Edit</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteParty(${party.partyId})">🗑️ Delete</button>
+                    </div>
+                </td>
+            </tr>`;
+        tbody.insertAdjacentHTML('beforeend', row);
+    });
+}
+
+    // Add / Edit Form Submit
+    document.getElementById('partyForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const party = {
+            partyId: document.getElementById('partyId').value || 0,
+            partyType: document.getElementById('partyType').value,
+            partyName: document.getElementById('partyName').value,
+            contactPerson: document.getElementById('contactPerson').value,
+            phone: document.getElementById('phone').value,
+            email: document.getElementById('email').value,
+            openingBalance: parseFloat(document.getElementById('openingBalance').value || 0),
+            status: document.getElementById('status').value
+        };
+
+        if (!party.partyType || !party.partyName || !party.phone) {
+            alert('Please fill required fields!');
+            return;
+        }
+
+        let response = await fetch('/Parties/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(party)
+            });
+            
+            if (response.ok) {
+                if (isEditMode)
+                {
+                        alert('Party updated successfully!');
+                }
+                else {
+                    alert('Party added successfully!');
+                }
+            }
+
+                closeSaveModal();
+        await loadParties();
+    });
+
+    // Delete Party
+    async function deleteParty(id) {
+        if (confirm('Delete this party?')) {
+                const response = await fetch(`${apiUrl}/DeleteParty/${id}`, { method: 'DELETE' });
+            if (response.ok) {
+                alert('Party deleted!');
+                loadParties();
+            }
+        }
+    }
+
+    // Edit Party
+    async function editParty(id) {
+        document.getElementById('partyForm').reset();
+            $('#partyId').val('');
+        const response = await fetch(`${apiUrl}/GetById/${id}`);
+        if (!response.ok) return alert('Party not found');
+
+        const p = await response.json();
+        isEditMode = true;
+        document.getElementById('modalTitle').textContent = 'Edit Party';
+        document.getElementById('partyModal').classList.add('show');
+
+        document.getElementById('partyId').value = p.partyId;
+        document.getElementById('partyType').value = p.partyType;
+        document.getElementById('partyName').value = p.partyName;
+        document.getElementById('contactPerson').value = p.contactPerson || '';
+        document.getElementById('phone').value = p.phone || '';
+        document.getElementById('email').value = p.email || '';
+        document.getElementById('openingBalance').value = p.openingBalance || 0;
+        document.getElementById('status').value = p.status || 'active';
+    }
 
     // Add Party Button
     document.getElementById('addPartyBtn').addEventListener('click', function() {
         isEditMode = false;
         document.getElementById('modalTitle').textContent = 'Add New Party';
         document.getElementById('partyForm').reset();
+            $('#partyId').val('');
         document.getElementById('partyCode').value = 'Auto-generated';
         document.getElementById('partyModal').classList.add('show');
     });
 
-    // Close Modal
-    document.getElementById('closeModalBtn').addEventListener('click', closeModal);
-    document.getElementById('cancelBtn').addEventListener('click', closeModal);
+        // Close Modal
+        document.getElementById('closeModalBtn').addEventListener('click', closeSaveModal);
+        document.getElementById('cancelBtn').addEventListener('click', closeSaveModal);
 
-    function closeModal() {
+        function closeSaveModal() {
         document.getElementById('partyModal').classList.remove('show');
     }
-
-    // Edit Party
-    function editParty(id) {
-        isEditMode = true;
-        document.getElementById('modalTitle').textContent = 'Edit Party';
-        document.getElementById('partyId').value = id;
-        document.getElementById('partyModal').classList.add('show');
-    }
-
-    // Delete Party
-    function deleteParty(id) {
-        if (confirm('Delete this party?')) {
-            const rows = document.querySelectorAll('#partiesTableBody tr');
-            rows.forEach(row => {
-                if (row.cells[0].textContent == id) {
-                    row.remove();
-                }
-            });
-            alert('Party deleted!');
-        }
-    }
-
-    // Form Submit
-    document.getElementById('partyForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-
-        const partyData = {
-            partyType: document.getElementById('partyType').value,
-            partyName: document.getElementById('partyName').value,
-            contactPerson: document.getElementById('contactPerson').value,
-            phone: document.getElementById('phone').value,
-            email: document.getElementById('email').value,
-            openingBalance: document.getElementById('openingBalance').value,
-            status: document.getElementById('status').value
-        };
-
-        if (!partyData.partyType || !partyData.partyName || !partyData.phone) {
-            alert('Please fill required fields!');
-            return;
-        }
-
-        if (isEditMode) {
-            alert('Party updated successfully!');
-        } else {
-            addPartyToTable(partyData);
-            alert('Party added successfully!');
-        }
-
-        closeModal();
-    });
 
     function addPartyToTable(data) {
         const tbody = document.getElementById('partiesTableBody');
@@ -393,14 +431,14 @@
     // Close modal on outside click
     document.getElementById('partyModal').addEventListener('click', function(e) {
         if (e.target === this) {
-            closeModal();
+                closeModal();
         }
     });
 
     // Close modal with Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
-            closeModal();
+                 closeModal();
         }
     });
 </script>

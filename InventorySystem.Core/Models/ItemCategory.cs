@@ -10,6 +10,5 @@ namespace InventorySystem.Core.Models
         public string? Description { get; set; }
         public bool? IsActive { get; set; }
         public DateTime? CreatedDate { get; set; }
-        public ICollection<Product>? Products { get; set; }
     }
 }

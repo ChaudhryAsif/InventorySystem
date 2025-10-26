@@ -31,7 +31,7 @@ namespace InventorySystem.Controllers
             {
                 PurchaseId = GetPurchaseInvoiceMaxItemId(),
                 PurchaseDate = model.PurchaseDate,
-                //VendorID = model.VendorID,
+                VendorID = model.VendorID,
                 BillNo = model.BillNo,
                 //BranchID = model.BranchID,
                 PaymentMode = model.PaymentMode,

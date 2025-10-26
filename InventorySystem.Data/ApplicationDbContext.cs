@@ -8,15 +8,11 @@ namespace InventorySystem.Data
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options) { }
 
-        public DbSet<Product> Products => Set<Product>();
         public DbSet<ItemCategory> ItemCategory => Set<ItemCategory>();
         public DbSet<Items> Items => Set<Items>();
-        public DbSet<Supplier> Suppliers => Set<Supplier>();
-        public DbSet<Customer> Customers => Set<Customer>();
+        public DbSet<Party> Parties => Set<Party>();
         public DbSet<PurchaseInvoice> PurchaseInvoice => Set<PurchaseInvoice>();
         public DbSet<PurchaseInvoiceBody> PurchaseInvoiceBody => Set<PurchaseInvoiceBody>();
-        public DbSet<Account> Accounts => Set<Account>();
-        public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

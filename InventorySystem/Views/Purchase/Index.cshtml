@@ -50,8 +50,9 @@
                     <div class="form-group">
                         <label class="form-label">Supplier Account</label>
                         <div class="supplier-lookup">
-                            <input type="text" class="form-control" id="supplierAccount" placeholder="Search supplier...">
-                            <button type="button" class="btn-icon">👤</button>
+                            <input type="text" class="form-control" id="supplierAccount" disabled placeholder="Search supplier...">
+                            <input type="hidden" class="form-control" id="hftxtSupplierId">
+                            <button type="button" class="btn-icon" id="btnSupplierAccount">👤</button>
                         </div>
                     </div>
 
@@ -176,10 +177,65 @@
             </div>
         </form>
     </div>
+
+    <div class="modal supplier-modal" id="supplierModal">
+        <div class="supplier-modal-dialog">
+            <div class="supplier-modal-header">
+                <h3 class="supplier-modal-title">Select Supplier</h3>
+                <button class="supplier-modal-close" onclick="closeSupplierModal()">&times;</button>
+            </div>
+            <div class="supplier-modal-body">
+                <div class="supplier-search-box">
+                    <input type="text"
+                           class="supplier-search-input"
+                           id="supplierSearchInput"
+                           placeholder="🔍 Search suppliers by name, phone, or email..."
+                           onkeyup="searchSuppliers()">
+                </div>
+
+                <div class="supplier-table-container">
+                    <table class="supplier-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px;">ID</th>
+                                <th>Party Name</th>
+                                <th>Type</th>
+                                <th>Contact Person</th>
+                                <th>Phone</th>
+                                <th>Email</th>
+                                <th>Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierTableBody">
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 2rem;">
+                                    Loading suppliers...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="emptyState" class="empty-state" style="display: none;">
+                    <div class="empty-state-icon">📦</div>
+                    <p>No suppliers found</p>
+                </div>
+            </div>
+            <div class="supplier-modal-footer">
+                <button type="button" class="btn btn-danger" onclick="closeSupplierModal()">✖ Cancel</button>
+                <button type="button" class="btn btn-select" id="selectSupplierBtn" onclick="selectSupplier()" disabled>
+                    ✓ Select Supplier
+                </button>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script>
     let rowCounter = 0;
+    let selectedSupplier = null;
+    let allSuppliers = [];
 
     // Add first row on page load
     window.addEventListener('DOMContentLoaded', function() {
@@ -325,7 +381,7 @@
     document.getElementById('purchaseForm').addEventListener('submit', function(e) {
         e.preventDefault();
 
-        const supplierAccount = document.getElementById('supplierAccount').value;
+        const supplierAccount = document.getElementById('hftxtSupplierId').value;
         if (!supplierAccount) {
             alert('Please select a supplier!');
             return;
@@ -412,4 +468,161 @@
         alert('Error saving invoice.');
     });
     });
+
+    // supplier section
+    // Open Supplier Modal when clicking the icon button
+    document.querySelector('#btnSupplierAccount').addEventListener('click', function(e) {
+        e.preventDefault();
+        openSupplierModal();
+    });
+
+    function openSupplierModal() {
+        document.getElementById('supplierModal').classList.add('show');
+        loadSuppliers();
+    }
+
+    function closeSupplierModal() {
+        document.getElementById('supplierModal').classList.remove('show');
+        selectedSupplier = null;
+        document.getElementById('selectSupplierBtn').disabled = true;
+        document.querySelectorAll('#supplierTableBody tr').forEach(row => {
+            row.classList.remove('selected');
+        });
+    }
+
+    // Load Suppliers from API
+    function loadSuppliers() {
+        const tbody = document.getElementById('supplierTableBody');
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">Loading suppliers...</td></tr>';
+
+        // Fetch suppliers from your Parties controller
+        fetch('/Parties/GetSuppliers')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.suppliers && data.suppliers.length > 0) {
+                    allSuppliers = data.suppliers;
+                    displaySuppliers(allSuppliers);
+                } else {
+                    showEmptyState();
+                }
+            })
+            .catch(error => {
+                console.error('Error loading suppliers:', error);
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #dc3545;">Error loading suppliers. Please try again.</td></tr>';
+            });
+    }
+
+    function displaySuppliers(suppliers) {
+        const tbody = document.getElementById('supplierTableBody');
+        const emptyState = document.getElementById('emptyState');
+
+        if (suppliers.length === 0) {
+            showEmptyState();
+            return;
+        }
+
+        emptyState.style.display = 'none';
+        tbody.innerHTML = '';
+
+        suppliers.forEach(supplier => {
+            const row = document.createElement('tr');
+            row.setAttribute('data-supplier-id', supplier.partyId);
+            row.setAttribute('data-supplier-name', supplier.partyName);
+            row.innerHTML = `
+                <td>${supplier.partyId}</td>
+                <td>${supplier.partyName}</td>
+                <td><span class="party-badge party-badge-${supplier.partyType}">${formatPartyType(supplier.partyType)}</span></td>
+                <td>${supplier.contactPerson || '-'}</td>
+                <td>${supplier.phone}</td>
+                <td>${supplier.email || '-'}</td>
+                <td>$${parseFloat(supplier.openingBalance || 0).toFixed(2)}</td>
+            `;
+
+            row.addEventListener('click', function() {
+                selectSupplierRow(this, supplier);
+            });
+
+            tbody.appendChild(row);
+        });
+    }
+
+    function showEmptyState() {
+        document.getElementById('supplierTableBody').innerHTML = '';
+        document.getElementById('emptyState').style.display = 'block';
+    }
+
+    function formatPartyType(type) {
+        if (type === 'supplier') return 'Supplier';
+        if (type === 'customer') return 'Customer';
+        if (type === 'both') return 'Both';
+        return type;
+    }
+
+    function selectSupplierRow(row, supplier) {
+        document.querySelectorAll('#supplierTableBody tr').forEach(r => {
+            r.classList.remove('selected');
+        });
+
+        row.classList.add('selected');
+        selectedSupplier = supplier;
+        document.getElementById('selectSupplierBtn').disabled = false;
+    }
+
+    function selectSupplier() {
+        if (selectedSupplier) {
+            document.getElementById('hftxtSupplierId').value = selectedSupplier.partyId;
+            document.getElementById('supplierAccount').value = selectedSupplier.partyName;
+
+            let details = '';
+            if (selectedSupplier.contactPerson) {
+                details += '\nContact: ' + selectedSupplier.contactPerson;
+            }
+            if (selectedSupplier.phone) {
+                details += '\nPhone: ' + selectedSupplier.phone;
+            }
+            if (selectedSupplier.email) {
+                details += '\nEmail: ' + selectedSupplier.email;
+            }
+            if (selectedSupplier.address) {
+                details += '\nAddress: ' + selectedSupplier.address;
+            }
+
+            document.getElementById('supplierDetails').value = details;
+            closeSupplierModal();
+        }
+    }
+
+    function searchSuppliers() {
+        const searchText = document.getElementById('supplierSearchInput').value.toLowerCase();
+
+        if (!searchText) {
+            displaySuppliers(allSuppliers);
+            return;
+        }
+
+        const filtered = allSuppliers.filter(supplier => {
+            return supplier.partyName.toLowerCase().includes(searchText) ||
+                   (supplier.phone && supplier.phone.includes(searchText)) ||
+                   (supplier.email && supplier.email.toLowerCase().includes(searchText)) ||
+                   (supplier.contactPerson && supplier.contactPerson.toLowerCase().includes(searchText));
+        });
+
+        displaySuppliers(filtered);
+    }
+
+    document.getElementById('supplierModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeSupplierModal();
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('supplierModal');
+            if (modal.classList.contains('show')) {
+                closeSupplierModal();
+            }
+        }
+    });
+
 </script>
