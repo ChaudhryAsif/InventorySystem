@@ -42,7 +42,7 @@ namespace InventorySystem.Controllers
             {
                 if (category.CategoryId == 0)
                 {
-                    category.CategoryId = GetMaxCategoryId();
+                    //category.CategoryId = GetMaxCategoryId();
                     await _context.ItemCategory.AddAsync(category);
                 }
                 else

@@ -82,7 +82,7 @@
                         <thead>
                             <tr>
                                 <th style="width: 50px;">#</th>
-                                <th style="width: 80px;">Item ID</th>
+                                <th style="width: 120px;">Item ID</th>
                                 <th style="width: 250px;">Item Name</th>
                                 <th style="width: 100px;">Quantity</th>
                                 <th style="width: 120px;">Pur. Price</th>
@@ -230,12 +230,77 @@
         </div>
     </div>
 
+    <div class="modal item-modal" id="itemModal">
+        <div class="item-modal-dialog">
+            <div class="item-modal-header">
+                <h3 class="item-modal-title">Select Item</h3>
+                <button class="item-modal-close" onclick="closeItemModal()">&times;</button>
+            </div>
+            <div class="item-modal-body">
+                <div class="item-search-filters">
+                    <input type="text"
+                           class="item-search-input"
+                           id="itemSearchInput"
+                           placeholder="🔍 Search items by name, barcode..."
+                           onkeyup="searchItems()">
+                    <select class="item-filter-select" id="categoryFilter" onchange="filterItems()">
+                        <option value="">All Categories</option>
+                    </select>
+                    <select class="item-filter-select" id="stockFilter" onchange="filterItems()">
+                        <option value="">All Stock</option>
+                        <option value="instock">In Stock</option>
+                        <option value="lowstock">Low Stock</option>
+                        <option value="outofstock">Out of Stock</option>
+                    </select>
+                </div>
+
+                <div class="item-table-container">
+                    <table class="item-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px;">ID</th>
+                                <th style="width: 60px;">Image</th>
+                                <th>Item Name</th>
+                                <th>Category</th>
+                                <th>Barcode</th>
+                                <th style="width: 100px;">Sale Price</th>
+                                <th style="width: 100px;">Stock</th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemTableBody">
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 2rem;">
+                                    Loading items...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="itemEmptyState" class="item-empty-state" style="display: none;">
+                    <div class="item-empty-icon">📦</div>
+                    <p>No items found</p>
+                </div>
+            </div>
+            <div class="item-modal-footer">
+                <button type="button" class="btn btn-danger" onclick="closeItemModal()">✖ Cancel</button>
+                <button type="button" class="btn-select-item" id="selectItemBtn" onclick="selectItem()" disabled>
+                    ✓ Select Item
+                </button>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script>
     let rowCounter = 0;
     let selectedSupplier = null;
     let allSuppliers = [];
+     let selectedItem = null;
+    let allItems = [];
+    let currentRow = null;
+
 
     // Add first row on page load
     window.addEventListener('DOMContentLoaded', function() {
@@ -252,8 +317,13 @@
         const newRow = document.createElement('tr');
         newRow.innerHTML = `
             <td>${rowCounter}</td>
-            <td><input type="text" class="table-input" placeholder="ID"></td>
-            <td><input type="text" class="table-input" placeholder="Enter item name"></td>
+            <td>
+                <div style="display: flex; align-items: center; gap: 0.3rem;">
+                    <input type="text" class="table-input" placeholder="ID" readonly style="flex: 1;">
+                    <button type="button" class="item-lookup-icon" onclick="openItemLookup(this)">🔍</button>
+                </div>
+            </td>
+            <td><input type="text" class="table-input" placeholder="Enter item name" readonly></td>
             <td><input type="number" class="table-input" value="0" step="0.01" data-field="qty"></td>
             <td><input type="number" class="table-input" value="0" step="0.01" data-field="price"></td>
             <td><input type="number" class="table-input" value="0" step="0.01"></td>
@@ -625,4 +695,183 @@
         }
     });
 
+    // item section
+
+    // Open Item Lookup Modal
+    function openItemLookup(button) {
+        currentRow = button.closest('tr');
+        document.getElementById('itemModal').classList.add('show');
+        loadItems();
+    }
+
+    function closeItemModal() {
+        document.getElementById('itemModal').classList.remove('show');
+        selectedItem = null;
+        currentRow = null;
+        document.getElementById('selectItemBtn').disabled = true;
+        document.querySelectorAll('#itemTableBody tr').forEach(row => {
+            row.classList.remove('selected');
+        });
+    }
+
+    // Load Items from API
+    function loadItems() {
+        const tbody = document.getElementById('itemTableBody');
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">Loading items...</td></tr>';
+
+        fetch('/Item/GetItems')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.items && data.items.length > 0) {
+                    allItems = data.items;
+                    displayItems(allItems);
+                    loadCategories(data.items);
+                } else {
+                    showItemEmptyState();
+                }
+            })
+            .catch(error => {
+                console.error('Error loading items:', error);
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #dc3545;">Error loading items. Please try again.</td></tr>';
+            });
+    }
+
+    function loadCategories(items) {
+        const categoryFilter = document.getElementById('categoryFilter');
+        const categories = [...new Set(items.map(item => item.categoryName))];
+
+        categoryFilter.innerHTML = '<option value="">All Categories</option>';
+        categories.forEach(cat => {
+            const option = document.createElement('option');
+            option.value = cat;
+            option.textContent = cat;
+            categoryFilter.appendChild(option);
+        });
+    }
+
+    function displayItems(items) {
+        const tbody = document.getElementById('itemTableBody');
+        const emptyState = document.getElementById('itemEmptyState');
+
+        if (items.length === 0) {
+            showItemEmptyState();
+            return;
+        }
+
+        emptyState.style.display = 'none';
+        tbody.innerHTML = '';
+
+        items.forEach(item => {
+            const row = document.createElement('tr');
+
+            let stockBadge = '';
+            const stock = item.currentStock || 0;
+            if (stock > 50) {
+                stockBadge = `<span class="stock-badge stock-badge-high">${stock}</span>`;
+            } else if (stock > 0) {
+                stockBadge = `<span class="stock-badge stock-badge-low">${stock}</span>`;
+            } else {
+                stockBadge = `<span class="stock-badge stock-badge-out">${stock}</span>`;
+            }
+
+            row.innerHTML = `
+                <td>${item.itemID}</td>
+                <td><img src="${item.imageUrl || 'https://via.placeholder.com/40'}" class="item-image-thumb" alt="Item"></td>
+                <td>${item.itemName}</td>
+                <td>${item.categoryName}</td>
+                <td>${item.barcode || '-'}</td>
+                <td>$${parseFloat(item.salePrice).toFixed(2)}</td>
+                <td>${stockBadge}</td>
+            `;
+
+            row.addEventListener('click', function() {
+                selectItemRow(this, item);
+            });
+
+            tbody.appendChild(row);
+        });
+    }
+
+    function showItemEmptyState() {
+        document.getElementById('itemTableBody').innerHTML = '';
+        document.getElementById('itemEmptyState').style.display = 'block';
+    }
+
+    function selectItemRow(row, item) {
+        document.querySelectorAll('#itemTableBody tr').forEach(r => {
+            r.classList.remove('selected');
+        });
+
+        row.classList.add('selected');
+        selectedItem = item;
+        document.getElementById('selectItemBtn').disabled = false;
+    }
+
+    function selectItem() {
+        if (selectedItem && currentRow) {
+            // Fill the row with selected item data
+            currentRow.cells[1].querySelector('input').value = selectedItem.itemID;
+            currentRow.cells[2].querySelector('input').value = selectedItem.itemName;
+            currentRow.cells[4].querySelector('input').value = selectedItem.purchasePrice || selectedItem.salePrice;
+            currentRow.cells[5].querySelector('input').value = selectedItem.salePrice;
+
+            // Recalculate row total
+            calculateRowTotal(currentRow);
+
+            closeItemModal();
+        }
+    }
+
+    function searchItems() {
+        const searchText = document.getElementById('itemSearchInput').value.toLowerCase();
+        const categoryFilter = document.getElementById('categoryFilter').value;
+        const stockFilter = document.getElementById('stockFilter').value;
+
+        let filtered = allItems;
+
+        if (searchText) {
+            filtered = filtered.filter(item => {
+                return item.itemName.toLowerCase().includes(searchText) ||
+                       (item.barcode && item.barcode.toLowerCase().includes(searchText)) ||
+                       (item.categoryName && item.categoryName.toLowerCase().includes(searchText));
+            });
+        }
+
+        if (categoryFilter) {
+            filtered = filtered.filter(item => item.categoryName === categoryFilter);
+        }
+
+        if (stockFilter) {
+            filtered = filtered.filter(item => {
+                const stock = item.currentStock || 0;
+                if (stockFilter === 'instock') return stock > 50;
+                if (stockFilter === 'lowstock') return stock > 0 && stock <= 50;
+                if (stockFilter === 'outofstock') return stock === 0;
+                return true;
+            });
+        }
+
+        displayItems(filtered);
+    }
+
+    function filterItems() {
+        searchItems();
+    }
+
+    // Close modal on outside click
+    document.getElementById('itemModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeItemModal();
+        }
+    });
+
+    // Close modal with Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('itemModal');
+            if (modal.classList.contains('show')) {
+                closeItemModal();
+            }
+        }
+    });
 </script>

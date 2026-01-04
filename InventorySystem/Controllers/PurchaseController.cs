@@ -29,7 +29,7 @@ namespace InventorySystem.Controllers
 
             var invoice = new PurchaseInvoice
             {
-                PurchaseId = GetPurchaseInvoiceMaxItemId(),
+                //PurchaseId = GetPurchaseInvoiceMaxItemId(),
                 PurchaseDate = model.PurchaseDate,
                 VendorID = model.VendorID,
                 BillNo = model.BillNo,

@@ -163,10 +163,35 @@ namespace InventorySystem.Controllers
             }
         }
 
-        private int GetMaxItemId()
+        // GET: Get all items for lookup
+        [HttpGet]
+        public IActionResult GetItems()
         {
-            var maxId = _context.Items.Max(c => (int?)c.ItemID) ?? 0;
-            return maxId + 1;
+            try
+            {
+                var items = _context.Items
+                    .Include(i => i.Category)
+                    .Where(i => i.IsActive == true)
+                    .Select(i => new
+                    {
+                        i.ItemID,
+                        i.ItemName,
+                        CategoryName = i.Category.CategoryName,
+                        //i.Barcode,
+                        i.SalePrice,
+                        //PurchasePrice = i.PurchasePrice,
+                        //CurrentStock = i.CurrentStock,
+                        ImageUrl = i.ImagePath
+                    })
+                    .OrderBy(i => i.ItemName)
+                    .ToList();
+
+                return Json(new { success = true, items = items });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
         }
     }
 
