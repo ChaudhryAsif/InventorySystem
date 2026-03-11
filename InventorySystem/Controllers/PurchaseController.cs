@@ -29,7 +29,6 @@ namespace InventorySystem.Controllers
 
             var invoice = new PurchaseInvoice
             {
-                //PurchaseId = GetPurchaseInvoiceMaxItemId(),
                 PurchaseDate = model.PurchaseDate,
                 VendorID = model.VendorID,
                 BillNo = model.BillNo,
@@ -50,6 +49,8 @@ namespace InventorySystem.Controllers
 
             foreach (var item in model.Items)
             {
+                if (item.Itemid == null || item.Quantity <= 0) continue;
+
                 var body = new PurchaseInvoiceBody
                 {
                     PurchaseId = invoice.PurchaseId,
@@ -62,6 +63,30 @@ namespace InventorySystem.Controllers
                     DiscAmt = item.DiscAmt
                 };
                 _context.PurchaseInvoiceBody.Add(body);
+
+                // ── Update Stock ──────────────────────────────────────
+                var itemId = long.Parse(item.Itemid.ToString()!);
+                var branchId = model.BranchID ?? 1;
+
+                var stock = _context.Stock
+                    .FirstOrDefault(s => s.ItemId == itemId && s.BranchId == branchId);
+
+                if (stock == null)
+                {
+                    _context.Stock.Add(new Stock
+                    {
+                        ItemId = itemId,
+                        BranchId = branchId,
+                        Quantity = item.Quantity ?? 0,
+                        LastUpdated = DateTime.Now
+                    });
+                }
+                else
+                {
+                    stock.Quantity += item.Quantity ?? 0;
+                    stock.LastUpdated = DateTime.Now;
+                }
+                // ─────────────────────────────────────────────────────
             }
 
             _context.SaveChanges();

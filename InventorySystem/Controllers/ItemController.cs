@@ -20,6 +20,42 @@ namespace InventorySystem.Controllers
             return View();
         }
 
+        /// <summary>
+        /// Used by Purchase & Sale pages — includes live stock quantity.
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetItems(int branchId = 1)
+        {
+            try
+            {
+                var items = await _context.Items
+                    .Select(i => new
+                    {
+                        itemID = i.ItemID,
+                        itemName = i.ItemName ?? "",
+                        categoryName = _context.ItemCategory
+                            .Where(c => c.CategoryId == i.CategoryID)
+                            .Select(c => c.CategoryName)
+                            .FirstOrDefault() ?? "",
+                        barcode = "",
+                        salePrice = i.SalePrice ?? 0,
+                        purchasePrice = i.SalePrice ?? 0,
+                        imageUrl = i.ImagePath,
+                        currentStock = _context.Stock
+                            .Where(s => s.ItemId == i.ItemID && s.BranchId == branchId)
+                            .Select(s => (decimal?)s.Quantity)
+                            .FirstOrDefault() ?? 0
+                    })
+                    .ToListAsync();
+
+                return Json(new { success = true, items });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
         [HttpGet]
         public async Task<JsonResult> GetList()
         {
@@ -40,7 +76,7 @@ namespace InventorySystem.Controllers
                         SalePrice = i.SalePrice ?? 0,
                         IsActive = i.IsActive ?? false,
                         WHCOGS = i.WHCOGS ?? "",
-                        Barcode = "", // you can replace with your real field if exists
+                        Barcode = "",
                         CategoryName = _context.ItemCategory
                             .Where(c => c.CategoryId == i.CategoryID)
                             .Select(c => c.CategoryName)
@@ -85,7 +121,6 @@ namespace InventorySystem.Controllers
             return Json(item);
         }
 
-
         [HttpPost]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> Save([FromForm] ItemViewModel model, IFormFile? File)
@@ -114,7 +149,6 @@ namespace InventorySystem.Controllers
                     imagePath = "/uploads/" + fileName;
                 }
 
-                // Save item (pseudo logic, adapt to your entity)
                 var item = model.ItemID == 0
                     ? new Items()
                     : await _context.Items.FindAsync(model.ItemID) ?? new Items();
@@ -143,7 +177,6 @@ namespace InventorySystem.Controllers
             }
         }
 
-
         [HttpPost]
         public async Task<JsonResult> Delete([FromBody] DeleteRequest request)
         {
@@ -156,37 +189,6 @@ namespace InventorySystem.Controllers
                 _context.Items.Remove(item);
                 await _context.SaveChangesAsync();
                 return Json(new { success = true, message = "Item deleted successfully" });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { success = false, message = "Error deleting item", error = ex.Message });
-            }
-        }
-
-        // GET: Get all items for lookup
-        [HttpGet]
-        public IActionResult GetItems()
-        {
-            try
-            {
-                var items = _context.Items
-                    .Include(i => i.Category)
-                    .Where(i => i.IsActive == true)
-                    .Select(i => new
-                    {
-                        i.ItemID,
-                        i.ItemName,
-                        CategoryName = i.Category.CategoryName,
-                        //i.Barcode,
-                        i.SalePrice,
-                        //PurchasePrice = i.PurchasePrice,
-                        //CurrentStock = i.CurrentStock,
-                        ImageUrl = i.ImagePath
-                    })
-                    .OrderBy(i => i.ItemName)
-                    .ToList();
-
-                return Json(new { success = true, items = items });
             }
             catch (Exception ex)
             {
