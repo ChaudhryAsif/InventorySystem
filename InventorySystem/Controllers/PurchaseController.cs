@@ -33,7 +33,7 @@ namespace InventorySystem.Controllers
                 PurchaseDate = model.PurchaseDate,
                 VendorID = model.VendorID,
                 BillNo = model.BillNo,
-                //BranchID = model.BranchID,
+                BranchID = model.BranchID,
                 PaymentMode = model.PaymentMode,
                 Remarks = model.Remarks,
                 GSTPer = model.GSTPer,
@@ -67,6 +67,13 @@ namespace InventorySystem.Controllers
             _context.SaveChanges();
 
             return Ok(new { success = true, message = "Invoice saved successfully", id = invoice.PurchaseId });
+        }
+
+        [HttpGet]
+        public IActionResult GetNextInvoiceNumber()
+        {
+            var nextId = GetPurchaseInvoiceMaxItemId();
+            return Json(new { invoiceNo = nextId });
         }
 
         private int GetPurchaseInvoiceMaxItemId()

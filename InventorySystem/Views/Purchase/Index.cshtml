@@ -33,7 +33,7 @@
 
                     <div class="form-group">
                         <label class="form-label">Invoice Date</label>
-                        <input type="date" class="form-control" id="invoiceDate" value="2025-10-24">
+                        <input type="date" class="form-control" id="invoiceDate" value="@DateTime.Now.ToString("yyyy-MM-dd")">
                     </div>
 
                     <div class="form-group">
@@ -305,6 +305,7 @@
     // Add first row on page load
     window.addEventListener('DOMContentLoaded', function() {
         addNewRow();
+        loadNextInvoiceNumber();
     });
 
     // Add new row
@@ -411,6 +412,46 @@
         document.getElementById('gstAmount').value = gstAmount.toFixed(2);
         document.getElementById('discAmount').value = discAmount.toFixed(2);
         document.getElementById('netAmount').textContent = netAmount.toFixed(2);
+    }
+
+    function loadNextInvoiceNumber() {
+    fetch('/Purchase/GetNextInvoiceNumber')
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('invoiceNo').value = data.invoiceNo;
+        })
+        .catch(err => console.error('Error fetching invoice number:', err));
+    }
+
+    function resetForm() {
+        // --- Header fields ---
+        document.getElementById('billNo').value = '';
+        document.getElementById('invoiceDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('supplierAccount').value = '';
+        document.getElementById('hftxtSupplierId').value = '';
+        document.getElementById('supplierDetails').value = '';
+        document.getElementById('remarks').value = '';
+        document.getElementById('paymentMode').selectedIndex = 0;
+        document.getElementById('branch').selectedIndex = 0;
+        document.getElementById('printStyle').selectedIndex = 0;
+
+        // --- Invoice number: fetch the accurate next ID from server ---
+        loadNextInvoiceNumber();
+
+        // --- Reset supplier state ---
+        selectedSupplier = null;
+
+        // --- Clear item rows and add a fresh empty one ---
+        document.getElementById('itemsBody').innerHTML = '';
+        rowCounter = 0;
+        addNewRow();
+
+        // --- Reset totals ---
+        document.getElementById('gstPercent').value = '0';
+        document.getElementById('freight').value = '0';
+        document.getElementById('otherExp').value = '0';
+        document.getElementById('discPercent').value = '0';
+        calculateTotals();
     }
 
     // Event listeners for total calculations
@@ -529,6 +570,8 @@
     .then(data => {
         if (data.success) {
             alert('✅ ' + data.message);
+            resetForm(data.id);
+
         } else {
             alert('❌ Failed: ' + (data.message || 'Unknown error'));
         }
