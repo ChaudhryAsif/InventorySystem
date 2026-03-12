@@ -1,0 +1,219 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Stock Report";
+}
+
+<link href="~/css/report.css" rel="stylesheet" />
+
+<div id="reportPage">
+
+    <div class="rpt-page-header">
+        <div>
+            <h2 class="rpt-title">📦 Stock Report</h2>
+            <p class="rpt-subtitle">Real-time inventory levels across all branches</p>
+        </div>
+        <div class="rpt-header-actions" id="actionButtons">
+            <button class="rpt-btn rpt-btn-outline" onclick="window.print()">🖨️ Print</button>
+            <button class="rpt-btn rpt-btn-primary" id="downloadBtn" onclick="downloadPDF()">⬇️ Download PDF</button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="rpt-filter-panel" id="filterPanel">
+        <div class="rpt-filter-grid">
+            <div class="rpt-filter-group">
+                <label class="rpt-filter-label">Branch</label>
+                <select class="rpt-filter-input" id="branchFilter">
+                    <option value="0">All Branches</option>
+                    <option value="1">Main Branch</option>
+                    <option value="2">Branch 2</option>
+                    <option value="3">Branch 3</option>
+                </select>
+            </div>
+            <div class="rpt-filter-group">
+                <label class="rpt-filter-label">Category</label>
+                <select class="rpt-filter-input" id="categoryFilter">
+                    <option value="0">All Categories</option>
+                </select>
+            </div>
+            <div class="rpt-filter-group">
+                <label class="rpt-filter-label">Stock Status</label>
+                <select class="rpt-filter-input" id="statusFilter">
+                    <option value="">All Status</option>
+                    <option value="instock">✅ In Stock</option>
+                    <option value="lowstock">⚠️ Low Stock</option>
+                    <option value="outofstock">❌ Out of Stock</option>
+                </select>
+            </div>
+            <div class="rpt-filter-actions">
+                <button class="rpt-btn rpt-btn-primary" onclick="applyFilters()">🔍 Apply</button>
+                <button class="rpt-btn rpt-btn-outline" onclick="resetFilters()">↺ Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF / Print content -->
+    <div id="reportContent">
+
+        <div class="rpt-print-header" id="printHeader">
+            <h2>📦 Stock Report</h2>
+            <p>Generated: <span id="generatedDate"></span></p>
+            <hr>
+        </div>
+
+        <div class="rpt-summary-grid">
+            <div class="rpt-summary-card rpt-card-blue">
+                <div class="rpt-card-icon">📋</div>
+                <div class="rpt-card-value" id="totalItems">–</div>
+                <div class="rpt-card-label">Total Items</div>
+            </div>
+            <div class="rpt-summary-card rpt-card-green">
+                <div class="rpt-card-icon">✅</div>
+                <div class="rpt-card-value" id="inStockCount">–</div>
+                <div class="rpt-card-label">In Stock</div>
+            </div>
+            <div class="rpt-summary-card rpt-card-orange">
+                <div class="rpt-card-icon">⚠️</div>
+                <div class="rpt-card-value" id="lowStockCount">–</div>
+                <div class="rpt-card-label">Low Stock</div>
+            </div>
+            <div class="rpt-summary-card rpt-card-red">
+                <div class="rpt-card-icon">❌</div>
+                <div class="rpt-card-value" id="outOfStockCount">–</div>
+                <div class="rpt-card-label">Out of Stock</div>
+            </div>
+        </div>
+
+        <div class="rpt-table-container">
+            <table class="rpt-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Item ID</th>
+                        <th>Item Name</th>
+                        <th>Category</th>
+                        <th>Branch</th>
+                        <th>Quantity</th>
+                        <th>Status</th>
+                        <th>Last Updated</th>
+                    </tr>
+                </thead>
+                <tbody id="stockTableBody">
+                    <tr><td colspan="8" class="rpt-loading">⏳ Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="rpt-empty-state" id="emptyState" style="display:none;">
+            <div class="rpt-empty-icon">📦</div>
+            <p>No stock records found for the selected filters.</p>
+        </div>
+
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+    window.addEventListener('DOMContentLoaded', function () {
+        loadCategories();
+        applyFilters();
+    });
+
+    function loadCategories() {
+        fetch('/Report/GetCategoryList')
+            .then(r => r.json())
+            .then(cats => {
+                const sel = document.getElementById('categoryFilter');
+                cats.forEach(c => {
+                    const o = document.createElement('option');
+                    o.value = c.value; o.textContent = c.text;
+                    sel.appendChild(o);
+                });
+            });
+    }
+
+    function applyFilters() {
+        const branchId   = document.getElementById('branchFilter').value;
+        const categoryId = document.getElementById('categoryFilter').value;
+        const status     = document.getElementById('statusFilter').value;
+        const tbody      = document.getElementById('stockTableBody');
+
+        tbody.innerHTML = '<tr><td colspan="8" class="rpt-loading">⏳ Loading...</td></tr>';
+        document.getElementById('emptyState').style.display = 'none';
+
+        fetch(`/Report/GetStockData?branchId=${branchId}&categoryId=${categoryId}&status=${status}`)
+            .then(r => r.json())
+            .then(result => {
+                if (!result.success) {
+                    tbody.innerHTML = `<tr><td colspan="8" class="rpt-loading rpt-error">❌ ${result.message}</td></tr>`;
+                    return;
+                }
+                document.getElementById('totalItems').textContent    = result.summary.total;
+                document.getElementById('inStockCount').textContent  = result.summary.inStock;
+                document.getElementById('lowStockCount').textContent = result.summary.lowStock;
+                document.getElementById('outOfStockCount').textContent = result.summary.outOfStock;
+
+                if (!result.data || result.data.length === 0) {
+                    tbody.innerHTML = '';
+                    document.getElementById('emptyState').style.display = 'block';
+                    return;
+                }
+
+                tbody.innerHTML = result.data.map((r, i) => `
+                    <tr>
+                        <td>${i + 1}</td>
+                        <td>${r.itemId}</td>
+                        <td><strong>${r.itemName}</strong></td>
+                        <td>${r.categoryName}</td>
+                        <td>${r.branchName}</td>
+                        <td><strong>${r.quantity}</strong></td>
+                        <td><span class="rpt-badge ${badgeClass(r.stockStatus)}">${r.stockStatus}</span></td>
+                        <td>${r.lastUpdated}</td>
+                    </tr>`).join('');
+            })
+            .catch(() => {
+                tbody.innerHTML = '<tr><td colspan="8" class="rpt-loading rpt-error">❌ Failed to load data.</td></tr>';
+            });
+    }
+
+    function badgeClass(status) {
+        if (status === 'In Stock')    return 'rpt-badge-green';
+        if (status === 'Low Stock')   return 'rpt-badge-orange';
+        return 'rpt-badge-red';
+    }
+
+    function resetFilters() {
+        document.getElementById('branchFilter').value   = '0';
+        document.getElementById('categoryFilter').value = '0';
+        document.getElementById('statusFilter').value   = '';
+        applyFilters();
+    }
+
+    function downloadPDF() {
+        const btn          = document.getElementById('downloadBtn');
+        const filterPanel  = document.getElementById('filterPanel');
+        const actionBtns   = document.getElementById('actionButtons');
+        const printHeader  = document.getElementById('printHeader');
+
+        document.getElementById('generatedDate').textContent = new Date().toLocaleString();
+        filterPanel.style.display = 'none';
+        actionBtns.style.display  = 'none';
+        printHeader.style.display = 'block';
+        btn.disabled = true;
+        btn.textContent = '⏳ Generating...';
+
+        html2pdf().set({
+            margin:      [10, 8, 10, 8],
+            filename:    `StockReport_${new Date().toISOString().split('T')[0]}.pdf`,
+            image:       { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, logging: false },
+            jsPDF:       { unit: 'mm', format: 'a4', orientation: 'landscape' }
+        }).from(document.getElementById('reportPage')).save().then(() => {
+            filterPanel.style.display = '';
+            actionBtns.style.display  = '';
+            printHeader.style.display = 'none';
+            btn.disabled    = false;
+            btn.textContent = '⬇️ Download PDF';
+        });
+    }
+</script>

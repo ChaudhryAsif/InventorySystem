@@ -112,14 +112,14 @@
                         <textarea class="form-control" id="remarks" placeholder="Enter remarks..."></textarea>
                     </div>
 
-                    <div class="form-group">
+               @*      <div class="form-group">
                         <label class="form-label">Print Style</label>
                         <select class="form-control" id="printStyle">
                             <option>Thermal</option>
                             <option>A4 Size</option>
                             <option>Letter Size</option>
                         </select>
-                    </div>
+                    </div> *@
                 </div>
 
                 <div class="totals-box">
@@ -472,21 +472,21 @@
     });
 
     // Edit Invoice
-    document.getElementById('editBtn').addEventListener('click', function() {
-        alert('Edit mode activated');
-    });
+    // document.getElementById('editBtn').addEventListener('click', function() {
+    //     alert('Edit mode activated');
+    // });
 
     // Delete Invoice
-    document.getElementById('deleteBtn').addEventListener('click', function() {
-        if (confirm('Delete this invoice?')) {
-            document.getElementById('purchaseForm').reset();
-            document.getElementById('itemsBody').innerHTML = '';
-            rowCounter = 0;
-            addNewRow();
-            calculateTotals();
-            alert('Invoice deleted successfully!');
-        }
-    });
+    // document.getElementById('deleteBtn').addEventListener('click', function() {
+    //     if (confirm('Delete this invoice?')) {
+    //         document.getElementById('purchaseForm').reset();
+    //         document.getElementById('itemsBody').innerHTML = '';
+    //         rowCounter = 0;
+    //         addNewRow();
+    //         calculateTotals();
+    //         alert('Invoice deleted successfully!');
+    //     }
+    // });
 
     // Form Submit
     document.getElementById('purchaseForm').addEventListener('submit', function(e) {

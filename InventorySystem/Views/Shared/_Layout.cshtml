@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@ViewData["Title"] - POS System</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <style>
+        .sidebar-submenu { list-style: none; padding: 0; max-height: 0; overflow: hidden; transition: max-height 0.3s ease; background: #f8fafc; }
+        .sidebar-item.open > .sidebar-submenu { max-height: 200px; }
+        .sidebar-sublink { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 1rem 0.6rem 3.6rem; color: var(--text-secondary); text-decoration: none; font-size: 0.875rem; transition: all 0.2s; border-left: 3px solid transparent; }
+        .sidebar-sublink:hover { background: #e8f4f8; color: var(--primary-color); }
+        .sidebar-sublink.active { background: #e8f4f8; color: var(--primary-color); border-left-color: var(--primary-color); font-weight: 600; }
+        .sidebar-arrow { margin-left: auto; font-size: 0.65rem; transition: transform 0.3s; }
+        .sidebar-item.open > .sidebar-link .sidebar-arrow { transform: rotate(180deg); }
+    </style>
 </head>
 <body>
     <!-- Header -->
@@ -58,7 +67,6 @@
                     <span class="sidebar-text">Parties (Accounts)</span>
                 </a>
             </li>
-
             <li class="sidebar-item">
                 <a asp-controller="Purchase" asp-action="Index"
                    class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Purchase" ? "active" : "")">
@@ -72,12 +80,31 @@
                     <span>Issue Invoice</span>
                 </a>
             </li>
-            <li class="sidebar-item">
-                <a href="#" class="sidebar-link">
+
+            <!-- Reports submenu -->
+            <li class="sidebar-item" id="reportsMenuItem">
+                <a href="#" class="sidebar-link"
+                   onclick="event.preventDefault(); document.getElementById('reportsMenuItem').classList.toggle('open')">
                     <span class="sidebar-icon">📈</span>
-                    <span>Reports</span>
+                    <span class="sidebar-text">Reports</span>
+                    <span class="sidebar-arrow">▼</span>
                 </a>
+                <ul class="sidebar-submenu">
+                    <li>
+                        <a asp-controller="Report" asp-action="StockReport"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" && ViewContext.RouteData.Values["action"]?.ToString() == "StockReport" ? "active" : "")">
+                            📦 Stock Report
+                        </a>
+                    </li>
+                    <li>
+                        <a asp-controller="Report" asp-action="PurchaseReport"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" && ViewContext.RouteData.Values["action"]?.ToString() == "PurchaseReport" ? "active" : "")">
+                            🧾 Purchase Report
+                        </a>
+                    </li>
+                </ul>
             </li>
+
             <li class="sidebar-item">
                 <a href="#" class="sidebar-link">
                     <span class="sidebar-icon">⚙️</span>
@@ -96,6 +123,13 @@
 
     <script src="~/js/site.js" asp-append-version="true"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        // Auto-expand Reports menu when on a Report page
+        window.addEventListener('DOMContentLoaded', function () {
+            const isReport = '@(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" ? "1" : "0")' === '1';
+            if (isReport) document.getElementById('reportsMenuItem').classList.add('open');
+        });
+    </script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
