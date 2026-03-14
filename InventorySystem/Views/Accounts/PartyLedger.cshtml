@@ -1,0 +1,196 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Party Ledger";
+}
+<link href="~/css/accounts.css" rel="stylesheet" />
+
+<div class="ac-page" id="ledgerPage">
+
+    <div class="ac-page-header">
+        <div>
+            <h2 class="ac-title">📒 Party Ledger</h2>
+            <p class="ac-subtitle">Complete debit / credit history for any supplier or customer</p>
+        </div>
+        <div class="ac-header-actions" id="actionButtons">
+            <button class="ac-btn ac-btn-outline" onclick="window.print()">🖨️ Print</button>
+            <button class="ac-btn ac-btn-primary" id="pdfBtn" onclick="downloadPDF()">⬇️ PDF</button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="ac-filter-bar" id="filterBar">
+        <div class="ac-filter-group">
+            <label class="ac-label">Party</label>
+            <select class="ac-select" id="ledgerParty" onchange="applyLedger()">
+                <option value="">— Select Party —</option>
+            </select>
+        </div>
+        <div class="ac-filter-group">
+            <label class="ac-label">From</label>
+            <input type="date" class="ac-input" id="ledgerFrom">
+        </div>
+        <div class="ac-filter-group">
+            <label class="ac-label">To</label>
+            <input type="date" class="ac-input" id="ledgerTo">
+        </div>
+        <div class="ac-filter-actions">
+            <button class="ac-btn ac-btn-primary" onclick="applyLedger()">🔍 Apply</button>
+            <button class="ac-btn ac-btn-outline" onclick="resetLedger()">↺ Reset</button>
+        </div>
+    </div>
+
+    <div id="printHeader" class="ac-print-header">
+        <h2>📒 Party Ledger — <span id="printPartyName"></span></h2>
+        <p>Generated: <span id="printDate"></span></p><hr>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="ac-balance-grid" id="ledgerSummary" style="display:none;">
+        <div class="ac-balance-card ac-card-orange">
+            <div class="ac-card-icon">📤</div>
+            <div class="ac-card-value" id="sumDebit">$0.00</div>
+            <div class="ac-card-label" id="sumDebitLabel">Total Debit</div>
+        </div>
+        <div class="ac-balance-card ac-card-green">
+            <div class="ac-card-icon">📥</div>
+            <div class="ac-card-value" id="sumCredit">$0.00</div>
+            <div class="ac-card-label" id="sumCreditLabel">Total Credit</div>
+        </div>
+        <div class="ac-balance-card" id="sumCard">
+            <div class="ac-card-icon">⚖️</div>
+            <div class="ac-card-value" id="sumBalance">$0.00</div>
+            <div class="ac-card-label" id="sumBalanceLabel">Balance</div>
+        </div>
+    </div>
+
+    <!-- Ledger Table -->
+    <div class="ac-table-card" id="ledgerTableSection" style="display:none;">
+        <div class="ac-table-wrap">
+            <table class="ac-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Type</th>
+                        <th class="ac-num">Debit</th>
+                        <th class="ac-num">Credit</th>
+                        <th class="ac-num">Balance</th>
+                    </tr>
+                </thead>
+                <tbody id="ledgerTableBody">
+                    <tr><td colspan="7" class="ac-empty">Select a party to view ledger</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+        const today = new Date();
+        document.getElementById('ledgerTo').value   = today.toISOString().split('T')[0];
+        document.getElementById('ledgerFrom').value = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate()).toISOString().split('T')[0];
+        loadParties();
+    });
+
+    function loadParties() {
+        fetch('/Accounts/GetParties')
+            .then(r => r.json())
+            .then(res => {
+                const sel = document.getElementById('ledgerParty');
+                (res.data || []).forEach(p => {
+                    const o = document.createElement('option');
+                    o.value = p.value;
+                    o.textContent = `${p.text} [${capitalize(p.partyType)}]`;
+                    sel.appendChild(o);
+                });
+            });
+    }
+
+    function applyLedger() {
+        const partyId = document.getElementById('ledgerParty').value;
+        if (!partyId) return;
+
+        const from = document.getElementById('ledgerFrom').value;
+        const to   = document.getElementById('ledgerTo').value;
+        const params = new URLSearchParams({ partyId });
+        if (from) params.append('from', from);
+        if (to)   params.append('to', to);
+
+        fetch(`/Accounts/GetLedger?${params}`)
+            .then(r => r.json())
+            .then(res => {
+                if (!res.success) return;
+
+                const s = res.summary;
+                document.getElementById('sumDebit').textContent   = '$' + s.totalDebit.toFixed(2);
+                document.getElementById('sumCredit').textContent  = '$' + s.totalCredit.toFixed(2);
+                document.getElementById('sumBalance').textContent = '$' + s.balance.toFixed(2);
+                document.getElementById('sumBalanceLabel').textContent = s.balanceType;
+
+                const card = document.getElementById('sumCard');
+                card.className = 'ac-balance-card ' + (s.balance <= 0 ? 'ac-card-green' : 'ac-card-red');
+
+                document.getElementById('ledgerSummary').style.display      = '';
+                document.getElementById('ledgerTableSection').style.display = '';
+
+                const tbody = document.getElementById('ledgerTableBody');
+                if (!res.data.length) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="ac-empty">No transactions for this period</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = res.data.map((r, i) => `
+                    <tr class="${r.transactionType === 'Payment' || r.transactionType === 'Receipt' ? 'ac-row-debit' : 'ac-row-credit'}">
+                        <td>${i + 1}</td>
+                        <td>${r.date}</td>
+                        <td>${esc(r.description)}</td>
+                        <td><span class="ac-type-badge ac-type-${r.transactionType.toLowerCase()}">${r.transactionType}</span></td>
+                        <td class="ac-num">${r.debit  > 0 ? '$' + r.debit.toFixed(2)  : '–'}</td>
+                        <td class="ac-num">${r.credit > 0 ? '$' + r.credit.toFixed(2) : '–'}</td>
+                        <td class="ac-num ac-balance-cell"><strong>$${r.balance.toFixed(2)}</strong></td>
+                    </tr>`).join('');
+
+                // Update print header
+                const partyName = document.getElementById('ledgerParty').options[document.getElementById('ledgerParty').selectedIndex].textContent;
+                document.getElementById('printPartyName').textContent = partyName;
+            });
+    }
+
+    function resetLedger() {
+        document.getElementById('ledgerParty').value = '';
+        document.getElementById('ledgerSummary').style.display      = 'none';
+        document.getElementById('ledgerTableSection').style.display = 'none';
+    }
+
+    function downloadPDF() {
+        const btn        = document.getElementById('pdfBtn');
+        const filterBar  = document.getElementById('filterBar');
+        const actionBtns = document.getElementById('actionButtons');
+        const printHdr   = document.getElementById('printHeader');
+
+        document.getElementById('printDate').textContent = new Date().toLocaleString();
+        filterBar.style.display  = 'none';
+        actionBtns.style.display = 'none';
+        printHdr.style.display   = 'block';
+        btn.disabled = true; btn.textContent = '⏳…';
+
+        html2pdf().set({
+            margin:      [10, 8, 10, 8],
+            filename:    `Ledger_${new Date().toISOString().split('T')[0]}.pdf`,
+            html2canvas: { scale: 2, useCORS: true, logging: false },
+            jsPDF:       { unit: 'mm', format: 'a4', orientation: 'landscape' }
+        }).from(document.getElementById('ledgerPage')).save().then(() => {
+            filterBar.style.display  = '';
+            actionBtns.style.display = '';
+            printHdr.style.display   = 'none';
+            btn.disabled = false; btn.textContent = '⬇️ PDF';
+        });
+    }
+
+    function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+    function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>

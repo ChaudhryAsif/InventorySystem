@@ -1,0 +1,355 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Payment / Receipt Voucher";
+}
+<link href="~/css/accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <div class="ac-page-header">
+        <div>
+            <h2 class="ac-title">💳 Payment / Receipt Voucher</h2>
+            <p class="ac-subtitle">Record payments to suppliers and receipts from customers</p>
+        </div>
+    </div>
+
+    <!-- Party Selector -->
+    <div class="ac-selector-bar">
+        <div class="ac-selector-group">
+            <label class="ac-label">Select Party</label>
+            <select class="ac-select" id="partySelect" onchange="onPartySelected()">
+                <option value="">— Select Supplier / Customer —</option>
+            </select>
+        </div>
+        <div class="ac-selector-group" style="max-width:200px;">
+            <label class="ac-label">Voucher Type</label>
+            <select class="ac-select" id="voucherType">
+                <option value="Payment">💸 Payment (to Supplier)</option>
+                <option value="Receipt">💰 Receipt (from Customer)</option>
+            </select>
+        </div>
+        <div id="selectorHint" class="ac-hint-text">👆 Select a party to load their balance</div>
+    </div>
+
+    <!-- Balance Cards -->
+    <div class="ac-balance-grid" id="balanceSection" style="display:none;">
+        <div class="ac-balance-card ac-card-orange">
+            <div class="ac-card-icon">📋</div>
+            <div class="ac-card-value" id="totalDebit">$0.00</div>
+            <div class="ac-card-label" id="debitLabel">Total Invoiced</div>
+        </div>
+        <div class="ac-balance-card ac-card-green">
+            <div class="ac-card-icon">✅</div>
+            <div class="ac-card-value" id="totalCredit">$0.00</div>
+            <div class="ac-card-label" id="creditLabel">Total Paid</div>
+        </div>
+        <div class="ac-balance-card" id="balanceCard">
+            <div class="ac-card-icon">⏳</div>
+            <div class="ac-card-value" id="outstandingBalance">$0.00</div>
+            <div class="ac-card-label">Outstanding</div>
+            <div class="ac-card-sub" id="balanceStatus">–</div>
+        </div>
+    </div>
+
+    <!-- Main: Form + History -->
+    <div class="ac-main-grid" id="mainSection" style="display:none;">
+
+        <!-- Form -->
+        <div class="ac-form-card">
+            <h3 class="ac-section-title">➕ New Voucher</h3>
+            <form id="voucherForm" onsubmit="saveVoucher(event)">
+
+                <div class="ac-form-group">
+                    <label class="ac-label">Voucher Date <span class="ac-req">*</span></label>
+                    <input type="date" class="ac-input" id="voucherDate" required>
+                </div>
+
+                <div class="ac-form-group">
+                    <label class="ac-label">Amount <span class="ac-req">*</span></label>
+                    <div class="ac-amount-row">
+                        <span class="ac-currency">$</span>
+                        <input type="number" class="ac-input" id="voucherAmount"
+                               placeholder="0.00" step="0.01" min="0.01" required>
+                        <button type="button" class="ac-full-btn" onclick="fillFull()" title="Fill outstanding">Full</button>
+                    </div>
+                </div>
+
+                <div class="ac-form-group">
+                    <label class="ac-label">Payment Mode</label>
+                    <select class="ac-input" id="paymentMode">
+                        <option value="Cash">💵 Cash</option>
+                        <option value="Cheque">🏦 Cheque</option>
+                        <option value="Bank Transfer">💸 Bank Transfer</option>
+                    </select>
+                </div>
+
+                <div class="ac-form-group">
+                    <label class="ac-label">Reference No</label>
+                    <input type="text" class="ac-input" id="referenceNo"
+                           placeholder="Cheque #, transaction ID…">
+                </div>
+
+                <div class="ac-form-group">
+                    <label class="ac-label">Against Invoice <small>(optional)</small></label>
+                    <select class="ac-input" id="invoiceSelect">
+                        <option value="">— General (all invoices) —</option>
+                    </select>
+                    <small id="invoiceHint" class="ac-hint"></small>
+                </div>
+
+                <div class="ac-form-group">
+                    <label class="ac-label">Notes</label>
+                    <textarea class="ac-input ac-textarea" id="voucherNotes"
+                              placeholder="Any additional notes…"></textarea>
+                </div>
+
+                <button type="submit" class="ac-btn ac-btn-primary" id="saveVoucherBtn">
+                    💾 Save Voucher
+                </button>
+            </form>
+        </div>
+
+        <!-- Voucher History -->
+        <div class="ac-table-card">
+            <div class="ac-tabs">
+                <button class="ac-tab active" id="tab-vouchers" onclick="switchTab('vouchers')">🕐 Vouchers</button>
+                <button class="ac-tab" id="tab-ledger" onclick="switchTab('ledger')">📒 Ledger</button>
+            </div>
+
+            <!-- Vouchers -->
+            <div id="vouchersPane">
+                <div class="ac-table-wrap">
+                    <table class="ac-table">
+                        <thead><tr>
+                            <th>#</th><th>Date</th><th>Type</th><th>Amount</th>
+                            <th>Mode</th><th>Reference</th><th>Invoice</th><th>Notes</th><th></th>
+                        </tr></thead>
+                        <tbody id="vouchersBody">
+                            <tr><td colspan="9" class="ac-empty">Select a party to view vouchers</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Ledger -->
+            <div id="ledgerPane" style="display:none;">
+                <div class="ac-table-wrap">
+                    <table class="ac-table">
+                        <thead><tr>
+                            <th>Date</th><th>Description</th><th>Type</th>
+                            <th class="ac-num">Debit</th><th class="ac-num">Credit</th><th class="ac-num">Balance</th>
+                        </tr></thead>
+                        <tbody id="ledgerBody">
+                            <tr><td colspan="6" class="ac-empty">Select a party to view ledger</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentPartyId = 0;
+    let currentBalance = 0;
+    let isSupplier     = true;
+
+    window.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('voucherDate').value = new Date().toISOString().split('T')[0];
+        loadParties();
+    });
+
+    function loadParties() {
+        fetch('/Accounts/GetParties')
+            .then(r => r.json())
+            .then(res => {
+                const sel = document.getElementById('partySelect');
+                (res.data || []).forEach(p => {
+                    const o = document.createElement('option');
+                    o.value = p.value;
+                    o.dataset.type = p.partyType;
+                    o.textContent  = `${p.text} [${capitalize(p.partyType)}]${p.phone ? ' — ' + p.phone : ''}`;
+                    sel.appendChild(o);
+                });
+            });
+    }
+
+    function onPartySelected() {
+        const sel    = document.getElementById('partySelect');
+        const partyId = parseInt(sel.value);
+        if (!partyId) {
+            document.getElementById('balanceSection').style.display = 'none';
+            document.getElementById('mainSection').style.display   = 'none';
+            document.getElementById('selectorHint').style.display  = 'block';
+            return;
+        }
+        currentPartyId = partyId;
+        document.getElementById('selectorHint').style.display = 'none';
+
+        // Auto-set voucher type based on party type
+        const type = sel.options[sel.selectedIndex].dataset.type;
+        isSupplier  = type === 'supplier' || type === 'both';
+        document.getElementById('voucherType').value = isSupplier ? 'Payment' : 'Receipt';
+        updateBalanceLabels();
+
+        loadBalance();
+        loadPendingInvoices();
+        loadVouchers();
+        loadLedger();
+    }
+
+    function updateBalanceLabels() {
+        document.getElementById('debitLabel').textContent  = isSupplier ? 'Total Invoiced' : 'Total Sales';
+        document.getElementById('creditLabel').textContent = isSupplier ? 'Total Paid'     : 'Total Received';
+    }
+
+    function loadBalance() {
+        fetch(`/Accounts/GetPartyBalance?partyId=${currentPartyId}`)
+            .then(r => r.json())
+            .then(res => {
+                if (!res.success) return;
+                currentBalance = res.balance;
+                document.getElementById('totalDebit').textContent        = '$' + res.totalDebit.toFixed(2);
+                document.getElementById('totalCredit').textContent       = '$' + res.totalCredit.toFixed(2);
+                document.getElementById('outstandingBalance').textContent = '$' + res.balance.toFixed(2);
+                document.getElementById('balanceStatus').textContent      = res.status;
+
+                const card = document.getElementById('balanceCard');
+                card.className = 'ac-balance-card ' + (res.balance <= 0 ? 'ac-card-green' : 'ac-card-red');
+
+                document.getElementById('balanceSection').style.display = '';
+                document.getElementById('mainSection').style.display    = '';
+            });
+    }
+
+    function loadPendingInvoices() {
+        fetch(`/Accounts/GetPendingInvoices?partyId=${currentPartyId}`)
+            .then(r => r.json())
+            .then(res => {
+                const sel = document.getElementById('invoiceSelect');
+                sel.innerHTML = '<option value="">— General (all invoices) —</option>';
+                (res.data || []).forEach(inv => {
+                    const o = document.createElement('option');
+                    o.value = inv.id;
+                    o.textContent = inv.label;
+                    sel.appendChild(o);
+                });
+                const hint = document.getElementById('invoiceHint');
+                hint.textContent = res.data?.length
+                    ? `${res.data.length} pending invoice(s)`
+                    : 'No pending invoices';
+            });
+    }
+
+    function loadVouchers() {
+        fetch(`/Accounts/GetLedger?partyId=${currentPartyId}`)
+            .then(r => r.json())
+            .then(res => {
+                const tbody = document.getElementById('vouchersBody');
+                const rows  = (res.data || []).filter(r => r.transactionType === 'Payment' || r.transactionType === 'Receipt');
+                if (!rows.length) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="ac-empty">No vouchers recorded yet</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map((r, i) => `
+                    <tr>
+                        <td>${i + 1}</td>
+                        <td>${r.date}</td>
+                        <td><span class="ac-type-badge ac-type-${r.transactionType.toLowerCase()}">${r.transactionType}</span></td>
+                        <td class="ac-num"><strong>$${Math.max(r.debit, r.credit).toFixed(2)}</strong></td>
+                        <td>–</td><td>${r.refNo}</td><td>–</td><td>–</td>
+                        <td><button class="ac-void-btn" onclick="voidVoucher('${r.refNo}')">✕</button></td>
+                    </tr>`).join('');
+            });
+    }
+
+    function loadLedger() {
+        fetch(`/Accounts/GetLedger?partyId=${currentPartyId}`)
+            .then(r => r.json())
+            .then(res => {
+                const tbody = document.getElementById('ledgerBody');
+                if (!res.data?.length) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="ac-empty">No transactions found</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = res.data.map(r => `
+                    <tr class="${r.transactionType === 'Payment' || r.transactionType === 'Receipt' ? 'ac-row-debit' : 'ac-row-credit'}">
+                        <td>${r.date}</td>
+                        <td>${esc(r.description)}</td>
+                        <td><span class="ac-type-badge ac-type-${r.transactionType.toLowerCase()}">${r.transactionType}</span></td>
+                        <td class="ac-num">${r.debit > 0 ? '$' + r.debit.toFixed(2) : '–'}</td>
+                        <td class="ac-num">${r.credit > 0 ? '$' + r.credit.toFixed(2) : '–'}</td>
+                        <td class="ac-num ac-balance-cell"><strong>$${r.balance.toFixed(2)}</strong></td>
+                    </tr>`).join('');
+            });
+    }
+
+    function saveVoucher(e) {
+        e.preventDefault();
+        const partyId = currentPartyId;
+        if (!partyId) { alert('Please select a party.'); return; }
+
+        const amount = parseFloat(document.getElementById('voucherAmount').value);
+        if (amount > currentBalance && currentBalance > 0) {
+            if (!confirm(`Amount $${amount.toFixed(2)} exceeds outstanding $${currentBalance.toFixed(2)}. Continue?`)) return;
+        }
+
+        const invoiceVal = document.getElementById('invoiceSelect').value;
+        const payload = {
+            PartyId:     partyId,
+            VoucherType: document.getElementById('voucherType').value,
+            VoucherDate: document.getElementById('voucherDate').value,
+            Amount:      amount,
+            PaymentMode: document.getElementById('paymentMode').value,
+            ReferenceNo: document.getElementById('referenceNo').value || null,
+            PurchaseId:  isSupplier && invoiceVal ? parseInt(invoiceVal) : null,
+            SaleId:      !isSupplier && invoiceVal ? parseInt(invoiceVal) : null,
+            Notes:       document.getElementById('voucherNotes').value || null
+        };
+
+        const btn = document.getElementById('saveVoucherBtn');
+        btn.disabled = true; btn.textContent = '⏳ Saving…';
+
+        fetch('/Accounts/SaveVoucher', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(res => {
+            alert(res.success ? '✅ ' + res.message : '❌ ' + res.message);
+            if (res.success) {
+                document.getElementById('voucherForm').reset();
+                document.getElementById('voucherDate').value = new Date().toISOString().split('T')[0];
+                loadBalance(); loadPendingInvoices(); loadVouchers(); loadLedger();
+            }
+        })
+        .finally(() => { btn.disabled = false; btn.textContent = '💾 Save Voucher'; });
+    }
+
+    function voidVoucher(refNo) {
+        const id = parseInt(refNo.split('-')[1]);
+        if (!id || !confirm('Void this voucher? This will reverse the ledger entry.')) return;
+        fetch('/Accounts/VoidVoucher', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(id)
+        })
+        .then(r => r.json())
+        .then(res => { if (res.success) { loadBalance(); loadVouchers(); loadLedger(); } });
+    }
+
+    function fillFull() {
+        document.getElementById('voucherAmount').value = currentBalance > 0 ? currentBalance.toFixed(2) : '';
+    }
+
+    function switchTab(tab) {
+        document.getElementById('vouchersPane').style.display = tab === 'vouchers' ? '' : 'none';
+        document.getElementById('ledgerPane').style.display   = tab === 'ledger'   ? '' : 'none';
+        document.getElementById('tab-vouchers').classList.toggle('active', tab === 'vouchers');
+        document.getElementById('tab-ledger').classList.toggle('active', tab === 'ledger');
+    }
+
+    function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+    function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>

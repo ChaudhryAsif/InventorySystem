@@ -1,0 +1,659 @@
+/* =====================================================================
+   accounts.css  —  Payment Voucher & Party Ledger views
+   Prefix: ac-   |  Depends on CSS variables in site.css
+   ===================================================================== */
+
+/* ── Page shell ─────────────────────────────────────────────────────── */
+.ac-page {
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* ── Page header ────────────────────────────────────────────────────── */
+.ac-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.ac-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 4px;
+}
+
+.ac-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.ac-header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* ── Party selector bar ─────────────────────────────────────────────── */
+.ac-selector-bar {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-end;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
+}
+
+.ac-selector-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.ac-hint-text {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    align-self: center;
+    font-style: italic;
+}
+
+/* ── Filter bar (PartyLedger) ───────────────────────────────────────── */
+.ac-filter-bar {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-end;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
+}
+
+.ac-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+    min-width: 160px;
+}
+
+.ac-filter-actions {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    padding-bottom: 1px;
+}
+
+/* ── Form labels & inputs ───────────────────────────────────────────── */
+.ac-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.ac-req {
+    color: var(--danger-color);
+    margin-left: 2px;
+}
+
+.ac-hint {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 3px;
+}
+
+.ac-input,
+.ac-select {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    background: #fff;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+}
+
+.ac-input:focus,
+.ac-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(45, 95, 127, 0.12);
+}
+
+.ac-textarea {
+    resize: vertical;
+    min-height: 72px;
+}
+
+/* ── Balance cards ──────────────────────────────────────────────────── */
+.ac-balance-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.ac-balance-card {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--border-color);
+    transition: box-shadow 0.2s;
+}
+
+.ac-balance-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.ac-card-green  { border-left-color: var(--secondary-color); }
+.ac-card-orange { border-left-color: #f0ad4e; }
+.ac-card-red    { border-left-color: var(--danger-color); }
+
+.ac-card-icon {
+    font-size: 1.4rem;
+    margin-bottom: 4px;
+}
+
+.ac-card-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.ac-card-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ac-card-sub {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* ── Main 2-col grid (form + history) ──────────────────────────────── */
+.ac-main-grid {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+/* ── Form card ──────────────────────────────────────────────────────── */
+.ac-form-card {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 22px 24px;
+    box-shadow: var(--shadow-sm);
+}
+
+.ac-section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 18px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--bg-color);
+}
+
+.ac-form-group {
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+/* ── Amount row (currency symbol + Full button) ─────────────────────── */
+.ac-amount-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.ac-amount-row:focus-within {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(45, 95, 127, 0.12);
+}
+
+.ac-amount-row .ac-input {
+    border: none;
+    border-radius: 0;
+    flex: 1;
+    box-shadow: none !important;
+}
+
+.ac-amount-row .ac-input:focus {
+    border: none;
+    box-shadow: none;
+}
+
+.ac-currency {
+    padding: 9px 10px;
+    background: var(--bg-color);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-right: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.ac-full-btn {
+    padding: 9px 14px;
+    background: var(--primary-color);
+    color: #fff;
+    border: none;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.ac-full-btn:hover {
+    background: var(--primary-dark);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────── */
+.ac-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 18px;
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.ac-btn-primary {
+    background: var(--primary-color);
+    color: #fff;
+}
+
+.ac-btn-primary:hover {
+    background: var(--primary-dark);
+    box-shadow: 0 2px 8px rgba(45, 95, 127, 0.3);
+}
+
+.ac-btn-primary:disabled {
+    background: #a0b4c0;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.ac-btn-outline {
+    background: transparent;
+    color: var(--primary-color);
+    border: 1.5px solid var(--primary-color);
+}
+
+.ac-btn-outline:hover {
+    background: var(--primary-color);
+    color: #fff;
+}
+
+/* ── Table card (right panel) ───────────────────────────────────────── */
+.ac-table-card {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────── */
+.ac-tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border-color);
+    background: var(--bg-color);
+    padding: 0 4px;
+}
+
+.ac-tab {
+    padding: 12px 20px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.ac-tab:hover {
+    color: var(--primary-color);
+}
+
+.ac-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    background: #fff;
+}
+
+/* ── Table wrapper + table ──────────────────────────────────────────── */
+.ac-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.ac-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+
+.ac-table thead tr {
+    background: var(--primary-color);
+    color: #fff;
+}
+
+.ac-table thead th {
+    padding: 11px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.ac-table tbody tr {
+    border-bottom: 1px solid #f0f2f5;
+    transition: background 0.15s;
+}
+
+.ac-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.ac-table tbody tr:hover {
+    background: #f5f8fb !important;
+}
+
+.ac-table td {
+    padding: 10px 14px;
+    vertical-align: middle;
+}
+
+/* ── Empty state ────────────────────────────────────────────────────── */
+.ac-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 0.875rem;
+}
+
+/* ── Numeric / balance cells ────────────────────────────────────────── */
+.ac-num {
+    text-align: right !important;
+    font-variant-numeric: tabular-nums;
+    font-family: 'Courier New', monospace;
+}
+
+.ac-balance-cell {
+    color: var(--primary-color);
+    font-size: 0.9rem;
+}
+
+/* ── Transaction type badges ────────────────────────────────────────── */
+.ac-type-badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: capitalize;
+    white-space: nowrap;
+}
+
+.ac-type-payment {
+    background: #d4edda;
+    color: #155724;
+}
+
+.ac-type-receipt {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.ac-type-purchaseinvoice {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.ac-type-saleinvoice {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.ac-type-openingbalance {
+    background: #e2d9f3;
+    color: #4a235a;
+}
+
+.ac-type-adjustment {
+    background: #fde8d8;
+    color: #7d3c0a;
+}
+
+/* ── Row tinting by direction ───────────────────────────────────────── */
+.ac-row-debit {
+    background: #f0fff4;
+}
+
+.ac-row-credit {
+    background: #fffbf0;
+}
+
+/* ── Void button ────────────────────────────────────────────────────── */
+.ac-void-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1.5px solid var(--danger-color);
+    background: transparent;
+    color: var(--danger-color);
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    white-space: nowrap;
+}
+
+.ac-void-btn:hover {
+    background: var(--danger-color);
+    color: #fff;
+}
+
+.ac-void-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── Print header (hidden on screen, shown when printing / PDF) ─────── */
+.ac-print-header {
+    display: none;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 960px) {
+    .ac-main-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ac-balance-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .ac-page {
+        padding: 14px;
+    }
+
+    .ac-balance-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ac-selector-bar,
+    .ac-filter-bar {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .ac-filter-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .ac-page-header {
+        flex-direction: column;
+    }
+
+    .ac-header-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .ac-tab {
+        padding: 10px 12px;
+        font-size: 0.8rem;
+    }
+}
+
+/* ── Print / PDF media ──────────────────────────────────────────────── */
+@media print {
+    .ac-page {
+        padding: 0;
+    }
+
+    .ac-page-header,
+    .ac-selector-bar,
+    .ac-filter-bar,
+    .ac-header-actions,
+    .ac-tabs,
+    .ac-void-btn,
+    .ac-btn {
+        display: none !important;
+    }
+
+    .ac-print-header {
+        display: block;
+        margin-bottom: 16px;
+    }
+
+    .ac-print-header h2 {
+        font-size: 1.1rem;
+        margin: 0 0 4px;
+    }
+
+    .ac-print-header p {
+        font-size: 0.8rem;
+        color: #666;
+        margin: 0 0 8px;
+    }
+
+    .ac-balance-grid {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .ac-balance-card {
+        flex: 1;
+        border-left-width: 3px;
+        padding: 12px 14px;
+        box-shadow: none;
+    }
+
+    .ac-card-value {
+        font-size: 1.1rem;
+    }
+
+    .ac-table-card {
+        box-shadow: none;
+        border: none;
+    }
+
+    .ac-table thead tr {
+        background: #2d5f7f !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .ac-table td,
+    .ac-table th {
+        padding: 7px 10px;
+        font-size: 0.78rem;
+    }
+
+    .ac-row-debit {
+        background: #f0fff4 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .ac-row-credit {
+        background: #fffbf0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .ac-type-badge {
+        border: 1px solid currentColor;
+        background: transparent !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    @page {
+        margin: 14mm 12mm;
+        size: A4 landscape;
+    }
+}
