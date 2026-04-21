@@ -1,0 +1,312 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Sale Report";
+}
+
+<link href="~/css/report.css" rel="stylesheet" />
+
+<div id="reportPage">
+
+    <div class="rpt-page-header">
+        <div>
+            <h2 class="rpt-title">🧾 Sale Report</h2>
+            <p class="rpt-subtitle">Summary of all sale invoices with item details</p>
+        </div>
+        <div class="rpt-header-actions" id="actionButtons">
+            <button class="rpt-btn rpt-btn-ghost" id="expandAllBtn" onclick="expandAll()">⊞ Expand All</button>
+            <button class="rpt-btn rpt-btn-outline" onclick="window.print()">🖨️ Print</button>
+            <button class="rpt-btn rpt-btn-primary" id="downloadBtn" onclick="downloadPDF()">⬇️ Download PDF</button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="rpt-filter-panel" id="filterPanel">
+        <div class="rpt-filter-grid">
+            <div class="rpt-filter-group">
+                <label class="rpt-filter-label">Invoice No</label>
+                <input type="number" class="rpt-filter-input" id="invoiceNoSearch"
+                       placeholder="e.g. 1" min="1">
+            </div>
+            <div class="rpt-filter-group">
+                <label class="rpt-filter-label">From Date</label>
+                <input type="date" class="rpt-filter-input" id="fromDate">
+            </div>
+            <div class="rpt-filter-group">
+                <label class="rpt-filter-label">To Date</label>
+                <input type="date" class="rpt-filter-input" id="toDate">
+            </div>
+            <div class="rpt-filter-group">
+                <label class="rpt-filter-label">Customer</label>
+                <select class="rpt-filter-input" id="customerFilter">
+                    <option value="">All Customers</option>
+                </select>
+            </div>
+            <div class="rpt-filter-actions">
+                <button class="rpt-btn rpt-btn-primary" onclick="applyFilters()">🔍 Apply</button>
+                <button class="rpt-btn rpt-btn-outline" onclick="resetFilters()">↺ Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF / Print content -->
+    <div id="reportContent">
+
+        <div class="rpt-print-header" id="printHeader">
+            <h2>🧾 Sale Report</h2>
+            <p>Generated: <span id="generatedDate"></span></p>
+            <hr>
+        </div>
+
+        <div class="rpt-summary-grid" id="summaryGrid">
+            <div class="rpt-summary-card rpt-card-blue">
+                <div class="rpt-card-icon">🧾</div>
+                <div class="rpt-card-value" id="totalInvoices">–</div>
+                <div class="rpt-card-label">Total Invoices</div>
+            </div>
+            <div class="rpt-summary-card rpt-card-green">
+                <div class="rpt-card-icon">💰</div>
+                <div class="rpt-card-value" id="totalAmount">–</div>
+                <div class="rpt-card-label">Total Amount</div>
+            </div>
+            <div class="rpt-summary-card rpt-card-purple">
+                <div class="rpt-card-icon">✅</div>
+                <div class="rpt-card-value" id="netAmount">–</div>
+                <div class="rpt-card-label">Net Amount</div>
+            </div>
+        </div>
+
+        <div class="rpt-table-container">
+            <table class="rpt-table rpt-master-table">
+                <thead>
+                    <tr>
+                        <th style="width:40px;"></th>
+                        <th style="width:40px;">#</th>
+                        <th>Invoice No</th>
+                        <th>Date</th>
+                        <th>Customer</th>
+                        <th>Ref No</th>
+                        <th>Branch</th>
+                        <th>Payment</th>
+                        <th class="rpt-amount">Total Amount</th>
+                        <th class="rpt-amount">Net Amount</th>
+                        <th>Remarks</th>
+                    </tr>
+                </thead>
+                <tbody id="saleTableBody">
+                    <tr><td colspan="11" class="rpt-loading">⏳ Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="rpt-empty-state" id="emptyState" style="display:none;">
+            <div class="rpt-empty-icon">🧾</div>
+            <p>No sale records found for the selected filters.</p>
+        </div>
+
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+    let allExpanded = false;
+    let reportData  = [];
+
+    window.addEventListener('DOMContentLoaded', function () {
+        const today     = new Date();
+        const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+        document.getElementById('toDate').value   = today.toISOString().split('T')[0];
+        document.getElementById('fromDate').value = lastMonth.toISOString().split('T')[0];
+        loadCustomers();
+        applyFilters();
+    });
+
+    function loadCustomers() {
+        fetch('/Report/GetCustomerList')
+            .then(r => r.json())
+            .then(list => {
+                const sel = document.getElementById('customerFilter');
+                list.forEach(c => {
+                    const o = document.createElement('option');
+                    o.value = c.value;
+                    o.textContent = c.text;
+                    sel.appendChild(o);
+                });
+            });
+    }
+
+    function applyFilters() {
+        const invoiceNo  = document.getElementById('invoiceNoSearch').value;
+        const from       = document.getElementById('fromDate').value;
+        const to         = document.getElementById('toDate').value;
+        const customerId = document.getElementById('customerFilter').value;
+        const tbody      = document.getElementById('saleTableBody');
+
+        tbody.innerHTML = '<tr><td colspan="11" class="rpt-loading">⏳ Loading...</td></tr>';
+        document.getElementById('emptyState').style.display = 'none';
+
+        const params = new URLSearchParams();
+        if (invoiceNo)  params.append('invoiceNo', invoiceNo);
+        if (from)       params.append('from', from);
+        if (to)         params.append('to', to);
+        if (customerId) params.append('customerId', customerId);
+
+        fetch(`/Report/GetSaleData?${params}`)
+            .then(r => r.json())
+            .then(result => {
+                if (!result.success) {
+                    tbody.innerHTML = `<tr><td colspan="11" class="rpt-loading rpt-error">❌ ${result.message}</td></tr>`;
+                    return;
+                }
+
+                reportData = result.data;
+
+                document.getElementById('totalInvoices').textContent = result.summary.totalInvoices;
+                document.getElementById('totalAmount').textContent   = '$' + parseFloat(result.summary.totalAmount).toFixed(2);
+                document.getElementById('netAmount').textContent     = '$' + parseFloat(result.summary.netAmount).toFixed(2);
+
+                if (!reportData || reportData.length === 0) {
+                    tbody.innerHTML = '';
+                    document.getElementById('emptyState').style.display = 'block';
+                    return;
+                }
+
+                tbody.innerHTML = reportData.map((r, i) => buildInvoiceRows(r, i)).join('');
+                allExpanded = false;
+                document.getElementById('expandAllBtn').textContent = '⊞ Expand All';
+            })
+            .catch(() => {
+                tbody.innerHTML = '<tr><td colspan="11" class="rpt-loading rpt-error">❌ Failed to load data.</td></tr>';
+            });
+    }
+
+    function buildInvoiceRows(r, i) {
+        const itemsHtml = r.items && r.items.length > 0
+            ? r.items.map(item => `
+                <tr>
+                    <td>${item.itemId ?? '–'}</td>
+                    <td><strong>${escHtml(item.itemName)}</strong></td>
+                    <td class="rpt-amount">${item.qty}</td>
+                    <td class="rpt-amount">$${parseFloat(item.salePrice).toFixed(2)}</td>
+                    <td class="rpt-amount">${item.discPer}%</td>
+                    <td class="rpt-amount">$${parseFloat(item.discAmt).toFixed(2)}</td>
+                    <td class="rpt-amount"><strong>$${parseFloat(item.total).toFixed(2)}</strong></td>
+                </tr>`).join('')
+            : '<tr><td colspan="7" style="text-align:center;color:#999;padding:0.75rem;">No items found</td></tr>';
+
+        return `
+            <tr class="rpt-master-row" onclick="toggleDetails(${r.invoiceNo})" title="Click to expand">
+                <td>
+                    <span class="rpt-expand-icon" id="icon-${r.invoiceNo}">▶</span>
+                </td>
+                <td>${i + 1}</td>
+                <td><strong class="rpt-invoice-no">#${r.invoiceNo}</strong></td>
+                <td>${r.saleDate}</td>
+                <td>${escHtml(r.customerName ?? '–')}</td>
+                <td>${r.refNo}</td>
+                <td>${r.branchName}</td>
+                <td><span class="rpt-badge rpt-badge-blue">${r.paymentMode}</span></td>
+                <td class="rpt-amount">$${parseFloat(r.totalAmount).toFixed(2)}</td>
+                <td class="rpt-amount"><strong>$${parseFloat(r.netAmount).toFixed(2)}</strong></td>
+                <td class="rpt-remarks" title="${escHtml(r.remarks)}">${escHtml(r.remarks) || '–'}</td>
+            </tr>
+            <tr class="rpt-detail-row" id="detail-${r.invoiceNo}">
+                <td colspan="11">
+                    <div class="rpt-detail-container">
+                        <div class="rpt-detail-header">
+                            <span class="rpt-detail-title">📦 Items — Invoice #${r.invoiceNo}</span>
+                            <span class="rpt-detail-count">${r.items ? r.items.length : 0} item(s)</span>
+                        </div>
+                        <table class="rpt-detail-table">
+                            <thead>
+                                <tr>
+                                    <th>Item ID</th>
+                                    <th>Item Name</th>
+                                    <th>Qty</th>
+                                    <th>Sale Price</th>
+                                    <th>Disc %</th>
+                                    <th>Disc Amt</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>${itemsHtml}</tbody>
+                        </table>
+                    </div>
+                </td>
+            </tr>`;
+    }
+
+    function toggleDetails(invoiceNo) {
+        const row  = document.getElementById(`detail-${invoiceNo}`);
+        const icon = document.getElementById(`icon-${invoiceNo}`);
+        const open = row.classList.toggle('open');
+        icon.textContent = open ? '▼' : '▶';
+        icon.classList.toggle('rotated', open);
+    }
+
+    function expandAll() {
+        allExpanded = !allExpanded;
+        reportData.forEach(r => {
+            const row  = document.getElementById(`detail-${r.invoiceNo}`);
+            const icon = document.getElementById(`icon-${r.invoiceNo}`);
+            if (!row) return;
+            row.classList.toggle('open', allExpanded);
+            if (icon) {
+                icon.textContent = allExpanded ? '▼' : '▶';
+                icon.classList.toggle('rotated', allExpanded);
+            }
+        });
+        document.getElementById('expandAllBtn').textContent = allExpanded ? '⊟ Collapse All' : '⊞ Expand All';
+    }
+
+    function resetFilters() {
+        const today     = new Date();
+        const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+        document.getElementById('invoiceNoSearch').value  = '';
+        document.getElementById('fromDate').value         = lastMonth.toISOString().split('T')[0];
+        document.getElementById('toDate').value           = today.toISOString().split('T')[0];
+        document.getElementById('customerFilter').value   = '';
+        applyFilters();
+    }
+
+    function escHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function downloadPDF() {
+        const btn         = document.getElementById('downloadBtn');
+        const filterPanel = document.getElementById('filterPanel');
+        const actionBtns  = document.getElementById('actionButtons');
+        const printHeader = document.getElementById('printHeader');
+
+        reportData.forEach(r => {
+            const row = document.getElementById(`detail-${r.invoiceNo}`);
+            if (row) row.classList.add('open');
+        });
+
+        document.getElementById('generatedDate').textContent = new Date().toLocaleString();
+        filterPanel.style.display = 'none';
+        actionBtns.style.display  = 'none';
+        printHeader.style.display = 'block';
+        btn.disabled    = true;
+        btn.textContent = '⏳ Generating...';
+
+        html2pdf().set({
+            margin:      [10, 8, 10, 8],
+            filename:    `SaleReport_${new Date().toISOString().split('T')[0]}.pdf`,
+            image:       { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, logging: false },
+            jsPDF:       { unit: 'mm', format: 'a4', orientation: 'landscape' }
+        }).from(document.getElementById('reportPage')).save().then(() => {
+            filterPanel.style.display = '';
+            actionBtns.style.display  = '';
+            printHeader.style.display = 'none';
+            btn.disabled    = false;
+            btn.textContent = '⬇️ Download PDF';
+        });
+    }
+</script>

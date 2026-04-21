@@ -36,14 +36,14 @@
                         <input type="date" class="form-control" id="invoiceDate" value="@DateTime.Now.ToString("yyyy-MM-dd")">
                     </div>
 
-                    <div class="form-group">
+               @*      <div class="form-group">
                         <label class="form-label">Branch</label>
                         <select class="form-control" id="branch">
                             <option>Main Branch</option>
                             <option>Branch 2</option>
                             <option>Branch 3</option>
                         </select>
-                    </div>
+                    </div> *@
                 </div>
 
                 <div class="form-section">
@@ -61,7 +61,7 @@
                         <textarea class="form-control" id="supplierDetails" placeholder="Supplier details..." readonly></textarea>
                     </div>
 
-                    <div class="form-group">
+              @*       <div class="form-group hide">
                         <label class="form-label">Payment Mode</label>
                         <select class="form-control" id="paymentMode">
                             <option>Credit</option>
@@ -69,7 +69,7 @@
                             <option>Cheque</option>
                             <option>Bank Transfer</option>
                         </select>
-                    </div>
+                    </div> *@
                 </div>
             </div>
 
@@ -431,8 +431,8 @@
         document.getElementById('hftxtSupplierId').value = '';
         document.getElementById('supplierDetails').value = '';
         document.getElementById('remarks').value = '';
-        document.getElementById('paymentMode').selectedIndex = 0;
-        document.getElementById('branch').selectedIndex = 0;
+        // document.getElementById('paymentMode').selectedIndex = 0;
+        // document.getElementById('branch').selectedIndex = 0;
         document.getElementById('printStyle').selectedIndex = 0;
 
         // --- Invoice number: fetch the accurate next ID from server ---
@@ -517,9 +517,9 @@
             invoiceNo: document.getElementById('invoiceNo').value,
             billNo: document.getElementById('billNo').value,
             invoiceDate: document.getElementById('invoiceDate').value,
-            branch: document.getElementById('branch').value,
+            // branch: document.getElementById('branch').value,
             supplierAccount: supplierAccount,
-            paymentMode: document.getElementById('paymentMode').value,
+            // paymentMode: document.getElementById('paymentMode').value,
             remarks: document.getElementById('remarks').value,
             totalQty: document.getElementById('totalQty').value,
             invoiceTotal: document.getElementById('invoiceTotal').value,
@@ -548,7 +548,7 @@
         VendorID: supplierAccount,
         BillNo: document.getElementById('billNo').value,
         BranchID: 1,
-        PaymentMode: document.getElementById('paymentMode').selectedIndex,
+        // PaymentMode: document.getElementById('paymentMode').selectedIndex,
         Remarks: document.getElementById('remarks').value,
         GSTPer: parseFloat(document.getElementById('gstPercent').value),
         GSTAmount: parseFloat(document.getElementById('gstAmount').value),

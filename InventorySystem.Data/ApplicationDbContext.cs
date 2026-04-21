@@ -20,9 +20,17 @@ namespace InventorySystem.Data
         public DbSet<PurchaseInvoice> PurchaseInvoice => Set<PurchaseInvoice>();
         public DbSet<PurchaseInvoiceBody> PurchaseInvoiceBody => Set<PurchaseInvoiceBody>();
 
+        // ── Purchase Returns ────────────────────────────────────────────────────
+        public DbSet<PurchaseReturn> PurchaseReturn => Set<PurchaseReturn>();
+        public DbSet<PurchaseReturnBody> PurchaseReturnBody => Set<PurchaseReturnBody>();
+
         // ── Sale ────────────────────────────────────────────────────────────────
         public DbSet<SaleInvoice> SaleInvoice => Set<SaleInvoice>();
         public DbSet<SaleInvoiceBody> SaleInvoiceBody => Set<SaleInvoiceBody>();
+
+        // ── Sale Returns ────────────────────────────────────────────────────────
+        public DbSet<SaleReturn> SaleReturn => Set<SaleReturn>();
+        public DbSet<SaleReturnBody> SaleReturnBody => Set<SaleReturnBody>();
 
         // ── Accounts ────────────────────────────────────────────────────────────
         public DbSet<AccountLedger> AccountLedger => Set<AccountLedger>();
@@ -37,6 +45,12 @@ namespace InventorySystem.Data
                 .Property(p => p.Srno).ValueGeneratedOnAdd();
 
             modelBuilder.Entity<SaleInvoiceBody>()
+                .Property(p => p.Srno).ValueGeneratedOnAdd();
+
+            modelBuilder.Entity<PurchaseReturnBody>()
+                .Property(p => p.Srno).ValueGeneratedOnAdd();
+
+            modelBuilder.Entity<SaleReturnBody>()
                 .Property(p => p.Srno).ValueGeneratedOnAdd();
 
             modelBuilder.Entity<Stock>()

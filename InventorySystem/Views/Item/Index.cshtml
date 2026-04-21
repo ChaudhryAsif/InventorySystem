@@ -38,11 +38,11 @@
             <table class="data-table" id="itemTable">
                 <thead>
                     <tr>
-                        <th style="width: 80px;">Item ID</th>
+                        @* <th style="width: 80px;">Item ID</th> *@
                         <th style="width: 80px;">Image</th>
                         <th>Item Name</th>
                         <th>Category</th>
-                        <th>Barcode</th>
+                      @*   <th>Barcode</th> *@
                         <th style="width: 120px;">Sale Price</th>
                         <th style="width: 100px;">Status</th>
                         <th style="width: 200px;">Actions</th>
@@ -68,10 +68,10 @@
                     <div class="form-section">
                         <input type="hidden" id="itemId">
 
-                        <div class="form-group">
+                      @*   <div class="form-group">
                             <label class="form-label">Item ID</label>
                             <input type="text" class="form-control" id="itemIdDisplay" value="Auto-generated" readonly>
-                        </div>
+                        </div> *@
 
                         <div class="form-row">
                             <div class="form-group">
@@ -191,14 +191,16 @@
                 return;
             }
 
+
+            // <td>${item.itemID}</td>
+                 //<td>0000${item.itemID}</td>
             items.forEach(item => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${item.itemID}</td>
                         <td><img src="${item.imagePath || 'https://via.placeholder.com/50'}" class="item-image-thumb" alt="Item"></td>
                     <td>${item.itemName}</td>
                     <td>${item.categoryName || ''}</td>
-                    <td>0000${item.itemID}</td>
+                   
                     <td>${item.salePrice?.toFixed(2) ?? '0.00'}</td>
                     <td>
                         <span class="badge ${item.isActive ? 'badge-success' : 'badge-danger'}">
@@ -262,14 +264,15 @@
             return;
         }
 
+            //<td>${item.itemID}</td>
+                 //<td>0000${item.itemID}</td> -- barcode
         filtered.forEach(item => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${item.itemID}</td>
                 <td><img src="${item.imagePath || 'https://via.placeholder.com/50'}" class="item-image-thumb" alt="Item"></td>
                 <td>${item.itemName}</td>
                 <td>${item.categoryName || ''}</td>
-                <td>0000${item.itemID}</td>
+               
                 <td>${item.salePrice?.toFixed(2) ?? '0.00'}</td>
                 <td>
                     <span class="badge ${item.isActive ? 'badge-success' : 'badge-danger'}">
@@ -391,6 +394,15 @@ function saveItem(event) {
             }
         }
 
+              function closeModal(id) {
+                const modal = document.getElementById(id);
+                if (modal) {
+                    modal.style.display = 'none';
+                    modal.classList.remove('show');
+                    document.body.style.overflow = '';
+                }
+            }
+
         // 🔹 Opens modal and populates data from controller
     async function editItem(itemId) {
         try {
@@ -405,7 +417,7 @@ function saveItem(event) {
             // --- Populate modal fields ---
             document.getElementById('modalTitle').innerText = 'Edit Item';
             document.getElementById('itemId').value = item.itemID;
-            document.getElementById('itemIdDisplay').value = item.itemID;
+            // document.getElementById('itemIdDisplay').value = item.itemID;
             //document.getElementById('categoryId').value = item.categoryID;
             document.getElementById('size').value = item.size || 'Select Size';
             document.getElementById('itemName').value = item.itemName;
@@ -444,17 +456,19 @@ function saveItem(event) {
         }
     }
 
+         //<td>${newId}</td>
+             //  <td>00000${newId}</td> -- barcode
     function addItemToTable(itemData) {
         const tableBody = document.getElementById('itemTableBody');
         const newId = tableBody.rows.length + 1;
 
         const newRow = `
             <tr>
-                <td>${newId}</td>
+               
                 <td><img src="https://via.placeholder.com/50" class="item-image-thumb" alt="Item"></td>
                 <td>${itemData.itemName}</td>
                 <td>Electronics</td>
-                <td>00000${newId}</td>
+               
                 <td>$${parseFloat(itemData.salePrice).toFixed(2)}</td>
                 <td><span class="badge badge-success">Active</span></td>
                 <td>

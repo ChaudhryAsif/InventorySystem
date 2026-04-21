@@ -39,7 +39,7 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th style="width: 80px;">ID</th>
+                        @* <th style="width: 80px;">ID</th> *@
                         <th>Party Name</th>
                         <th>Type</th>
                         <th>Contact Person</th>
@@ -73,12 +73,12 @@
                         <h4 class="section-title">Basic Information</h4>
                     </div>
 
-                    <div class="form-group">
+                 @*    <div class="form-group">
                         <label class="form-label">Party Code</label>
                         <input type="text" class="form-control" id="partyCode" value="Auto-generated" readonly>
-                    </div>
+                    </div> *@
 
-                    <div class="form-group">
+                    <div class="form-group full-width">
                         <label class="form-label required">Party Type</label>
                         <select class="form-control" id="partyType" required>
                             <option value="">Select Type</option>
@@ -241,7 +241,6 @@ function renderPartiesTable(data) {
 
         const row = `
             <tr data-type="${party.partyType}" data-status="${party.status}">
-                <td>${party.partyId}</td>
                 <td>${party.partyName}</td>
                 <td>${typeBadge}</td>
                 <td>${party.contactPerson || '-'}</td>
@@ -339,7 +338,7 @@ function renderPartiesTable(data) {
         document.getElementById('modalTitle').textContent = 'Add New Party';
         document.getElementById('partyForm').reset();
             $('#partyId').val('');
-        document.getElementById('partyCode').value = 'Auto-generated';
+        // document.getElementById('partyCode').value = 'Auto-generated';
         document.getElementById('partyModal').classList.add('show');
     });
 
@@ -372,7 +371,6 @@ function renderPartiesTable(data) {
         newRow.setAttribute('data-type', data.partyType);
         newRow.setAttribute('data-status', data.status);
         newRow.innerHTML = `
-            <td>${newId}</td>
             <td>${data.partyName}</td>
             <td>${typeBadge}</td>
             <td>${data.contactPerson || '-'}</td>

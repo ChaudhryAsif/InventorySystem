@@ -1,1 +1,282 @@
-﻿
+﻿@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Sale Invoice";
+}
+
+<link href="~/css/sale.css" rel="stylesheet" />
+
+<div class="main-wrapper">
+    <div class="page-header">
+        <h2>🛒 Sale Invoice</h2>
+        <p>Create and manage sale orders for customers</p>
+    </div>
+
+    <div class="card">
+        <form id="saleForm">
+
+            <!-- ── Invoice Header ──────────────────────────────────────────── -->
+            <div class="invoice-header-section">
+                <div class="form-section">
+                    <div class="form-group">
+                        <label class="form-label">User</label>
+                        <input type="text" class="form-control" value="Admin" disabled>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Invoice No</label>
+                        <input type="text" class="form-control" id="invoiceNo" value="1" disabled>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Ref No</label>
+                        <input type="text" class="form-control" id="refNo"
+                               placeholder="Enter reference number">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Invoice Date</label>
+                        <input type="date" class="form-control" id="invoiceDate"
+                               value="@DateTime.Now.ToString("yyyy-MM-dd")">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Payment Mode</label>
+                        <select class="form-control" id="paymentMode">
+                            <option value="0">Credit</option>
+                            <option value="1">Cash</option>
+                            <option value="2">Cheque</option>
+                            <option value="3">Bank Transfer</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-group">
+                        <label class="form-label">Customer Account</label>
+                        <div class="customer-lookup">
+                            <input type="text" class="form-control" id="customerAccount"
+                                   disabled placeholder="Search customer...">
+                            <input type="hidden" id="hftxtCustomerId">
+                            <button type="button" class="btn-icon" id="btnCustomerAccount">👤</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Customer Details</label>
+                        <textarea class="form-control" id="customerDetails"
+                                  placeholder="Customer details..." readonly></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Items Table ─────────────────────────────────────────────── -->
+            <div class="items-section">
+                <h3 class="section-title">Sale Items</h3>
+
+                <div class="table-container">
+                    <table class="items-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">#</th>
+                                <th style="width: 120px;">Item ID</th>
+                                <th style="width: 230px;">Item Name</th>
+                                <th style="width: 110px;">Avail. Stock</th>
+                                <th style="width: 100px;">Quantity</th>
+                                <th style="width: 130px;">Sale Price</th>
+                                <th style="width: 90px;">Disc %</th>
+                                <th style="width: 110px;">Disc Amt</th>
+                                <th style="width: 120px;">Total</th>
+                                <th style="width: 60px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemsBody">
+                            <!-- rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <button type="button" class="add-row-btn" id="addRowBtn">
+                    ➕ Add New Item
+                </button>
+            </div>
+
+            <!-- ── Footer ──────────────────────────────────────────────────── -->
+            <div class="footer-grid">
+                <div class="form-section">
+                    <div class="form-group">
+                        <label class="form-label">Remarks</label>
+                        <textarea class="form-control" id="remarks"
+                                  placeholder="Enter remarks..."></textarea>
+                    </div>
+                </div>
+
+                <div class="totals-box">
+                    <div class="total-row">
+                        <span class="total-label">Total Quantity:</span>
+                        <input type="text" class="total-input" id="totalQty" value="0" readonly>
+                    </div>
+                    <div class="total-row">
+                        <span class="total-label">Invoice Total:</span>
+                        <input type="text" class="total-input" id="invoiceTotal" value="0.00" readonly>
+                    </div>
+                    <div class="total-row">
+                        <span class="total-label">GST:</span>
+                        <div class="total-with-percent">
+                            <input type="number" class="percent-input" id="gstPercent"
+                                   value="0" min="0" max="100">
+                            <span>% =</span>
+                            <input type="text" class="total-input" id="gstAmount"
+                                   value="0.00" readonly style="width: 100px;">
+                        </div>
+                    </div>
+                    <div class="total-row">
+                        <span class="total-label">Freight Exp:</span>
+                        <input type="number" class="total-input" id="freight" value="0" step="0.01">
+                    </div>
+                    <div class="total-row">
+                        <span class="total-label">Other Exp:</span>
+                        <input type="number" class="total-input" id="otherExp" value="0" step="0.01">
+                    </div>
+                    <div class="total-row">
+                        <span class="total-label">Invoice Discount:</span>
+                        <div class="total-with-percent">
+                            <input type="number" class="percent-input" id="discPercent"
+                                   value="0" min="0" max="100">
+                            <span>% =</span>
+                            <input type="text" class="total-input" id="discAmount"
+                                   value="0.00" readonly style="width: 100px;">
+                        </div>
+                    </div>
+                    <div class="grand-total">
+                        <span>Net Amount:</span>
+                        <span id="netAmount">0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Action Buttons ──────────────────────────────────────────── -->
+            <div class="btn-group">
+                <button type="button" class="btn btn-primary" id="newBtn">➕ New</button>
+                <button type="submit" class="btn btn-success">💾 Save</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- ── Customer Modal ─────────────────────────────────────────────────── -->
+    <div class="modal customer-modal" id="customerModal">
+        <div class="customer-modal-dialog">
+            <div class="customer-modal-header">
+                <h3 class="customer-modal-title">Select Customer</h3>
+                <button class="customer-modal-close"
+                        onclick="closeCustomerModal()">&times;</button>
+            </div>
+            <div class="customer-modal-body">
+                <div class="customer-search-box">
+                    <input type="text"
+                           class="customer-search-input"
+                           id="customerSearchInput"
+                           placeholder="🔍 Search customers by name, phone, or email..."
+                           onkeyup="searchCustomers()">
+                </div>
+                <div class="customer-table-container">
+                    <table class="customer-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px;">ID</th>
+                                <th>Party Name</th>
+                                <th>Type</th>
+                                <th>Contact Person</th>
+                                <th>Phone</th>
+                                <th>Email</th>
+                                <th>Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customerTableBody">
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 2rem;">
+                                    Loading customers...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="customerEmptyState" class="empty-state" style="display: none;">
+                    <div class="empty-state-icon">👥</div>
+                    <p>No customers found</p>
+                </div>
+            </div>
+            <div class="customer-modal-footer">
+                <button type="button" class="btn btn-danger"
+                        onclick="closeCustomerModal()">✖ Cancel</button>
+                <button type="button" class="btn btn-select"
+                        id="selectCustomerBtn" onclick="selectCustomer()" disabled>
+                    ✓ Select Customer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Item Modal ─────────────────────────────────────────────────────── -->
+    <div class="modal item-modal" id="itemModal">
+        <div class="item-modal-dialog">
+            <div class="item-modal-header">
+                <h3 class="item-modal-title">Select Item</h3>
+                <button class="item-modal-close" onclick="closeItemModal()">&times;</button>
+            </div>
+            <div class="item-modal-body">
+                <div class="item-search-filters">
+                    <input type="text"
+                           class="item-search-input"
+                           id="itemSearchInput"
+                           placeholder="🔍 Search items by name, barcode..."
+                           onkeyup="filterItems()">
+                    <select class="item-filter-select" id="categoryFilter" onchange="filterItems()">
+                        <option value="">All Categories</option>
+                    </select>
+                    <select class="item-filter-select" id="stockFilter" onchange="filterItems()">
+                        <option value="">All Stock</option>
+                        <option value="instock">In Stock</option>
+                        <option value="lowstock">Low Stock</option>
+                        <option value="outofstock">Out of Stock</option>
+                    </select>
+                </div>
+                <div class="item-table-container">
+                    <table class="item-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px;">ID</th>
+                                <th style="width: 60px;">Image</th>
+                                <th>Item Name</th>
+                                <th>Category</th>
+                                <th>Barcode</th>
+                                <th style="width: 110px;">Sale Price</th>
+                                <th style="width: 100px;">Stock</th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemTableBody">
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 2rem;">
+                                    Loading items...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="itemEmptyState" class="item-empty-state" style="display: none;">
+                    <div class="item-empty-icon">📦</div>
+                    <p>No items found</p>
+                </div>
+            </div>
+            <div class="item-modal-footer">
+                <button type="button" class="btn btn-danger"
+                        onclick="closeItemModal()">✖ Cancel</button>
+                <button type="button" class="btn-select-item"
+                        id="selectItemBtn" onclick="selectItem()" disabled>
+                    ✓ Select Item
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="~/js/saleinvoice.js"></script>

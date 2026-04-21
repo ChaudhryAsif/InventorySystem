@@ -41,11 +41,11 @@
                 <thead>
                     <tr>
                         <th style="width: 40px;"></th>
-                        <th>Item ID</th>
-                        <th>Category Name</th>
+                      @*   <th>Item ID</th> *@
+                        <th>Category</th>@* 
                         <th>Item Name</th>
                         <th>Size</th>
-                        <th>Sale Price</th>
+                        <th>Sale Price</th> *@
                     </tr>
                 </thead>
                 <tbody id="tableBody">
@@ -92,9 +92,9 @@
             const data = await response.json();
 
                 const filtered = data.filter(item =>
-        (item.itemName?.toLowerCase() || "").includes(search) ||
-        (item.categoryName?.toLowerCase() || "").includes(search)
-    );
+                                (item.itemName?.toLowerCase() || "").includes(search) ||
+                                (item.categoryName?.toLowerCase() || "").includes(search)
+                              );
 
 
             tbody.innerHTML = "";
@@ -102,11 +102,7 @@
                 const row = `
                     <tr onclick="toggleExpand(this)">
                         <td><span class="expand-icon">▶</span></td>
-                        <td>${item.itemID}</td>
                         <td>${item.categoryName}</td>
-                        <td>${item.itemName || ""}</td>
-                        <td>${item.size || "-"}</td>
-                        <td>${item.salePrice?.toFixed(2)}</td>
                     </tr>
                     <tr class="nested-row" style="display:none;">
                         <td colspan="11" style="padding:1rem;background:#f8f9fa;">
@@ -114,7 +110,6 @@
                                 <thead>
                                     <tr>
                                         <th>Item ID</th>
-                                        <th>Category</th>
                                         <th>Item Name</th>
                                         <th>Size</th>
                                         <th>Sale Price</th>
@@ -123,7 +118,6 @@
                                 <tbody>
                                     <tr>
                                         <td>${item.itemID}</td>
-                                        <td>${item.categoryName || ""}</td>
                                         <td>${item.itemName || ""}</td>
                                         <td>${item.size || "-"}</td>
                                         <td>${item.salePrice?.toFixed(2)}</td>

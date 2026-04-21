@@ -33,7 +33,7 @@
             <table class="data-table" id="categoryTable">
                 <thead>
                     <tr>
-                        <th style="width: 100px;">Category ID</th>
+                        @* <th style="width: 100px;">Category ID</th> *@
                         <th>Category Name</th>
                         <th>Description</th>
                         <th style="width: 150px;">Created Date</th>
@@ -45,7 +45,7 @@
                     @foreach (var category in Model)
                     {
                         <tr>
-                            <td>@category.CategoryId</td>
+                            @* <td>@category.CategoryId</td> *@
                             <td>@category.CategoryName</td>
                             <td>@category.Description</td>
                             <td>@(category.CreatedDate != null ? category.CreatedDate.Value.ToString("yyyy-MM-dd") : "")</td>
@@ -125,9 +125,9 @@ function loadCategories() {
 
                 result.data.forEach(category => {
                     const row = document.createElement("tr");
-
+                        //<td>${category.categoryId}</td>
                     row.innerHTML = `
-                        <td>${category.categoryId}</td>
+                        
                         <td>${category.categoryName}</td>
                         <td>${category.description || ""}</td>
                         <td>${category.createdDate ? category.createdDate.split('T')[0] : ""}</td>
@@ -172,9 +172,9 @@ function escapeQuotes(str) {
                 document.getElementById('categoryModal').classList.add('show');
             }
 
-            // function closeModal() {
-            //     document.getElementById('categoryModal').classList.remove('show');
-            // }
+            function closeModal() {
+                document.getElementById('categoryModal').classList.remove('show');
+            }
 
             function editCategory(id, name, status, description) {
                 isEditMode = true;

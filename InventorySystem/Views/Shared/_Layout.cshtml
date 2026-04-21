@@ -96,7 +96,7 @@
                 <a asp-controller="ItemRateList" asp-action="Index"
                    class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "ItemRateList" ? "active" : "")">
                     <span class="sidebar-icon">💰</span>
-                    <span class="sidebar-text">Item Rate</span>
+                    <span class="sidebar-text">Product List</span>
                 </a>
             </li>
             <li class="sidebar-item">
@@ -113,11 +113,37 @@
                     <span class="sidebar-text">Purchase Invoice</span>
                 </a>
             </li>
-            <li class="sidebar-item">
-                <a href="#" class="sidebar-link">
+             <li class="sidebar-item">
+                <a asp-controller="Sale" asp-action="Index"
+                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Sale" ? "active" : "")">
                     <span class="sidebar-icon">🧾</span>
-                    <span>Issue Invoice</span>
+                    <span class="sidebar-text">Sale Invoice</span>
                 </a>
+            </li>
+
+            <!-- Returns submenu -->
+            <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() is "PurchaseReturn" or "SaleReturn" ? "open" : "")"
+                id="returnsMenuItem">
+                <a href="#" class="sidebar-link"
+                    onclick="event.preventDefault(); document.getElementById('returnsMenuItem').classList.toggle('open')">
+                    <span class="sidebar-icon">↩️</span>
+                    <span class="sidebar-text">Returns</span>
+                    <span class="sidebar-arrow">▼</span>
+                </a>
+                <ul class="sidebar-submenu">
+                    <li>
+                        <a asp-controller="PurchaseReturn" asp-action="Index"
+                            class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "PurchaseReturn" ? "active" : "")">
+                            📦 Purchase Return
+                        </a>
+                    </li>
+                    <li>
+                        <a asp-controller="SaleReturn" asp-action="Index"
+                            class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "SaleReturn" ? "active" : "")">
+                            🔄 Sale Return
+                        </a>
+                    </li>
+                </ul>
             </li>
 
             <!-- Reports submenu -->
@@ -142,11 +168,17 @@
                             🧾 Purchase Report
                         </a>
                     </li>
+                    <li>
+                        <a asp-controller="Report" asp-action="SaleReport"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" && ViewContext.RouteData.Values["action"]?.ToString() == "SaleReport" ? "active" : "")">
+                            💵 Sale Report
+                        </a>
+                    </li>
                 </ul>
             </li>
 
             <!-- Accounts submenu -->
-            <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Accounts" ? "open" : "")"
+            @* <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Accounts" ? "open" : "")"
                 id="accountsMenuItem">
                 <a href="#" class="sidebar-link"
                    onclick="event.preventDefault(); document.getElementById('accountsMenuItem').classList.toggle('open')">
@@ -175,7 +207,7 @@
                     <span class="sidebar-icon">⚙️</span>
                     <span>Settings</span>
                 </a>
-            </li>
+            </li> *@
         </ul>
     </aside>
 
@@ -193,6 +225,11 @@
             document.getElementById('mainWrapper').classList.toggle('expanded');
         });
     </script>
+
+    <!-- jQuery - loaded globally so all views can use it -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+            integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+            crossorigin="anonymous"></script>
 
     @await RenderSectionAsync("Scripts", required: false)
 

@@ -95,7 +95,6 @@ namespace InventorySystem.Controllers
                 if (!string.IsNullOrEmpty(vendorId))
                     query = query.Where(p => p.VendorID == vendorId);
 
-                // ── Invoice number search ───────────────────────────
                 if (invoiceNo.HasValue && invoiceNo.Value > 0)
                     query = query.Where(p => p.PurchaseId == invoiceNo.Value);
 
@@ -119,9 +118,8 @@ namespace InventorySystem.Controllers
                     })
                     .ToListAsync();
 
-                // ── Load all line items for matching invoices ───────
-                var invoiceIds  = invoices.Select(i => i.PurchaseId).ToList();
-                var lineItems   = await _context.PurchaseInvoiceBody
+                var invoiceIds = invoices.Select(i => i.PurchaseId).ToList();
+                var lineItems  = await _context.PurchaseInvoiceBody
                     .Where(b => invoiceIds.Contains(b.PurchaseId))
                     .Select(b => new
                     {
@@ -150,17 +148,17 @@ namespace InventorySystem.Controllers
                     success = true,
                     data = invoices.Select(p => new
                     {
-                        invoiceNo   = p.PurchaseId,
+                        invoiceNo    = p.PurchaseId,
                         purchaseDate = p.PurchaseDate.HasValue
                             ? p.PurchaseDate.Value.ToString("yyyy-MM-dd") : "-",
-                        vendorName  = p.VendorName,
-                        billNo      = p.BillNo ?? "-",
-                        branchName  = GetBranchName(p.BranchID ?? 1),
-                        paymentMode = GetPaymentModeLabel(p.PaymentMode),
-                        totalAmount = p.TotalAmount ?? 0,
-                        netAmount   = p.NetAmount ?? 0,
-                        remarks     = p.Remarks ?? "",
-                        items       = itemsByInvoice.TryGetValue(p.PurchaseId, out var its)
+                        vendorName   = p.VendorName,
+                        billNo       = p.BillNo ?? "-",
+                        branchName   = GetBranchName(p.BranchID ?? 1),
+                        paymentMode  = GetPaymentModeLabel(p.PaymentMode),
+                        totalAmount  = p.TotalAmount ?? 0,
+                        netAmount    = p.NetAmount ?? 0,
+                        remarks      = p.Remarks ?? "",
+                        items        = itemsByInvoice.TryGetValue(p.PurchaseId, out var its)
                             ? its.Select(i => new
                             {
                                 i.itemId,
@@ -188,6 +186,116 @@ namespace InventorySystem.Controllers
             }
         }
 
+        // ── Sale Report ─────────────────────────────────────────────────────────
+        [HttpGet]
+        public IActionResult SaleReport() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetSaleData(
+            DateTime? from, DateTime? to,
+            string? customerId = null,
+            int? invoiceNo = null)
+        {
+            try
+            {
+                var fromDate = from ?? DateTime.Now.AddMonths(-1);
+                var toDate   = (to ?? DateTime.Now).Date.AddDays(1).AddTicks(-1);
+
+                var query = _context.SaleInvoice
+                    .Where(s => s.SaleDate >= fromDate && s.SaleDate <= toDate);
+
+                if (!string.IsNullOrEmpty(customerId))
+                    query = query.Where(s => s.CustomerID == customerId);
+
+                if (invoiceNo.HasValue && invoiceNo.Value > 0)
+                    query = query.Where(s => s.SaleId == invoiceNo.Value);
+
+                var invoices = await query
+                    .OrderByDescending(s => s.SaleDate)
+                    .Select(s => new
+                    {
+                        s.SaleId,
+                        s.SaleDate,
+                        s.CustomerID,
+                        s.RefNo,
+                        s.BranchID,
+                        s.PaymentMode,
+                        s.TotalAmount,
+                        s.NetAmount,
+                        s.Remarks,
+                        CustomerName = _context.Parties
+                            .Where(p => p.PartyId.ToString() == s.CustomerID)
+                            .Select(p => p.PartyName)
+                            .FirstOrDefault() ?? s.CustomerID
+                    })
+                    .ToListAsync();
+
+                var invoiceIds = invoices.Select(i => i.SaleId).ToList();
+                var lineItems  = await _context.SaleInvoiceBody
+                    .Where(b => invoiceIds.Contains(b.SaleId))
+                    .Select(b => new
+                    {
+                        b.SaleId,
+                        itemId    = b.ItemId,
+                        descr     = b.Descr ?? "",
+                        qty       = b.Quantity ?? 0,
+                        salePrice = b.SalePrice ?? 0,
+                        discPer   = b.DiscPer ?? 0,
+                        discAmt   = b.DiscAmt ?? 0,
+                        total     = b.Total ?? 0,
+                        itemName  = _context.Items
+                            .Where(i => i.ItemID == b.ItemId)
+                            .Select(i => i.ItemName)
+                            .FirstOrDefault() ?? b.Descr
+                    })
+                    .ToListAsync();
+
+                var itemsByInvoice = lineItems
+                    .GroupBy(b => b.SaleId)
+                    .ToDictionary(g => g.Key, g => g.ToList());
+
+                return Json(new
+                {
+                    success = true,
+                    data = invoices.Select(s => new
+                    {
+                        invoiceNo    = s.SaleId,
+                        saleDate     = s.SaleDate.HasValue
+                            ? s.SaleDate.Value.ToString("yyyy-MM-dd") : "-",
+                        customerName = s.CustomerName,
+                        refNo        = s.RefNo ?? "-",
+                        branchName   = GetBranchName(s.BranchID ?? 1),
+                        paymentMode  = GetPaymentModeLabel(s.PaymentMode),
+                        totalAmount  = s.TotalAmount ?? 0,
+                        netAmount    = s.NetAmount ?? 0,
+                        remarks      = s.Remarks ?? "",
+                        items        = itemsByInvoice.TryGetValue(s.SaleId, out var its)
+                            ? its.Select(i => new
+                            {
+                                i.itemId,
+                                itemName  = i.itemName ?? i.descr,
+                                i.qty,
+                                i.salePrice,
+                                i.discPer,
+                                i.discAmt,
+                                i.total
+                            })
+                            : []
+                    }),
+                    summary = new
+                    {
+                        totalInvoices = invoices.Count,
+                        totalAmount   = invoices.Sum(s => s.TotalAmount ?? 0),
+                        netAmount     = invoices.Sum(s => s.NetAmount ?? 0)
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
         // ── Dropdown helpers ────────────────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> GetSupplierList()
@@ -197,6 +305,16 @@ namespace InventorySystem.Controllers
                 .Select(p => new { value = p.PartyId.ToString(), text = p.PartyName })
                 .ToListAsync();
             return Json(suppliers);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetCustomerList()
+        {
+            var customers = await _context.Parties
+                .Where(p => p.PartyType == "customer" || p.PartyType == "both")
+                .Select(p => new { value = p.PartyId.ToString(), text = p.PartyName })
+                .ToListAsync();
+            return Json(customers);
         }
 
         [HttpGet]

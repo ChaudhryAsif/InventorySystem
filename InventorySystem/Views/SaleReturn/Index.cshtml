@@ -1,0 +1,204 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Sale Return";
+}
+
+<link href="~/css/purchase.css" rel="stylesheet" />
+
+<div class="main-wrapper">
+    <div class="page-header">
+        <h2>↩️ Sale Return</h2>
+        <p>Record goods returned by customers and adjust stock &amp; ledger automatically</p>
+    </div>
+
+    <div class="card">
+        <form id="saleReturnForm">
+            <!-- Header -->
+            <div class="invoice-header-section">
+                <div class="form-section">
+                    <div class="form-group">
+                        <label class="form-label">Return No</label>
+                        <input type="text" class="form-control" id="returnNo" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Return Date</label>
+                        <input type="date" class="form-control" id="returnDate" value="@DateTime.Now.ToString("yyyy-MM-dd")">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ref. Sale Invoice #</label>
+                        <input type="number" class="form-control" id="originalSaleId" placeholder="Optional — original invoice no.">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Payment Mode</label>
+                        <select class="form-control" id="paymentMode">
+                            <option value="0">Credit (Pending Refund)</option>
+                            <option value="1">Cash</option>
+                            <option value="2">Cheque</option>
+                            <option value="3">Bank Transfer</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-group">
+                        <label class="form-label">Customer Account</label>
+                        <div class="supplier-lookup">
+                            <input type="text" class="form-control" id="customerAccount" disabled placeholder="Search customer...">
+                            <input type="hidden" id="hftxtCustomerId">
+                            <button type="button" class="btn-icon" id="btnCustomerAccount">👤</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Customer Details</label>
+                        <textarea class="form-control" id="customerDetails" placeholder="Customer details..." readonly></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Items -->
+            <div class="items-section">
+                <h3 class="section-title">Return Items</h3>
+                <div class="table-container">
+                    <table class="items-table">
+                        <thead>
+                            <tr>
+                                <th style="width:50px">#</th>
+                                <th style="width:120px">Item ID</th>
+                                <th style="width:250px">Item Name</th>
+                                <th style="width:100px">Quantity</th>
+                                <th style="width:120px">Sale Price</th>
+                                <th style="width:100px">Disc %</th>
+                                <th style="width:120px">Disc Amt</th>
+                                <th style="width:120px">Total</th>
+                                <th style="width:60px">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemsBody"></tbody>
+                    </table>
+                </div>
+                <button type="button" class="add-row-btn" id="addRowBtn">➕ Add Item</button>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer-grid">
+                <div class="form-section">
+                    <div class="form-group">
+                        <label class="form-label">Remarks</label>
+                        <textarea class="form-control" id="remarks" placeholder="Enter remarks..."></textarea>
+                    </div>
+                </div>
+                <div class="totals-box">
+                    <div class="total-row">
+                        <span class="total-label">Total Quantity:</span>
+                        <input type="text" class="total-input" id="totalQty" value="0" readonly>
+                    </div>
+                    <div class="total-row">
+                        <span class="total-label">Invoice Total:</span>
+                        <input type="text" class="total-input" id="invoiceTotal" value="0.00" readonly>
+                    </div>
+                    <div class="total-row">
+                        <span class="total-label">Discount:</span>
+                        <div class="total-with-percent">
+                            <input type="number" class="percent-input" id="discPercent" value="0" min="0" max="100">
+                            <span>% =</span>
+                            <input type="text" class="total-input" id="discAmount" value="0.00" readonly style="width:100px">
+                        </div>
+                    </div>
+                    <div class="grand-total">
+                        <span>Net Amount:</span>
+                        <span id="netAmount">0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="btn-group">
+                <button type="button" class="btn btn-primary" id="newBtn">➕ New</button>
+                <button type="submit" class="btn btn-success">💾 Save Return</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Customer Modal -->
+<div class="modal supplier-modal" id="customerModal">
+    <div class="supplier-modal-dialog">
+        <div class="supplier-modal-header">
+            <h3 class="supplier-modal-title">Select Customer</h3>
+            <button class="supplier-modal-close" onclick="closeCustomerModal()">&times;</button>
+        </div>
+        <div class="supplier-modal-body">
+            <div class="supplier-search-box">
+                <input type="text" class="supplier-search-input" id="customerSearchInput"
+                       placeholder="🔍 Search customers..." onkeyup="searchCustomers()">
+            </div>
+            <div class="supplier-table-container">
+                <table class="supplier-table">
+                    <thead>
+                        <tr>
+                            <th style="width:60px">ID</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Contact</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th>Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customerTableBody"></tbody>
+                </table>
+                <div id="emptyState" style="display:none;text-align:center;padding:2rem;color:#6c757d;">
+                    No customers found.
+                </div>
+            </div>
+        </div>
+        <div class="supplier-modal-footer">
+            <button class="btn btn-secondary" onclick="closeCustomerModal()">Cancel</button>
+            <button class="btn btn-primary" id="selectCustomerBtn" onclick="selectCustomer()" disabled>Select</button>
+        </div>
+    </div>
+</div>
+
+<!-- Item Modal -->
+<div class="modal supplier-modal" id="itemModal">
+    <div class="supplier-modal-dialog" style="max-width:900px">
+        <div class="supplier-modal-header">
+            <h3 class="supplier-modal-title">Select Item</h3>
+            <button class="supplier-modal-close" onclick="closeItemModal()">&times;</button>
+        </div>
+        <div class="supplier-modal-body">
+            <div class="supplier-search-box" style="display:flex;gap:1rem">
+                <input type="text" class="supplier-search-input" id="itemSearchInput"
+                       placeholder="🔍 Search items..." onkeyup="searchItems()" style="flex:1">
+                <select id="categoryFilter" class="form-control" style="max-width:200px" onchange="filterByCategory()">
+                    <option value="">All Categories</option>
+                </select>
+            </div>
+            <div class="supplier-table-container">
+                <table class="supplier-table">
+                    <thead>
+                        <tr>
+                            <th style="width:60px">ID</th>
+                            <th>Item Name</th>
+                            <th>Category</th>
+                            <th>Sale Price</th>
+                            <th>Stock</th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemTableBody"></tbody>
+                </table>
+                <div id="itemEmptyState" style="display:none;text-align:center;padding:2rem;color:#6c757d;">
+                    No items found.
+                </div>
+            </div>
+        </div>
+        <div class="supplier-modal-footer">
+            <button class="btn btn-secondary" onclick="closeItemModal()">Cancel</button>
+            <button class="btn btn-primary" id="selectItemBtn" onclick="selectItem()" disabled>Select</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/salereturn.js"></script>
+}
