@@ -8,33 +8,36 @@ namespace InventorySystem.Data
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options) { }
 
-        // ── Master data ─────────────────────────────────────────────────────────
+        // ── Master data ──────────────────────────────────────────────────────────
         public DbSet<ItemCategory> ItemCategory => Set<ItemCategory>();
         public DbSet<Items> Items => Set<Items>();
         public DbSet<Party> Parties => Set<Party>();
 
-        // ── Inventory ───────────────────────────────────────────────────────────
+        // ── Inventory ────────────────────────────────────────────────────────────
         public DbSet<Stock> Stock => Set<Stock>();
 
-        // ── Purchase ────────────────────────────────────────────────────────────
+        // ── Purchase ─────────────────────────────────────────────────────────────
         public DbSet<PurchaseInvoice> PurchaseInvoice => Set<PurchaseInvoice>();
         public DbSet<PurchaseInvoiceBody> PurchaseInvoiceBody => Set<PurchaseInvoiceBody>();
 
-        // ── Purchase Returns ────────────────────────────────────────────────────
+        // ── Purchase Returns ─────────────────────────────────────────────────────
         public DbSet<PurchaseReturn> PurchaseReturn => Set<PurchaseReturn>();
         public DbSet<PurchaseReturnBody> PurchaseReturnBody => Set<PurchaseReturnBody>();
 
-        // ── Sale ────────────────────────────────────────────────────────────────
+        // ── Sale ─────────────────────────────────────────────────────────────────
         public DbSet<SaleInvoice> SaleInvoice => Set<SaleInvoice>();
         public DbSet<SaleInvoiceBody> SaleInvoiceBody => Set<SaleInvoiceBody>();
 
-        // ── Sale Returns ────────────────────────────────────────────────────────
+        // ── Sale Returns ─────────────────────────────────────────────────────────
         public DbSet<SaleReturn> SaleReturn => Set<SaleReturn>();
         public DbSet<SaleReturnBody> SaleReturnBody => Set<SaleReturnBody>();
 
-        // ── Accounts ────────────────────────────────────────────────────────────
+        // ── Accounts ─────────────────────────────────────────────────────────────
         public DbSet<AccountLedger> AccountLedger => Set<AccountLedger>();
         public DbSet<PaymentVoucher> PaymentVoucher => Set<PaymentVoucher>();
+
+        // ── Auth ──────────────────────────────────────────────────────────────────
+        public DbSet<AppUser> AppUsers => Set<AppUser>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -56,12 +59,28 @@ namespace InventorySystem.Data
             modelBuilder.Entity<Stock>()
                 .HasIndex(s => new { s.ItemId, s.BranchId }).IsUnique();
 
-            // Useful query indexes
             modelBuilder.Entity<AccountLedger>()
                 .HasIndex(l => new { l.PartyId, l.EntryDate });
 
             modelBuilder.Entity<PaymentVoucher>()
                 .HasIndex(v => new { v.PartyId, v.VoucherDate });
+
+            // Unique username
+            modelBuilder.Entity<AppUser>()
+                .HasIndex(u => u.Username).IsUnique();
+
+            // Seed default admin  →  password: Admin@123
+            modelBuilder.Entity<AppUser>().HasData(new AppUser
+            {
+                Id = 1,
+                Username = "admin",
+                // Pre-computed BCrypt hash for:  Admin@123
+                PasswordHash = "$2a$11$gGgjUBMKp1bmCsGlTZzUp.REHp88eeHmVtsF3ur3CA0wREWLPqQA6",
+                FullName = "System Administrator",
+                Role = "Admin",
+                IsActive = true,
+                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
 
             base.OnModelCreating(modelBuilder);
         }

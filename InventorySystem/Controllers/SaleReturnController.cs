@@ -1,10 +1,12 @@
 using InventorySystem.Core.Models;
 using InventorySystem.Data;
 using InventorySystem.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace InventorySystem.Controllers
 {
+    [Authorize]
     public class SaleReturnController : Controller
     {
         private readonly ApplicationDbContext _context;

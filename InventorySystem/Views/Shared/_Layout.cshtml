@@ -52,6 +52,61 @@
         .sidebar-item.open > .sidebar-link .sidebar-arrow {
             transform: rotate(180deg);
         }
+
+        /* ── User info in header ── */
+        .header-user {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-left: auto;
+        }
+
+        .header-user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            font-weight: 700;
+            color: white;
+        }
+
+        .header-user-name {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.92);
+            line-height: 1.2;
+        }
+
+        .header-user-role {
+            font-size: 0.72rem;
+            color: rgba(255,255,255,0.6);
+        }
+
+        .btn-logout {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.45rem 1rem;
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            color: white;
+            font-size: 0.83rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-decoration: none;
+        }
+
+        .btn-logout:hover {
+            background: rgba(220, 53, 69, 0.55);
+            border-color: rgba(220, 53, 69, 0.7);
+        }
     </style>
 </head>
 <body>
@@ -65,6 +120,25 @@
                     <h1>POS System</h1>
                 </div>
             </div>
+
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                var fullName = User.FindFirst("FullName")?.Value ?? User.Identity.Name ?? "User";
+                var role     = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+                var initials = string.Concat(fullName.Split(' ').Take(2).Select(w => w[0])).ToUpper();
+
+                <div class="header-user">
+                    <div class="header-user-avatar">@initials</div>
+                    <div>
+                        <div class="header-user-name">@fullName</div>
+                        <div class="header-user-role">@role</div>
+                    </div>
+                    <form asp-controller="Auth" asp-action="Logout" method="post" style="margin:0;">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn-logout">🚪 Logout</button>
+                    </form>
+                </div>
+            }
         </div>
     </header>
 
@@ -113,7 +187,7 @@
                     <span class="sidebar-text">Purchase Invoice</span>
                 </a>
             </li>
-             <li class="sidebar-item">
+            <li class="sidebar-item">
                 <a asp-controller="Sale" asp-action="Index"
                    class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Sale" ? "active" : "")">
                     <span class="sidebar-icon">🧾</span>
@@ -125,7 +199,7 @@
             <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() is "PurchaseReturn" or "SaleReturn" ? "open" : "")"
                 id="returnsMenuItem">
                 <a href="#" class="sidebar-link"
-                    onclick="event.preventDefault(); document.getElementById('returnsMenuItem').classList.toggle('open')">
+                   onclick="event.preventDefault(); document.getElementById('returnsMenuItem').classList.toggle('open')">
                     <span class="sidebar-icon">↩️</span>
                     <span class="sidebar-text">Returns</span>
                     <span class="sidebar-arrow">▼</span>
@@ -133,13 +207,13 @@
                 <ul class="sidebar-submenu">
                     <li>
                         <a asp-controller="PurchaseReturn" asp-action="Index"
-                            class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "PurchaseReturn" ? "active" : "")">
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "PurchaseReturn" ? "active" : "")">
                             📦 Purchase Return
                         </a>
                     </li>
                     <li>
                         <a asp-controller="SaleReturn" asp-action="Index"
-                            class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "SaleReturn" ? "active" : "")">
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "SaleReturn" ? "active" : "")">
                             🔄 Sale Return
                         </a>
                     </li>

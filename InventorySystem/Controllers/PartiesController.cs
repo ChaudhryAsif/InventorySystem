@@ -1,11 +1,13 @@
 ﻿using InventorySystem.Core.Models;
 using InventorySystem.Data;
 using InventorySystem.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace InventorySystem.Controllers
 {
+    [Authorize]
     public class PartiesController : Controller
     {
         private readonly ApplicationDbContext _context;

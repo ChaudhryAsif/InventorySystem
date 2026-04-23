@@ -1,0 +1,93 @@
+@model InventorySystem.Models.LoginViewModel
+@{
+    ViewData["Title"] = "Sign In";
+    Layout = "~/Views/Shared/_LoginLayout.cshtml";
+}
+
+<div class="login-card">
+
+    <!-- Left branding panel -->
+    <div class="login-brand">
+        <div class="login-brand-icon">📦</div>
+        <h2>POS System</h2>
+        <p>Inventory &amp; Point-of-Sale<br />management platform</p>
+        <div class="login-brand-badges">
+            <span class="login-badge">📊 Dashboard</span>
+            <span class="login-badge">🧾 Invoicing</span>
+            <span class="login-badge">📈 Reports</span>
+            <span class="login-badge">↩️ Returns</span>
+        </div>
+    </div>
+
+    <!-- Right form panel -->
+    <div class="login-form-panel">
+        <h3>Welcome back 👋</h3>
+        <p class="login-subtitle">Sign in to continue to your dashboard</p>
+
+        @if (!ViewData.ModelState.IsValid && ViewData.ModelState.ContainsKey(string.Empty))
+        {
+            <div class="login-alert">
+                <span>⚠️</span>
+                <span>@ViewData.ModelState[string.Empty]!.Errors.First().ErrorMessage</span>
+            </div>
+        }
+
+        <form asp-controller="Auth" asp-action="Login" asp-route-returnUrl="@ViewData["ReturnUrl"]" method="post" novalidate>
+            @Html.AntiForgeryToken()
+
+            <!-- Username -->
+            <div class="login-group">
+                <label asp-for="Username">Username</label>
+                <div class="login-input-wrap">
+                    <span class="login-input-icon">👤</span>
+                    <input asp-for="Username"
+                           class="@(ViewData.ModelState["Username"]?.Errors.Count > 0 ? "input-error" : "")"
+                           placeholder="Enter your username"
+                           autocomplete="username" />
+                </div>
+                <span asp-validation-for="Username" class="login-val"></span>
+            </div>
+
+            <!-- Password -->
+            <div class="login-group">
+                <label asp-for="Password">Password</label>
+                <div class="login-input-wrap">
+                    <span class="login-input-icon">🔒</span>
+                    <input asp-for="Password" id="passwordInput"
+                           class="@(ViewData.ModelState["Password"]?.Errors.Count > 0 ? "input-error" : "")"
+                           placeholder="Enter your password"
+                           autocomplete="current-password" />
+                    <button type="button" class="login-eye-btn" id="eyeBtn"
+                            onclick="togglePassword()" title="Show / hide password">👁️</button>
+                </div>
+                <span asp-validation-for="Password" class="login-val"></span>
+            </div>
+
+            <!-- Remember me -->
+            <div class="login-meta">
+                <input asp-for="RememberMe" id="RememberMe" type="checkbox" />
+                <label for="RememberMe">Keep me signed in</label>
+            </div>
+
+            <button type="submit" class="login-btn">Sign In →</button>
+        </form>
+
+        <p class="login-footer">© @DateTime.Now.Year POS System · All rights reserved</p>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function togglePassword() {
+            const input = document.getElementById('passwordInput');
+            const btn   = document.getElementById('eyeBtn');
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                btn.textContent = '👁️';
+            }
+        }
+    </script>
+}

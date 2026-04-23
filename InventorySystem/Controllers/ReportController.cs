@@ -1,9 +1,11 @@
 using InventorySystem.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace InventorySystem.Controllers
 {
+    [Authorize]
     public class ReportController : Controller
     {
         private readonly ApplicationDbContext _context;
