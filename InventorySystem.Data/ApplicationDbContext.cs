@@ -39,6 +39,10 @@ namespace InventorySystem.Data
         // ── Auth ──────────────────────────────────────────────────────────────────
         public DbSet<AppUser> AppUsers => Set<AppUser>();
 
+        // ── Consumption ───────────────────────────────────────────────────────────
+        public DbSet<ConsumeInvoice> ConsumeInvoice => Set<ConsumeInvoice>();
+        public DbSet<ConsumeInvoiceBody> ConsumeInvoiceBody => Set<ConsumeInvoiceBody>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<PurchaseInvoiceBody>()
@@ -81,6 +85,9 @@ namespace InventorySystem.Data
                 IsActive = true,
                 CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             });
+
+            modelBuilder.Entity<ConsumeInvoiceBody>()
+                .Property(p => p.Srno).ValueGeneratedOnAdd();
 
             base.OnModelCreating(modelBuilder);
         }

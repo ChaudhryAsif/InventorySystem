@@ -195,6 +195,14 @@
                 </a>
             </li>
 
+             <li class="sidebar-item">
+                <a asp-controller="Consume" asp-action="Index"
+                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Consume" ? "active" : "")">
+                    <span class="sidebar-icon">🏭</span>
+                    <span class="sidebar-text">Raw Material Consume</span>
+                </a>
+            </li>
+
             <!-- Returns submenu -->
             <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() is "PurchaseReturn" or "SaleReturn" ? "open" : "")"
                 id="returnsMenuItem">
@@ -246,6 +254,12 @@
                         <a asp-controller="Report" asp-action="SaleReport"
                            class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" && ViewContext.RouteData.Values["action"]?.ToString() == "SaleReport" ? "active" : "")">
                             💵 Sale Report
+                        </a>
+                    </li>
+                    <li>
+                        <a asp-controller="Report" asp-action="ConsumeReport"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" && ViewContext.RouteData.Values["action"]?.ToString() == "ConsumeReport" ? "active" : "")">
+                            🏭 Consume Report
                         </a>
                     </li>
                 </ul>

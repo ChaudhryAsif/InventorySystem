@@ -298,6 +298,96 @@ namespace InventorySystem.Controllers
             }
         }
 
+        // ── Consume Report ──────────────────────────────────────────────────────
+        [HttpGet]
+        public IActionResult ConsumeReport() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetConsumeData(
+            DateTime? from, DateTime? to,
+            int? voucherNo = null)
+        {
+            try
+            {
+                var fromDate = from ?? DateTime.Now.AddMonths(-1);
+                var toDate = (to ?? DateTime.Now).Date.AddDays(1).AddTicks(-1);
+
+                var query = _context.ConsumeInvoice
+                    .Where(c => c.ConsumeDate >= fromDate && c.ConsumeDate <= toDate);
+
+                if (voucherNo.HasValue && voucherNo.Value > 0)
+                    query = query.Where(c => c.ConsumeId == voucherNo.Value);
+
+                var vouchers = await query
+                    .OrderByDescending(c => c.ConsumeDate)
+                    .Select(c => new
+                    {
+                        c.ConsumeId,
+                        c.ConsumeDate,
+                        c.BranchID,
+                        c.RefNo,
+                        c.Purpose,
+                        c.Remarks
+                    })
+                    .ToListAsync();
+
+                var voucherIds = vouchers.Select(v => v.ConsumeId).ToList();
+                var lineItems = await _context.ConsumeInvoiceBody
+                    .Where(b => voucherIds.Contains(b.ConsumeId))
+                    .Select(b => new
+                    {
+                        b.ConsumeId,
+                        itemId = b.ItemId,
+                        descr = b.Descr ?? "",
+                        qty = b.Quantity,
+                        itemName = _context.Items
+                            .Where(i => i.ItemID == b.ItemId)
+                            .Select(i => i.ItemName)
+                            .FirstOrDefault() ?? b.Descr
+                    })
+                    .ToListAsync();
+
+                var itemsByVoucher = lineItems
+                    .GroupBy(b => b.ConsumeId)
+                    .ToDictionary(g => g.Key, g => g.ToList());
+
+                return Json(new
+                {
+                    success = true,
+                    data = vouchers.Select(c => new
+                    {
+                        voucherNo = c.ConsumeId,
+                        consumeDate = c.ConsumeDate.HasValue
+                            ? c.ConsumeDate.Value.ToString("yyyy-MM-dd") : "-",
+                        branchName = GetBranchName(c.BranchID ?? 1),
+                        refNo = c.RefNo ?? "-",
+                        purpose = c.Purpose ?? "-",
+                        remarks = c.Remarks ?? "",
+                        totalItems = itemsByVoucher.TryGetValue(c.ConsumeId, out var its) ? its.Count : 0,
+                        totalQty = itemsByVoucher.TryGetValue(c.ConsumeId, out var itsQ)
+                            ? itsQ.Sum(i => i.qty) : 0,
+                        items = itemsByVoucher.TryGetValue(c.ConsumeId, out var itsD)
+                            ? itsD.Select(i => new
+                            {
+                                i.itemId,
+                                itemName = i.itemName ?? i.descr,
+                                i.qty
+                            })
+                            : []
+                    }),
+                    summary = new
+                    {
+                        totalVouchers = vouchers.Count,
+                        totalQty = lineItems.Sum(i => i.qty)
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
         // ── Dropdown helpers ────────────────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> GetSupplierList()
