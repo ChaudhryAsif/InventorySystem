@@ -203,6 +203,59 @@
                 </a>
             </li>
 
+            <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() is "CostSheet" ? "open" : "")"
+                id="costSheetMenuItem">
+                <a href="#" class="sidebar-link"
+                   onclick="event.preventDefault(); document.getElementById('costSheetMenuItem').classList.toggle('open')">
+                    <span class="sidebar-icon">📦</span>
+                    <span class="sidebar-text">Cost Sheet</span>
+                    <span class="sidebar-arrow">▼</span>
+                </a>
+                <ul class="sidebar-submenu">
+                    <li>
+                        <a asp-controller="CostSheet" asp-action="Index"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "CostSheet" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")">
+                            📋 All Cost Sheets
+                        </a>
+                    </li>
+                    <li>
+                        <a asp-controller="CostSheet" asp-action="Create"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "CostSheet" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")">
+                            ➕ New Cost Sheet
+                        </a>
+                    </li>
+                    <li>
+                        <a asp-controller="CostSheet" asp-action="Settings"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "CostSheet" && ViewContext.RouteData.Values["action"]?.ToString() == "Settings" ? "active" : "")">
+                            ⚙️ Settings
+                        </a>
+                    </li>
+                </ul>
+            </li>
+            <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Production" ? "open" : "")"
+                id="productionMenuItem">
+                <a href="#" class="sidebar-link"
+                   onclick="event.preventDefault(); document.getElementById('productionMenuItem').classList.toggle('open')">
+                    <span class="sidebar-icon">🏭</span>
+                    <span class="sidebar-text">Production</span>
+                    <span class="sidebar-arrow">▼</span>
+                </a>
+                <ul class="sidebar-submenu">
+                    <li>
+                        <a asp-controller="Production" asp-action="Index"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Production" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")">
+                            📋 All Orders
+                        </a>
+                    </li>
+                    <li>
+                        <a asp-controller="Production" asp-action="Create"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Production" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")">
+                            ➕ New Order
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
             <!-- Returns submenu -->
             <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() is "PurchaseReturn" or "SaleReturn" ? "open" : "")"
                 id="returnsMenuItem">

@@ -1,0 +1,239 @@
+@using InventorySystem.Core.Models
+@model ProductionOrder
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Record Production Consumption";
+    string customerName  = ViewBag.CustomerName ?? Model.CustomerId ?? "";
+    bool alreadyConsumed = ViewBag.AlreadyConsumed ?? false;
+    var mats = Model.Materials?.ToList() ?? new List<ProductionMaterial>();
+}
+
+<style>
+    .con-card   { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.08); padding:1.5rem; margin-bottom:1.2rem; }
+    .con-title  { font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
+                  color:#fff; background:#16a34a; padding:.4rem .9rem; border-radius:6px;
+                  margin-bottom:1rem; display:inline-block; }
+    .con-table  { width:100%; border-collapse:collapse; font-size:.85rem; }
+    .con-table th { background:#1e3a5f; color:#fff; padding:.6rem .8rem; text-align:left; font-size:.78rem; }
+    .con-table td { padding:.5rem .8rem; border-bottom:1px solid #f3f4f6; vertical-align:middle; }
+    .con-table tr:hover td { background:#f9fafb; }
+    .con-input  { padding:.4rem .6rem; border:1px solid #d1d5db; border-radius:6px;
+                  font-size:.87rem; width:100%; box-sizing:border-box; }
+    .con-input:focus  { outline:none; border-color:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.1); }
+    .con-input.calc   { background:#f0fdf4; font-weight:600; color:#166534; border-color:#bbf7d0; }
+    .con-input.warn   { background:#fff7ed; color:#c2410c; border-color:#fed7aa; }
+    .var-pos    { color:#dc2626; font-weight:600; font-size:.83rem; }
+    .var-neg    { color:#16a34a; font-weight:600; font-size:.83rem; }
+    .var-zero   { color:#9ca3af; font-size:.83rem; }
+    .info-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.5rem; }
+    .info-box   { background:#fff; border-radius:10px; padding:.8rem 1rem;
+                  box-shadow:0 2px 8px rgba(0,0,0,.07); text-align:center; }
+    .info-val   { font-size:1.2rem; font-weight:700; color:#1e3a5f; }
+    .info-lbl   { font-size:.73rem; color:#6b7280; margin-top:.15rem; }
+    .btn-save   { background:#16a34a; color:#fff; border:none; padding:.65rem 2.2rem;
+                  border-radius:8px; font-size:.95rem; font-weight:600; cursor:pointer; }
+    .btn-save:hover    { background:#15803d; }
+    .btn-save:disabled { background:#9ca3af; cursor:not-allowed; }
+    .stock-ok       { background:#dcfce7; color:#166534; padding:.2rem .5rem; border-radius:8px; font-size:.73rem; font-weight:600; }
+    .stock-Low      { background:#fef3c7; color:#92400e; padding:.2rem .5rem; border-radius:8px; font-size:.73rem; font-weight:600; }
+    .stock-Critical { background:#fee2e2; color:#991b1b; padding:.2rem .5rem; border-radius:8px; font-size:.73rem; font-weight:600; }
+</style>
+
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem;">
+    <div>
+        <h2 style="font-size:1.5rem;font-weight:700;color:#1e3a5f;margin:0;">
+            🏭 Record Production Consumption — Order #@Model.ProductionOrderId
+        </h2>
+        <p style="color:#6b7280;margin:.3rem 0 0;font-size:.9rem;">
+            <strong>@Model.ProductName</strong> &nbsp;|&nbsp;
+            Customer: @customerName &nbsp;|&nbsp;
+            Qty: <strong>@Model.OrderQty.ToString("N0") boxes</strong> &nbsp;|&nbsp;
+            Delivery: @Model.DeliveryDate.ToString("dd-MMM-yyyy")
+        </p>
+    </div>
+    <a href="/Production/Materials/@Model.ProductionOrderId"
+       style="color:#6b7280;font-size:.9rem;padding:.4rem 0;">← Back to Materials</a>
+</div>
+
+@if (alreadyConsumed)
+{
+    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:.9rem 1.2rem;margin-bottom:1rem;">
+        ⚠️ <strong>Consumption already recorded</strong> for this order.
+        Saving again will <strong>replace</strong> the previous record and re-adjust stock.
+    </div>
+}
+
+<div class="info-strip">
+    <div class="info-box">
+        <div class="info-val">@Model.OrderQty.ToString("N0")</div>
+        <div class="info-lbl">📦 Order Qty (boxes)</div>
+    </div>
+    <div class="info-box">
+        <div class="info-val">@mats.Count</div>
+        <div class="info-lbl">🧪 Materials</div>
+    </div>
+    <div class="info-box">
+        <div class="info-val" id="totalPlanned">@mats.Sum(m => m.RequiredKg).ToString("N2")</div>
+        <div class="info-lbl">📐 Total Planned KG</div>
+    </div>
+    <div class="info-box">
+        <div class="info-val" id="totalActual" style="color:#16a34a">0.00</div>
+        <div class="info-lbl">✅ Total Actual KG</div>
+    </div>
+</div>
+
+@if (!mats.Any())
+{
+    <div class="con-card" style="text-align:center;padding:3rem;color:#9ca3af;">
+        ⚠️ No material requirements found for this order.<br />
+        Make sure the Cost Sheet plies have items linked via 🔍 lookup.
+    </div>
+}
+else
+{
+    <div class="con-card">
+        <span class="con-title">🧪 Enter Actual KGs Consumed</span>
+        <p style="font-size:.82rem;color:#6b7280;margin-bottom:1rem;">
+            Enter actual KGs used per material. Variance = Actual − Planned.
+            <strong>Stock will be deducted immediately on Save.</strong>
+        </p>
+
+        <table class="con-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Item Name</th>
+                    <th>Specification</th>
+                    <th>Stock Status</th>
+                    <th style="text-align:right;">Available KG</th>
+                    <th style="text-align:right;">Planned KG</th>
+                    <th style="text-align:right;">Actual KG Used *</th>
+                    <th style="text-align:right;">Variance</th>
+                </tr>
+            </thead>
+            <tbody id="consumeBody">
+                @{ int rowIdx = 0; }
+                @foreach (var m in mats)
+                {
+                    <tr data-item-id="@m.ItemId"
+                        data-item-name="@m.ItemName"
+                        data-planned="@m.RequiredKg">
+                        <td style="color:#9ca3af;font-size:.8rem;">@(++rowIdx)</td>
+                        <td><strong>@m.ItemName</strong></td>
+                        <td style="color:#6b7280;font-size:.82rem;">@m.Specification</td>
+                        <td><span class="stock-@m.StockStatus">@m.StockStatus</span></td>
+                        <td style="text-align:right;font-weight:600;
+                            color:@(m.AvailableKg >= m.RequiredKg ? "#16a34a" : "#dc2626")">
+                            @m.AvailableKg.ToString("N2")
+                        </td>
+                        <td style="text-align:right;">
+                            <input type="number" class="con-input calc"
+                                   value="@m.RequiredKg.ToString("F3")"
+                                   readonly style="text-align:right;width:100px;">
+                        </td>
+                        <td style="text-align:right;">
+                            <input type="number" class="con-input actual-input"
+                                   placeholder="0.000" step="0.001" min="0"
+                                   value="@m.RequiredKg.ToString("F3")"
+                                   style="text-align:right;width:110px;"
+                                   oninput="calcVariance(this)">
+                        </td>
+                        <td style="text-align:right;" class="variance-cell">
+                            <span class="var-zero">0.000</span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:1rem;">
+        <div style="font-size:.83rem;color:#6b7280;">
+            💡 Actual KG is pre-filled from planned. Adjust as needed before saving.
+        </div>
+        <button class="btn-save" id="saveBtn" onclick="saveConsumption()">
+            ✅ Save Consumption & Deduct Stock
+        </button>
+    </div>
+}
+
+<script>
+const productionOrderId = @Model.ProductionOrderId;
+
+function calcVariance(input) {
+    const row      = input.closest('tr');
+    const planned  = parseFloat(row.dataset.planned) || 0;
+    const actual   = parseFloat(input.value)         || 0;
+    const variance = actual - planned;
+
+    const cell = row.querySelector('.variance-cell');
+    if (variance > 0) {
+        cell.innerHTML = `<span class="var-pos">+${variance.toFixed(3)}</span>`;
+    } else if (variance < 0) {
+        cell.innerHTML = `<span class="var-neg">${variance.toFixed(3)}</span>`;
+    } else {
+        cell.innerHTML = `<span class="var-zero">0.000</span>`;
+    }
+
+    let total = 0;
+    document.querySelectorAll('.actual-input').forEach(i => {
+        total += parseFloat(i.value) || 0;
+    });
+    document.getElementById('totalActual').textContent = total.toFixed(2);
+}
+
+function saveConsumption() {
+    const rows = document.querySelectorAll('#consumeBody tr');
+    const items = [];
+
+    rows.forEach(row => {
+        const actualInput = row.querySelector('.actual-input');
+        const actualKg    = parseFloat(actualInput?.value) || 0;
+        if (actualKg <= 0) return;
+
+        items.push({
+            ItemId    : parseInt(row.dataset.itemId),
+            ItemName  : row.dataset.itemName,
+            PlannedKg : parseFloat(row.dataset.planned) || 0,
+            ActualKg  : actualKg
+        });
+    });
+
+    if (!items.length) {
+        alert('Please enter actual KGs for at least one material.');
+        return;
+    }
+
+    if (!confirm(`Save consumption for ${items.length} material(s)?\n\nThis will DEDUCT stock immediately.`)) return;
+
+    const btn = document.getElementById('saveBtn');
+    btn.disabled    = true;
+    btn.textContent = '⏳ Saving...';
+
+    fetch('/Production/SaveConsumption', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ ProductionOrderId: productionOrderId, Items: items })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            alert(`✅ ${d.message}`);
+            window.location.href = `/Production/Materials/${productionOrderId}`;
+        } else {
+            alert('❌ ' + d.message);
+            btn.disabled    = false;
+            btn.textContent = '✅ Save Consumption & Deduct Stock';
+        }
+    })
+    .catch(() => {
+        alert('❌ Error saving consumption.');
+        btn.disabled    = false;
+        btn.textContent = '✅ Save Consumption & Deduct Stock';
+    });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.actual-input').forEach(i => calcVariance(i));
+});
+</script>

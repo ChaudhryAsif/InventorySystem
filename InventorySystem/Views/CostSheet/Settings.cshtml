@@ -1,0 +1,128 @@
+﻿@model InventorySystem.Core.Models.CostSheetSettings
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Cost Sheet Settings";
+}
+<style>
+    .settings-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.08); padding:2rem; max-width:680px; margin:0 auto; }
+    .settings-title { font-size:1.2rem; font-weight:700; color:#1e3a5f; margin-bottom:1.5rem; }
+    .settings-section { font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#6b7280; margin:1.5rem 0 .75rem; border-bottom:1px solid #e5e7eb; padding-bottom:.4rem; }
+    .settings-row { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:.75rem; }
+    .settings-group label { font-size:.8rem; color:#374151; font-weight:600; display:block; margin-bottom:.3rem; }
+    .settings-input { width:100%; padding:.5rem .75rem; border:1px solid #d1d5db; border-radius:8px; font-size:.9rem; }
+    .settings-input:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+    .btn-save-settings { background:#1e3a5f; color:#fff; padding:.65rem 2rem; border:none; border-radius:8px; font-size:.95rem; font-weight:600; cursor:pointer; margin-top:1rem; }
+    .btn-save-settings:hover { background:#2d5282; }
+</style>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <div>
+            <h2>⚙️ Cost Sheet Settings</h2>
+            <p style="color:#666; margin:0;">Configure default overhead rates applied to all new cost sheets</p>
+        </div>
+        <a href="/CostSheet/Index" class="btn btn-outline-secondary">← Back to List</a>
+    </div>
+
+    <div class="settings-card">
+        <div class="settings-title">⚙️ Default Overhead Rates</div>
+        <p style="font-size:.85rem; color:#6b7280; margin-bottom:1.5rem;">
+            These rates auto-populate when creating a new cost sheet. They can be overridden per sheet.
+        </p>
+
+        <div class="settings-section">Labour & Energy</div>
+        <div class="settings-row">
+            <div class="settings-group">
+                <label>Labour Rate (per unit)</label>
+                <input type="number" class="settings-input" id="labourRate"
+                       value="@Model.LabourRate" step="0.01" min="0">
+            </div>
+            <div class="settings-group">
+                <label>Energy Rate (per unit)</label>
+                <input type="number" class="settings-input" id="energyRate"
+                       value="@Model.EnergyRate" step="0.01" min="0">
+            </div>
+        </div>
+
+        <div class="settings-section">Overhead Percentages (applied on Sub-Total)</div>
+        <div class="settings-row">
+            <div class="settings-group">
+                <label>Waste %</label>
+                <input type="number" class="settings-input" id="wastePercentage"
+                       value="@Model.WastePercentage" step="0.01" min="0">
+            </div>
+            <div class="settings-group">
+                <label>Admin Expense %</label>
+                <input type="number" class="settings-input" id="adminExpPercentage"
+                       value="@Model.AdminExpPercentage" step="0.01" min="0">
+            </div>
+        </div>
+        <div class="settings-row">
+            <div class="settings-group">
+                <label>Selling & Distribution %</label>
+                <input type="number" class="settings-input" id="sellingDistPercentage"
+                       value="@Model.SellingDistPercentage" step="0.01" min="0">
+            </div>
+            <div class="settings-group">
+                <label>Repair & Maintenance %</label>
+                <input type="number" class="settings-input" id="repairMaintenancePercentage"
+                       value="@Model.RepairMaintenancePercentage" step="0.01" min="0">
+            </div>
+        </div>
+        <div class="settings-row">
+            <div class="settings-group">
+                <label>Store & Spares %</label>
+                <input type="number" class="settings-input" id="storeSparesPercentage"
+                       value="@Model.StoreSparesPercentage" step="0.01" min="0">
+            </div>
+            <div class="settings-group">
+                <label>Manufacturing Cost %</label>
+                <input type="number" class="settings-input" id="manufacturingCostPercentage"
+                       value="@Model.ManufacturingCostPercentage" step="0.01" min="0">
+            </div>
+        </div>
+
+        <div class="settings-section">Defaults</div>
+        <div class="settings-row">
+            <div class="settings-group">
+                <label>Default Freight Rate</label>
+                <input type="number" class="settings-input" id="defaultFreightRate"
+                       value="@Model.DefaultFreightRate" step="0.01" min="0">
+            </div>
+            <div class="settings-group">
+                <label>Default Profit %</label>
+                <input type="number" class="settings-input" id="defaultProfitPct"
+                       value="@Model.DefaultProfitPct" step="0.01" min="0">
+            </div>
+        </div>
+
+        <button class="btn-save-settings" onclick="saveSettings()">💾 Save Settings</button>
+    </div>
+
+<script>
+function saveSettings() {
+    const payload = {
+        LabourRate:                  parseFloat(document.getElementById('labourRate').value) || 0,
+        EnergyRate:                  parseFloat(document.getElementById('energyRate').value) || 0,
+        WastePercentage:             parseFloat(document.getElementById('wastePercentage').value) || 0,
+        AdminExpPercentage:          parseFloat(document.getElementById('adminExpPercentage').value) || 0,
+        SellingDistPercentage:       parseFloat(document.getElementById('sellingDistPercentage').value) || 0,
+        RepairMaintenancePercentage: parseFloat(document.getElementById('repairMaintenancePercentage').value) || 0,
+        StoreSparesPercentage:       parseFloat(document.getElementById('storeSparesPercentage').value) || 0,
+        ManufacturingCostPercentage: parseFloat(document.getElementById('manufacturingCostPercentage').value) || 0,
+        DefaultFreightRate:          parseFloat(document.getElementById('defaultFreightRate').value) || 0,
+        DefaultProfitPct:            parseFloat(document.getElementById('defaultProfitPct').value) || 0
+    };
+
+    fetch('/CostSheet/SaveSettings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) alert('✅ ' + d.message);
+        else           alert('❌ ' + d.message);
+    })
+    .catch(() => alert('❌ Error saving settings.'));
+}
+</script>

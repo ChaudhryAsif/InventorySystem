@@ -1,0 +1,98 @@
+﻿@model IEnumerable<dynamic>
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Cost Sheets";
+}
+
+<link href="~/css/report.css" rel="stylesheet" />
+<style>
+    .cs-index-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; }
+    .cs-table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 6px rgba(0,0,0,.08); }
+    .cs-table thead tr { background:#1e3a5f; color:#fff; }
+    .cs-table th, .cs-table td { padding:.75rem 1rem; font-size:.875rem; text-align:left; border-bottom:1px solid #f0f0f0; }
+    .cs-table tbody tr:hover { background:#f8faff; }
+    .badge-draft  { background:#fff3cd; color:#856404; padding:.2rem .6rem; border-radius:20px; font-size:.75rem; font-weight:600; }
+    .badge-final  { background:#d1fae5; color:#065f46; padding:.2rem .6rem; border-radius:20px; font-size:.75rem; font-weight:600; }
+    .btn-sm       { padding:.3rem .75rem; border-radius:6px; font-size:.8rem; border:none; cursor:pointer; }
+    .btn-edit     { background:#3b82f6; color:#fff; }
+    .btn-delete   { background:#ef4444; color:#fff; margin-left:.3rem; }
+</style>
+
+<div class="cs-index-header">
+    <div>
+        <h2>📦 Cost Sheets</h2>
+        <p style="color:#666; margin:0;">All saved product cost / rate sheets</p>
+    </div>
+    <a href="/CostSheet/Create" class="btn btn-success">➕ New Cost Sheet</a>
+</div>
+
+<table class="cs-table">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Sheet No</th>
+            <th>Date</th>
+            <th>Customer</th>
+            <th>Item / Product</th>
+            <th>Box Style</th>
+            <th>Final Cost (W/O GST)</th>
+            <th>Final Rate (W/ GST)</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @{
+            int i = 1;
+            foreach (var s in Model)
+            {
+                <tr>
+                    <td>@i</td>
+                    <td><strong>#@s.CostSheetId</strong></td>
+                    <td>@(s.SheetDate != null ? ((DateTime)s.SheetDate).ToString("dd-MMM-yyyy") : "–")</td>
+                    <td>@(s.CustomerName ?? "–")</td>
+                    <td>@(s.ItemName ?? "–")</td>
+                    <td>@(s.BoxStyle ?? "–")</td>
+                    <td style="text-align:right;"><strong>@(s.FinalCostWOGST != null ? ((decimal)s.FinalCostWOGST).ToString("N2") : "–")</strong></td>
+                    <td style="text-align:right;"><strong>@(s.FinalRateWithGST != null ? ((decimal)s.FinalRateWithGST).ToString("N2") : "–")</strong></td>
+                    <td>
+                        @if (s.Status == "Final")
+                        { <span class="badge-final">✅ Final</span> }
+                        else
+                        { <span class="badge-draft">✏️ Draft</span> }
+                    </td>
+                    <td>
+                        <a href="/CostSheet/Edit/@s.CostSheetId" class="btn-sm btn-edit">✏️ Edit</a>
+                        <button class="btn-sm btn-delete" onclick="deleteSheet(@s.CostSheetId)">🗑️ Delete</button>
+                        @if (s.Status == "Final")
+                        {
+                            <a href="/Production/Create?costSheetId=@s.CostSheetId"
+                               style="background:#16a34a;color:#fff;padding:.3rem .7rem;border-radius:6px;text-decoration:none;font-size:.78rem;">
+                                🏭 Produce
+                            </a>
+                        }
+                    </td>
+                </tr>
+                i++;
+            }
+        }
+        @if (!Model.Any())
+        {
+            <tr>
+                <td colspan="10" style="text-align:center; padding:2rem; color:#999;">
+                    No cost sheets found. Click ➕ New Cost Sheet to get started.
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<script>
+function deleteSheet(id) {
+    if (!confirm('Delete this cost sheet? This cannot be undone.')) return;
+    fetch(`/CostSheet/Delete/${id}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => { if (d.success) location.reload(); else alert('❌ Could not delete.'); })
+        .catch(() => alert('❌ Error deleting cost sheet.'));
+}
+</script>

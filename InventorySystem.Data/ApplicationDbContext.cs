@@ -43,6 +43,16 @@ namespace InventorySystem.Data
         public DbSet<ConsumeInvoice> ConsumeInvoice => Set<ConsumeInvoice>();
         public DbSet<ConsumeInvoiceBody> ConsumeInvoiceBody => Set<ConsumeInvoiceBody>();
 
+        // ── Cost Sheet ────────────────────────────────────────────────────────────
+        public DbSet<CostSheetSettings> CostSheetSettings => Set<CostSheetSettings>();
+        public DbSet<CostSheet> CostSheet => Set<CostSheet>();
+        public DbSet<CostSheetPly> CostSheetPly => Set<CostSheetPly>();
+
+        // ── Production ────────────────────────────────────────────────────────────
+        public DbSet<ProductionOrder> ProductionOrder => Set<ProductionOrder>();
+        public DbSet<ProductionMaterial> ProductionMaterial => Set<ProductionMaterial>();
+        public DbSet<ProductionConsumption> ProductionConsumption => Set<ProductionConsumption>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<PurchaseInvoiceBody>()
@@ -88,6 +98,26 @@ namespace InventorySystem.Data
 
             modelBuilder.Entity<ConsumeInvoiceBody>()
                 .Property(p => p.Srno).ValueGeneratedOnAdd();
+
+            modelBuilder.Entity<CostSheetPly>()
+                .Property(p => p.PlyId).ValueGeneratedOnAdd();
+
+            // Seed one default settings row
+            modelBuilder.Entity<CostSheetSettings>().HasData(new CostSheetSettings
+            {
+                Id = 1,
+                LabourRate = 5m,
+                EnergyRate = 5.08m,
+                WastePercentage = 6m,
+                AdminExpPercentage = 1.52m,
+                SellingDistPercentage = 1m,
+                RepairMaintenancePercentage = 1.5m,
+                StoreSparesPercentage = 1.5m,
+                ManufacturingCostPercentage = 1.72m,
+                DefaultFreightRate = 0.5m,
+                DefaultProfitPct = 11m,
+                UpdatedAt = new DateTime(2026, 1, 1)
+            });
 
             base.OnModelCreating(modelBuilder);
         }

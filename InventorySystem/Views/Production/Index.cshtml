@@ -1,0 +1,174 @@
+﻿@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Production Orders";
+    var orders = Model as IEnumerable<dynamic> ?? new List<dynamic>();
+    int pending   = orders.Count(o => (string)o.Status == "Pending");
+    int inProd    = orders.Count(o => (string)o.Status == "InProduction");
+    int completed = orders.Count(o => (string)o.Status == "Completed");
+    int urgent    = orders.Count(o => (int)o.DaysLeft <= 2
+                                   && (string)o.Status != "Completed"
+                                   && (string)o.Status != "Cancelled");
+}
+
+<style>
+    .status-badge        { padding:.3rem .8rem; border-radius:20px; font-size:.75rem; font-weight:600; }
+    .status-Pending      { background:#fef3c7; color:#92400e; }
+    .status-InProduction { background:#dbeafe; color:#1e40af; }
+    .status-Completed    { background:#dcfce7; color:#166534; }
+    .status-Cancelled    { background:#fee2e2; color:#991b1b; }
+    .days-ok     { color:#16a34a; font-weight:600; }
+    .days-warn   { color:#d97706; font-weight:600; }
+    .days-urgent { color:#dc2626; font-weight:600; }
+    .action-btns { display:flex; gap:.4rem; flex-wrap:wrap; }
+    .btn-materials { background:#3b82f6; color:#fff; border:none; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .btn-consume   { background:#16a34a; color:#fff; border:none; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .btn-complete  { background:#7c3aed; color:#fff; border:none; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .btn-cancel    { background:#ef4444; color:#fff; border:none; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .btn-delete    { background:#6b7280; color:#fff; border:none; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .summary-cards { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.5rem; }
+    .summary-card  { background:#fff; border-radius:10px; padding:1rem 1.2rem; box-shadow:0 2px 8px rgba(0,0,0,.07); }
+    .summary-card .val { font-size:1.6rem; font-weight:700; color:#1e3a5f; }
+    .summary-card .lbl { font-size:.78rem; color:#6b7280; margin-top:.2rem; }
+    .prod-table-wrap { background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.07); overflow:hidden; }
+    .prod-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+    .prod-table th { background:#1e3a5f; color:#fff; padding:.7rem .9rem; text-align:left; font-weight:600; white-space:nowrap; }
+    .prod-table td { padding:.65rem .9rem; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
+    .prod-table tbody tr:hover { background:#f8fafc; }
+</style>
+
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem;">
+    <div>
+        <h2 style="font-size:1.6rem;font-weight:700;color:#1e3a5f;margin:0;">🏭 Production Orders</h2>
+        <p style="color:#6b7280;margin:.2rem 0 0;font-size:.9rem;">Manufacturing orders linked to approved cost sheets</p>
+    </div>
+    <a href="/Production/Create"
+       style="background:#1e3a5f;color:#fff;padding:.55rem 1.4rem;border-radius:8px;text-decoration:none;font-weight:600;font-size:.9rem;">
+        + New Production Order
+    </a>
+</div>
+
+<div class="summary-cards">
+    <div class="summary-card">
+        <div class="val">@pending</div>
+        <div class="lbl">⏳ Pending</div>
+    </div>
+    <div class="summary-card">
+        <div class="val" style="color:#1e40af">@inProd</div>
+        <div class="lbl">🏭 In Production</div>
+    </div>
+    <div class="summary-card">
+        <div class="val" style="color:#16a34a">@completed</div>
+        <div class="lbl">✅ Completed</div>
+    </div>
+    <div class="summary-card">
+        <div class="val" style="color:#dc2626">@urgent</div>
+        <div class="lbl">🔴 Urgent (≤2 days)</div>
+    </div>
+</div>
+
+<div class="prod-table-wrap">
+    <table class="prod-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Order ID</th>
+                <th>Customer</th>
+                <th>Product / Item</th>
+                <th>Box Style</th>
+                <th>Qty</th>
+                <th>Rate/Box</th>
+                <th>Total Value</th>
+                <th>Order Date</th>
+                <th>Delivery Date</th>
+                <th>Days Left</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @{ int i = 1; }
+            @foreach (var o in orders)
+            {
+                string status    = (string)o.Status;
+                int    daysLeft  = (int)o.DaysLeft;
+                string daysClass = daysLeft <= 1 ? "days-urgent" : daysLeft <= 3 ? "days-warn" : "days-ok";
+                string daysText  = daysLeft < 0  ? "Overdue!" : daysLeft == 0 ? "Today!" : $"{daysLeft}d";
+                decimal fRate    = (decimal)(o.FinalRate ?? 0m);
+                decimal tVal     = (decimal)(o.TotalValue ?? 0m);
+                int     orderId  = (int)o.ProductionOrderId;
+
+                <tr>
+                    <td>@(i++)</td>
+                    <td><strong>#@orderId</strong></td>
+                    <td>@o.CustomerName</td>
+                    <td>@o.ProductName</td>
+                    <td><span style="font-size:.78rem;color:#6b7280">@o.BoxStyle</span></td>
+                    <td>@((int)o.OrderQty)</td>
+                    <td>@fRate.ToString("N2")</td>
+                    <td><strong>@tVal.ToString("N0")</strong></td>
+                    <td>@((DateTime)o.OrderDate)</td>
+                    <td>@((DateTime)o.DeliveryDate)</td>
+                    <td><span class="@daysClass">@daysText</span></td>
+                    <td><span class="status-badge status-@status">@status</span></td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-materials"
+                                    onclick="location.href='/Production/Materials/@orderId'">
+                                📋 Materials
+                            </button>
+                            @if (status == "Pending" || status == "InProduction")
+                            {
+                                <button class="btn-consume"
+                                        onclick="location.href='/Production/Consume/@orderId'">
+                                    🏭 Consume
+                                </button>
+                            }
+                            @if (status == "InProduction")
+                            {
+                                <button class="btn-complete" onclick="completeOrder(@orderId)">✅ Complete</button>
+                            }
+                            @if (status == "Pending")
+                            {
+                                <button class="btn-cancel" onclick="cancelOrder(@orderId)">✖ Cancel</button>
+                            }
+                            @if (status == "Cancelled" || status == "Completed")
+                            {
+                                <button class="btn-delete" onclick="deleteOrder(@orderId)">🗑 Delete</button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+            @if (!orders.Any())
+            {
+                <tr>
+                    <td colspan="13" style="text-align:center;padding:3rem;color:#9ca3af;">
+                        No production orders yet.
+                        <a href="/Production/Create" style="color:#1e40af;">Create one from a Final Cost Sheet.</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<script>
+function completeOrder(id) {
+    if (!confirm('Mark this production order as Completed?')) return;
+    fetch(`/Production/Complete/${id}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => { if (d.success) location.reload(); else alert(d.message); });
+}
+function cancelOrder(id) {
+    if (!confirm('Cancel this production order?')) return;
+    fetch(`/Production/Cancel/${id}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => { if (d.success) location.reload(); else alert(d.message); });
+}
+function deleteOrder(id) {
+    if (!confirm('Permanently delete this order?')) return;
+    fetch(`/Production/Delete/${id}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => { if (d.success) location.reload(); else alert(d.message); });
+}
+</script>

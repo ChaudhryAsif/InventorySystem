@@ -1,0 +1,236 @@
+﻿@{
+    Layout = "_Layout";
+    ViewData["Title"] = "New Production Order";
+    var finalSheets = (ViewBag.FinalSheets as IEnumerable<dynamic>) ?? new List<dynamic>();
+    int selectedId  = (int)(ViewBag.SelectedCostSheetId ?? 0);
+}
+
+<style>
+    .po-card   { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.08); padding:1.5rem; margin-bottom:1.2rem; }
+    .po-title  { font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
+                 color:#fff; background:#1e3a5f; padding:.4rem .9rem; border-radius:6px;
+                 margin-bottom:1rem; display:inline-block; }
+    .po-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; }
+    .po-fg     { display:flex; flex-direction:column; gap:.3rem; }
+    .po-fg label { font-size:.78rem; font-weight:600; color:#374151; }
+    .po-input  { padding:.45rem .7rem; border:1px solid #d1d5db; border-radius:7px; font-size:.87rem; width:100%; box-sizing:border-box; }
+    .po-input:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.12); }
+    .po-input[readonly] { background:#f3f4f6; color:#6b7280; }
+    .info-box  { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:1rem; margin-top:.8rem; }
+    .info-row  { display:flex; gap:2rem; flex-wrap:wrap; }
+    .info-item { font-size:.83rem; }
+    .info-item span { font-weight:700; color:#1e40af; }
+    .btn-save  { background:#1e3a5f; color:#fff; border:none; padding:.6rem 2rem; border-radius:8px; font-size:.95rem; font-weight:600; cursor:pointer; }
+    .btn-save:hover    { background:#2d5a9e; }
+    .btn-save:disabled { background:#9ca3af; cursor:not-allowed; }
+</style>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+    <div>
+        <h2 style="font-size:1.5rem;font-weight:700;color:#1e3a5f;margin:0;">🏭 New Production Order</h2>
+        <p style="color:#6b7280;margin:.2rem 0 0;font-size:.9rem;">Create a production order from an approved (Final) Cost Sheet</p>
+    </div>
+    <a href="/Production/Index" style="color:#6b7280;font-size:.9rem;">← Back to Orders</a>
+</div>
+
+<div class="po-card">
+    <span class="po-title">📋 Select Cost Sheet</span>
+    <div class="po-fg">
+        <label>Cost Sheet (Final only)</label>
+        <select id="costSheetSelect" class="po-input" onchange="loadCostSheetInfo()">
+            <option value="">-- Select a Final Cost Sheet --</option>
+            @foreach (var s in finalSheets)
+            {
+                int sheetId = (int)s.CostSheetId;
+                decimal rate = (decimal)(s.FinalRateWithGST ?? 0m);
+                if (sheetId == selectedId)
+                {
+                    <option value="@sheetId" selected>
+                        #@sheetId — @s.ItemName (@s.BoxStyle) — Rate: @rate.ToString("N2")
+                    </option>
+                }
+                else
+                {
+                    <option value="@sheetId">
+                        #@sheetId — @s.ItemName (@s.BoxStyle) — Rate: @rate.ToString("N2")
+                    </option>
+                }
+            }
+        </select>
+    </div>
+
+    @if (!finalSheets.Any())
+    {
+        <div style="margin-top:.8rem;padding:.8rem 1rem;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;font-size:.85rem;">
+            ⚠️ No <strong>Final</strong> cost sheets found.
+            <a href="/CostSheet/Index" style="color:#1e40af;">Go to Cost Sheets</a> and mark one as Final first.
+        </div>
+    }
+
+    <div id="sheetInfoBox" class="info-box" style="display:none;">
+        <div class="info-row">
+            <div class="info-item">Product: <span id="infoProduct">–</span></div>
+            <div class="info-item">Box Style: <span id="infoBoxStyle">–</span></div>
+            <div class="info-item">Customer: <span id="infoCustomer">–</span></div>
+            <div class="info-item">Rate / Box: <span id="infoRate">–</span></div>
+        </div>
+    </div>
+</div>
+
+<div class="po-card">
+    <span class="po-title">📦 Order Details</span>
+
+    <div class="po-grid-3" style="margin-bottom:1rem;">
+        <div class="po-fg">
+            <label>Product / Item Name</label>
+            <input type="text" id="productName" class="po-input"
+                   placeholder="Auto-filled from cost sheet">
+        </div>
+        <div class="po-fg">
+            <label>Customer</label>
+            <input type="text" id="customerName" class="po-input" readonly
+                   placeholder="Auto-filled from cost sheet">
+            <input type="hidden" id="customerId">
+        </div>
+        <div class="po-fg">
+            <label>Order Quantity (boxes) *</label>
+            <input type="number" id="orderQty" class="po-input"
+                   placeholder="e.g. 10000" min="1" oninput="calcTotal()">
+        </div>
+    </div>
+
+    <div class="po-grid-3" style="margin-bottom:1rem;">
+        <div class="po-fg">
+            <label>Order Date *</label>
+            <input type="date" id="orderDate" class="po-input"
+                   value="@DateTime.Today.ToString("yyyy-MM-dd")">
+        </div>
+        <div class="po-fg">
+            <label>Delivery Date *</label>
+            <input type="date" id="deliveryDate" class="po-input">
+        </div>
+        <div class="po-fg">
+            <label>Total Order Value</label>
+            <input type="text" id="totalValue" class="po-input" readonly
+                   style="background:#eff6ff;font-weight:700;color:#1e40af;"
+                   placeholder="0.00">
+        </div>
+    </div>
+
+    <div class="po-fg" style="margin-bottom:1rem;">
+        <label>Remarks</label>
+        <textarea id="remarks" class="po-input" rows="2"
+                  placeholder="Any special instructions..."></textarea>
+    </div>
+</div>
+
+<div style="text-align:right;margin-top:1rem;">
+    <button class="btn-save" id="saveBtn" onclick="saveOrder()">
+        🏭 Create Production Order
+    </button>
+</div>
+
+<script>
+let currentRate = 0;
+
+function loadCostSheetInfo() {
+    const id = document.getElementById('costSheetSelect').value;
+    document.getElementById('sheetInfoBox').style.display = 'none';
+
+    if (!id) {
+        currentRate = 0;
+        document.getElementById('productName').value  = '';
+        document.getElementById('customerName').value = '';
+        document.getElementById('customerId').value   = '';
+        document.getElementById('totalValue').value   = '';
+        return;
+    }
+
+    fetch(`/Production/GetCostSheetInfo?id=${id}`)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) return;
+            const s = d.data;
+            currentRate = parseFloat(s.finalRateWithGST || 0);
+
+            document.getElementById('infoProduct').textContent  = s.itemName     || '–';
+            document.getElementById('infoBoxStyle').textContent = s.boxStyle     || '–';
+            document.getElementById('infoCustomer').textContent = s.customerName || '–';
+            document.getElementById('infoRate').textContent     = currentRate.toFixed(2);
+
+            document.getElementById('productName').value  = s.itemName     || '';
+            document.getElementById('customerName').value = s.customerName || '';
+            document.getElementById('customerId').value   = s.customerId   || '';
+
+            document.getElementById('sheetInfoBox').style.display = 'flex';
+            calcTotal();
+        })
+        .catch(() => alert('❌ Failed to load cost sheet info.'));
+}
+
+function calcTotal() {
+    const qty   = parseInt(document.getElementById('orderQty').value) || 0;
+    const total = qty * currentRate;
+    document.getElementById('totalValue').value = total > 0 ? total.toFixed(2) : '';
+}
+
+function saveOrder() {
+    const costSheetId  = parseInt(document.getElementById('costSheetSelect').value);
+    const orderQty     = parseInt(document.getElementById('orderQty').value);
+    const orderDate    = document.getElementById('orderDate').value;
+    const deliveryDate = document.getElementById('deliveryDate').value;
+    const productName  = document.getElementById('productName').value.trim();
+    const customerId   = document.getElementById('customerId').value;
+    const remarks      = document.getElementById('remarks').value;
+
+    if (!costSheetId)              { alert('Please select a Cost Sheet.');      return; }
+    if (!orderQty || orderQty < 1) { alert('Please enter order quantity.');     return; }
+    if (!orderDate)                { alert('Please enter order date.');          return; }
+    if (!deliveryDate)             { alert('Please enter delivery date.');       return; }
+    if (new Date(deliveryDate) <= new Date(orderDate)) {
+        alert('Delivery date must be after order date.');
+        return;
+    }
+
+    const btn = document.getElementById('saveBtn');
+    btn.disabled    = true;
+    btn.textContent = '⏳ Creating...';
+
+    const payload = {
+        CostSheetId  : costSheetId,
+        CustomerId   : customerId,
+        ProductName  : productName,
+        OrderQty     : orderQty,
+        OrderDate    : orderDate,
+        DeliveryDate : deliveryDate,
+        Remarks      : remarks
+    };
+
+    fetch('/Production/Save', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            alert(`✅ ${d.message}`);
+            window.location.href = `/Production/Materials/${d.id}`;
+        } else {
+            alert('❌ ' + (d.message || 'Unknown error'));
+            btn.disabled    = false;
+            btn.textContent = '🏭 Create Production Order';
+        }
+    })
+    .catch(() => {
+        alert('❌ Error saving order. Please try again.');
+        btn.disabled    = false;
+        btn.textContent = '🏭 Create Production Order';
+    });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    const sel = document.getElementById('costSheetSelect');
+    if (sel.value) loadCostSheetInfo();
+});
+</script>
