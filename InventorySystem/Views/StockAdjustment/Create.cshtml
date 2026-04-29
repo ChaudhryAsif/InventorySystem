@@ -1,0 +1,322 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Stock Adjustment";
+}
+
+<link href="~/css/sale.css" rel="stylesheet" />
+
+<style>
+    .sa-wrapper { max-width: 1400px; margin: 0 auto; }
+    .sa-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 1.5rem; margin-bottom: 1.2rem; }
+    .sa-section-title { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+                        color: #fff; background: #1e3a5f; padding: .4rem .9rem; border-radius: 6px;
+                        margin-bottom: 1rem; display: inline-block; }
+    .sa-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .sa-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+    .sa-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; }
+    .sa-fg { display: flex; flex-direction: column; gap: .3rem; }
+    .sa-fg label { font-size: .78rem; font-weight: 600; color: #374151; }
+    .sa-input { padding: .45rem .7rem; border: 1px solid #d1d5db; border-radius: 7px; font-size: .87rem;
+                width: 100%; box-sizing: border-box; }
+    .sa-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+    .sa-input[readonly] { background: #f3f4f6; color: #6b7280; }
+
+    .items-table { width: 100%; border-collapse: collapse; font-size: .83rem; margin-top: 1rem; }
+    .items-table thead tr { background: #1e3a5f; color: #fff; }
+    .items-table th, .items-table td { padding: .5rem .6rem; text-align: left; border-bottom: 1px solid #e5e7eb; }
+    .items-table tbody tr:hover { background: #f8faff; }
+    .items-table .num { text-align: right; }
+
+    .item-input { padding: .3rem .5rem; border: 1px solid #d1d5db; border-radius: 5px; font-size: .82rem;
+                  width: 100%; box-sizing: border-box; }
+    .item-input.calc { background: #eff6ff; font-weight: 600; color: #1e40af; }
+
+    .btn-add-item { background: #059669; color: #fff; border: none; border-radius: 7px; padding: .4rem 1rem;
+                    font-size: .82rem; cursor: pointer; margin-top: .5rem; }
+    .btn-remove { background: #ef4444; color: #fff; border: none; border-radius: 5px; padding: .25rem .6rem;
+                  font-size: .8rem; cursor: pointer; }
+    .sa-action-bar { display: flex; gap: .75rem; justify-content: flex-end; margin-top: 1.2rem; }
+
+    .lookup-wrap { display: flex; gap: .4rem; }
+    .lookup-wrap input { flex: 1; }
+    .btn-lookup { padding: .45rem .8rem; background: #1e3a5f; color: #fff; border: none; border-radius: 7px; cursor: pointer; }
+
+    /* Item Modal */
+    .item-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.6); z-index: 1000; }
+    .item-modal-dialog { background: #fff; border-radius: 8px; max-width: 900px; margin: 2rem auto; padding: 1.5rem; position: relative; max-height: 85vh; overflow-y: auto; }
+    .item-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .item-modal-title { font-size: 1.25rem; font-weight: 600; }
+    .item-modal-close { position: absolute; top: 1rem; right: 1rem; font-size: 1.5rem; color: #666; cursor: pointer; background: none; border: none; }
+    .item-modal-body { max-height: 60vh; overflow-y: auto; }
+    .item-search-filters { display: grid; grid-template-columns: 2fr 1fr; gap: .5rem; margin-bottom: 1rem; }
+    .item-search-input { padding: .6rem .9rem; border: 1px solid #d1d5db; border-radius: 7px; font-size: .87rem; width: 100%; }
+    .item-filter-select { padding: .6rem .9rem; border: 1px solid #d1d5db; border-radius: 7px; font-size: .87rem; width: 100%; }
+
+    .summary-box { background: #f8faff; border: 1px solid #dbeafe; border-radius: 10px; padding: 1rem; margin-top: 1rem; }
+    .summary-row { display: flex; justify-content: space-between; padding: .4rem 0; }
+    .summary-label { font-weight: 600; color: #374151; }
+    .summary-value { font-size: 1.1rem; font-weight: 700; color: #1e40af; }
+
+    /* Improve modal overlay */
+.item-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,.65); /* Darker overlay */
+    z-index: 1000;
+    backdrop-filter: blur(2px); /* Blur background */
+}
+
+/* Improve modal dialog */
+.item-modal-dialog {
+    background: #fff;
+    border-radius: 12px; /* More rounded */
+    max-width: 1000px; /* Wider */
+    margin: 3rem auto;
+    padding: 1.8rem;
+    position: relative;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,.2); /* Better shadow */
+    animation: modalSlideIn 0.3s ease;
+}
+
+@@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Improve modal title */
+.item-modal-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #1e3a5f;
+    margin-bottom: 0;
+}
+
+/* Better table in modal */
+.item-modal-body .items-table tbody tr:hover {
+    background: #f0f7ff;
+    transition: background 0.2s;
+}
+
+/* Better search filters */
+.item-search-filters {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: .8rem;
+    margin-bottom: 1.2rem;
+    padding: 1rem;
+    background: #f8faff;
+    border-radius: 8px;
+}
+
+.item-search-input, .item-filter-select {
+    padding: .7rem 1rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: .88rem;
+    width: 100%;
+    transition: border-color 0.2s;
+}
+
+.item-search-input:focus, .item-filter-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+}
+
+/* Make close button more visible */
+.item-modal-close {
+    position: absolute;
+    top: 1.2rem;
+    right: 1.2rem;
+    font-size: 1.8rem;
+    color: #9ca3af;
+    cursor: pointer;
+    background: none;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.item-modal-close:hover {
+    background: #fee;
+    color: #dc2626;
+}
+
+/* Add this to your <style> section */
+
+/* Better button styles in modal */
+.btn-sm.btn-primary {
+    padding: 0.4rem 1rem;
+    background: #3b82f6;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.btn-sm.btn-primary:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+</style>
+
+<div class="sa-wrapper">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <div>
+            <h2>📦 Stock Adjustment</h2>
+            <p style="color: #666; margin: 0;">Add existing inventory without purchase invoice</p>
+        </div>
+        <a href="/StockAdjustment/Index" class="btn btn-outline-secondary">← Back to List</a>
+    </div>
+
+    <!-- Header Info -->
+    <div class="sa-card">
+        <div class="sa-grid-4">
+            <div class="sa-fg">
+                <label>Adjustment No</label>
+                <input class="sa-input" id="adjustmentNo" readonly>
+            </div>
+            <div class="sa-fg">
+                <label>Date</label>
+                <input type="date" class="sa-input" id="adjustmentDate" value="@DateTime.Now.ToString("yyyy-MM-dd")">
+            </div>
+            <div class="sa-fg">
+                <label>Adjustment Type</label>
+                <select class="sa-input" id="adjustmentType">
+                    <option value="Opening Stock">Opening Stock</option>
+                    <option value="Physical Count">Physical Count</option>
+                    <option value="Correction">Correction</option>
+                    <option value="Manual Addition">Manual Addition</option>
+                </select>
+            </div>
+            @* <div class="sa-fg">
+                <label>Branch</label>
+                <select class="sa-input" id="branchId">
+                    <option value="1">Main Branch</option>
+                    <option value="2">Branch 2</option>
+                </select>
+            </div> *@
+        </div>
+    </div>
+
+    <!-- Items Table -->
+    <div class="sa-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span class="sa-section-title">📋 Adjustment Items</span>
+            <button type="button" class="btn-add-item" onclick="openItemModal()">➕ Add Item</button>
+        </div>
+
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th style="width: 40px;">#</th>
+                    <th style="width: 70px;">Item ID</th>
+                    <th style="width: 250px;">Item Name</th>
+                    <th style="width: 150px;">Description</th>
+                    <th style="width: 120px;">Current Stock</th>
+                    <th style="width: 120px;">Quantity to Add</th>
+                    <th style="width: 120px;">Unit Cost</th>
+                    <th style="width: 120px;">Total Cost</th>
+                    <th style="width: 180px;">Reason</th>
+                    <th style="width: 50px;"></th>
+                </tr>
+            </thead>
+            <tbody id="itemsTableBody">
+                <tr>
+                    <td colspan="10" style="text-align: center; padding: 2rem; color: #6b7280;">
+                        No items added yet. Click "Add Item" to start.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="summary-box">
+            <div class="summary-row">
+                <span class="summary-label">Total Items:</span>
+                <span class="summary-value" id="totalItems">0</span>
+            </div>
+            <div class="summary-row">
+                <span class="summary-label">Total Quantity:</span>
+                <span class="summary-value" id="totalQuantity">0</span>
+            </div>
+            <div class="summary-row" style="border-top: 2px solid #bfdbfe; margin-top: .5rem; padding-top: .5rem;">
+                <span class="summary-label">Total Cost:</span>
+                <span class="summary-value" id="totalCost">0.00</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Remarks -->
+    <div class="sa-card">
+        <div class="sa-fg">
+            <label>Remarks / Notes</label>
+            <textarea class="sa-input" id="remarks" rows="3" placeholder="Enter any additional notes or remarks..."></textarea>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="sa-action-bar">
+        <button type="button" class="btn btn-outline-secondary" onclick="resetForm()">🔄 Reset</button>
+        <button type="button" class="btn btn-primary" onclick="saveDraft()">💾 Save as Draft</button>
+        <button type="button" class="btn btn-success" onclick="saveAndPost()">✅ Save & Post to Stock</button>
+    </div>
+</div>
+
+<!-- Item Selection Modal -->
+<div class="item-modal" id="itemModal">
+    <div class="item-modal-dialog">
+        <div class="item-modal-header">
+            <h3 class="item-modal-title">🔍 Select Item</h3>
+            <button class="item-modal-close" onclick="closeItemModal()">&times;</button>
+        </div>
+        <div class="item-modal-body">
+            <div class="item-search-filters">
+                <input type="text" class="item-search-input" id="itemSearch" 
+                       placeholder="🔍 Search by item name..." oninput="searchItems()">
+                <select class="item-filter-select" id="categoryFilter" onchange="searchItems()">
+                    <option value="">All Categories</option>
+                </select>
+            </div>
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th>Item ID</th>
+                        <th>Item Name</th>
+                        <th>Category</th>
+                        <th>Current Stock</th>
+                        <th>Sale Price</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="itemSearchResults">
+                    <tr><td colspan="6" style="text-align: center; padding: 2rem;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/stockadjustment.js"></script>
+}

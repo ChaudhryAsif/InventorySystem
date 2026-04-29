@@ -1,0 +1,474 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Stock Adjustments";
+}
+
+<style>
+    .sa-list-wrapper { max-width: 1400px; margin: 0 auto; padding: 1rem; }
+    .sa-list-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
+    .sa-list-table thead { background: #1e3a5f; color: #fff; }
+    .sa-list-table th, .sa-list-table td { padding: .75rem; text-align: left; border-bottom: 1px solid #e5e7eb; }
+    .sa-list-table tbody tr:hover { background: #f8faff; }
+    .badge { padding: .25rem .75rem; border-radius: 12px; font-size: .75rem; font-weight: 600; }
+    .badge-draft { background: #fef3c7; color: #92400e; }
+    .badge-posted { background: #d1fae5; color: #065f46; }
+
+    /* Modal Styles */
+    .details-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,.65);
+        z-index: 1000;
+        backdrop-filter: blur(3px);
+        overflow-y: auto;
+    }
+
+    .details-modal.active {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 2rem 1rem;
+    }
+
+    .details-modal-dialog {
+        background: #fff;
+        border-radius: 12px;
+        max-width: 1100px;
+        width: 100%;
+        margin: auto;
+        box-shadow: 0 10px 40px rgba(0,0,0,.3);
+        animation: modalSlideIn 0.3s ease;
+        position: relative;
+    }
+
+    @@keyframes modalSlideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .details-modal-header {
+        background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8f 100%);
+        color: #fff;
+        padding: 1.5rem;
+        border-radius: 12px 12px 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .details-modal-title {
+        font-size: 1.4rem;
+        font-weight: 700;
+        margin: 0;
+    }
+
+    .details-modal-close {
+        background: rgba(255,255,255,.15);
+        border: none;
+        color: #fff;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        font-size: 1.5rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+    }
+
+    .details-modal-close:hover {
+        background: rgba(255,255,255,.25);
+        transform: rotate(90deg);
+    }
+
+    .details-modal-body {
+        padding: 1.5rem;
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+
+    .details-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        background: #f8faff;
+        border-radius: 8px;
+    }
+
+    .detail-item {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .detail-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.25rem;
+    }
+
+    .detail-value {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .details-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+        font-size: 0.85rem;
+    }
+
+    .details-table thead {
+        background: #1e3a5f;
+        color: #fff;
+    }
+
+    .details-table th,
+    .details-table td {
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .details-table tbody tr:hover {
+        background: #f8faff;
+    }
+
+    .details-summary {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: #eff6ff;
+        border-radius: 8px;
+        border-left: 4px solid #3b82f6;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #dbeafe;
+    }
+
+    .summary-row:last-child {
+        border-bottom: none;
+        margin-top: 0.5rem;
+        padding-top: 1rem;
+        border-top: 2px solid #3b82f6;
+        font-size: 1.1rem;
+    }
+
+    .summary-label {
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .summary-value {
+        font-weight: 700;
+        color: #1e40af;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 3rem;
+        color: #3b82f6;
+    }
+
+    .loading-spinner {
+        display: inline-block;
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e5e7eb;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+<div class="sa-list-wrapper">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h2>📦 Stock Adjustments</h2>
+        <a href="/StockAdjustment/Create" class="btn btn-primary">➕ New Adjustment</a>
+    </div>
+
+    <table class="sa-list-table">
+        <thead>
+            <tr>
+                <th>Adjustment No</th>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Items</th>
+                <th>Total Qty</th>
+                <th>Status</th>
+                <th>Remarks</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="adjustmentsTableBody">
+            <tr><td colspan="8" style="text-align: center; padding: 2rem;">Loading...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Details Modal -->
+<div class="details-modal" id="detailsModal" onclick="closeDetailsModal(event)">
+    <div class="details-modal-dialog" onclick="event.stopPropagation()">
+        <div class="details-modal-header">
+            <h3 class="details-modal-title">📦 Stock Adjustment Details</h3>
+            <button class="details-modal-close" onclick="closeDetailsModal()">&times;</button>
+        </div>
+        <div class="details-modal-body" id="detailsModalBody">
+            <div class="loading-state">
+                <div class="loading-spinner"></div>
+                <p style="margin-top: 1rem;">Loading adjustment details...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', loadAdjustments);
+
+async function loadAdjustments() {
+    try {
+        const response = await fetch('/StockAdjustment/GetAdjustments');
+        const adjustments = await response.json();
+
+        console.log('Adjustments loaded:', adjustments);
+
+        const tbody = document.getElementById('adjustmentsTableBody');
+        if (adjustments.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #999;">No adjustments found</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = adjustments.map(adj => {
+            const adjustmentNo = adj.AdjustmentNo || adj.adjustmentNo || 'N/A';
+            const adjustmentDate = adj.AdjustmentDate || adj.adjustmentDate;
+            const adjustmentType = adj.AdjustmentType || adj.adjustmentType || 'N/A';
+            const itemCount = adj.ItemCount || adj.itemCount || 0;
+            const totalQuantity = adj.TotalQuantity || adj.totalQuantity || 0;
+            const status = adj.Status || adj.status || 'Draft';
+            const remarks = adj.Remarks || adj.remarks || '-';
+            const adjustmentId = adj.AdjustmentId || adj.adjustmentId;
+
+            return `
+            <tr>
+                <td><strong>${adjustmentNo}</strong></td>
+                <td>${new Date(adjustmentDate).toLocaleDateString()}</td>
+                <td>${adjustmentType}</td>
+                <td>${itemCount}</td>
+                <td>${typeof totalQuantity === 'number' ? totalQuantity.toFixed(2) : '0.00'}</td>
+                <td><span class="badge badge-${status.toLowerCase()}">${status}</span></td>
+                <td>${remarks}</td>
+                <td>
+                    <button class="btn btn-sm btn-info" onclick="viewDetails(${adjustmentId})">👁️ View</button>
+                    ${status === 'Draft' ? `
+                        <button class="btn btn-sm btn-success" onclick="postAdjustment(${adjustmentId})">✅ Post</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteAdjustment(${adjustmentId})">🗑️ Delete</button>
+                    ` : ''}
+                </td>
+            </tr>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading adjustments:', error);
+        const tbody = document.getElementById('adjustmentsTableBody');
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #dc2626;">⚠️ Error loading adjustments</td></tr>';
+    }
+}
+
+async function viewDetails(id) {
+    const modal = document.getElementById('detailsModal');
+    const modalBody = document.getElementById('detailsModalBody');
+    
+    // Show modal with loading state
+    modal.classList.add('active');
+    modalBody.innerHTML = `
+        <div class="loading-state">
+            <div class="loading-spinner"></div>
+            <p style="margin-top: 1rem;">Loading adjustment details...</p>
+        </div>
+    `;
+
+    try {
+        const response = await fetch(`/StockAdjustment/GetAdjustmentDetails/${id}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Adjustment details:', data);
+
+        // Handle both PascalCase and camelCase
+        const adjustmentNo = data.AdjustmentNo || data.adjustmentNo || 'N/A';
+        const adjustmentDate = data.AdjustmentDate || data.adjustmentDate;
+        const adjustmentType = data.AdjustmentType || data.adjustmentType || 'N/A';
+        const status = data.Status || data.status || 'Draft';
+        const remarks = data.Remarks || data.remarks || 'N/A';
+        const details = data.Details || data.details || [];
+
+        let totalQuantity = 0;
+        let totalCost = 0;
+
+        // Build details table
+        const detailsHtml = details.length === 0 ? 
+            '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #6b7280;">No items found</td></tr>' :
+            details.map((item, index) => {
+                const itemId = item.ItemId || item.itemId;
+                const itemName = item.ItemName || item.itemName || 'N/A';
+                const description = item.Description || item.description || '-';
+                const quantity = item.Quantity || item.quantity || 0;
+                const unitCost = item.UnitCost || item.unitCost || 0;
+                const itemTotalCost = item.TotalCost || item.totalCost || (quantity * unitCost);
+                const reason = item.Reason || item.reason || '-';
+
+                totalQuantity += quantity;
+                totalCost += itemTotalCost;
+
+                return `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${itemId}</td>
+                        <td><strong>${itemName}</strong></td>
+                        <td>${description}</td>
+                        <td style="text-align: right; font-weight: 600;">${quantity.toFixed(2)}</td>
+                        <td style="text-align: right;"> ${unitCost.toFixed(2)}</td>
+                        <td style="text-align: right; font-weight: 600; color: #059669;"> ${itemTotalCost.toFixed(2)}</td>
+                        <td>${reason}</td>
+                    </tr>
+                `;
+            }).join('');
+
+        // Render full details
+        modalBody.innerHTML = `
+            <div class="details-info-grid">
+                <div class="detail-item">
+                    <span class="detail-label">Adjustment No</span>
+                    <span class="detail-value">${adjustmentNo}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Date</span>
+                    <span class="detail-value">${new Date(adjustmentDate).toLocaleDateString()}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Type</span>
+                    <span class="detail-value">${adjustmentType}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Status</span>
+                    <span class="detail-value"><span class="badge badge-${status.toLowerCase()}">${status}</span></span>
+                </div>
+                <div class="detail-item" style="grid-column: span 2;">
+                    <span class="detail-label">Remarks</span>
+                    <span class="detail-value">${remarks}</span>
+                </div>
+            </div>
+
+            <h4 style="margin-bottom: 0.5rem; color: #1e3a5f;">📦 Adjustment Items</h4>
+            <table class="details-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Item ID</th>
+                        <th>Item Name</th>
+                        <th>Description</th>
+                        <th style="text-align: right;">Quantity</th>
+                        <th style="text-align: right;">Unit Cost</th>
+                        <th style="text-align: right;">Total Cost</th>
+                        <th>Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${detailsHtml}
+                </tbody>
+            </table>
+
+            <div class="details-summary">
+                <div class="summary-row">
+                    <span class="summary-label">Total Items:</span>
+                    <span class="summary-value">${details.length}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Total Quantity:</span>
+                    <span class="summary-value">${totalQuantity.toFixed(2)}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Total Cost:</span>
+                    <span class="summary-value">₹ ${totalCost.toFixed(2)}</span>
+                </div>
+            </div>
+        `;
+
+    } catch (error) {
+        console.error('Error loading adjustment details:', error);
+        modalBody.innerHTML = `
+            <div style="text-align: center; padding: 3rem; color: #dc2626;">
+                <strong>⚠️ Error loading adjustment details</strong><br>
+                <small style="color: #6b7280;">${error.message}</small>
+            </div>
+        `;
+    }
+}
+
+function closeDetailsModal(event) {
+    const modal = document.getElementById('detailsModal');
+    modal.classList.remove('active');
+}
+
+async function postAdjustment(id) {
+    if (!confirm('Post this adjustment to stock?')) return;
+
+    try {
+        const response = await fetch(`/StockAdjustment/Post/${id}`, { method: 'POST' });
+        const result = await response.json();
+        alert(result.message);
+        if (result.success) loadAdjustments();
+    } catch (error) {
+        console.error('Error posting adjustment:', error);
+        alert('Error posting adjustment');
+    }
+}
+
+async function deleteAdjustment(id) {
+    if (!confirm('Delete this adjustment?')) return;
+
+    try {
+        const response = await fetch(`/StockAdjustment/Delete/${id}`, { method: 'DELETE' });
+        const result = await response.json();
+        alert(result.message);
+        if (result.success) loadAdjustments();
+    } catch (error) {
+        console.error('Error deleting adjustment:', error);
+        alert('Error deleting adjustment');
+    }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeDetailsModal();
+    }
+});
+</script>

@@ -187,6 +187,31 @@
                     <span class="sidebar-text">Purchase Invoice</span>
                 </a>
             </li>
+
+            <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "StockAdjustment" ? "open" : "")"
+                id="stockAdjustmentMenuItem">
+                <a href="#" class="sidebar-link"
+                   onclick="event.preventDefault(); document.getElementById('stockAdjustmentMenuItem').classList.toggle('open')">
+                    <span class="sidebar-icon">📦</span>
+                    <span class="sidebar-text">Stock Adjustment</span>
+                    <span class="sidebar-arrow">▼</span>
+                </a>
+                <ul class="sidebar-submenu">
+                    <li>
+                        <a asp-controller="StockAdjustment" asp-action="Index"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "StockAdjustment" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")">
+                            📋 All Adjustments
+                        </a>
+                    </li>
+                    <li>
+                        <a asp-controller="StockAdjustment" asp-action="Create"
+                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "StockAdjustment" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")">
+                            ➕ New Adjustment
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
             <li class="sidebar-item">
                 <a asp-controller="Sale" asp-action="Index"
                    class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Sale" ? "active" : "")">

@@ -15,6 +15,8 @@ namespace InventorySystem.Data
 
         // ── Inventory ────────────────────────────────────────────────────────────
         public DbSet<Stock> Stock => Set<Stock>();
+        public DbSet<StockAdjustment> StockAdjustment => Set<StockAdjustment>();
+        public DbSet<StockAdjustmentDetail> StockAdjustmentDetail => Set<StockAdjustmentDetail>();
 
         // ── Purchase ─────────────────────────────────────────────────────────────
         public DbSet<PurchaseInvoice> PurchaseInvoice => Set<PurchaseInvoice>();
