@@ -1,0 +1,35 @@
+﻿@model IEnumerable<InventorySystem.Core.Models.Role>
+
+@{
+    ViewData["Title"] = "Manage Roles";
+}
+
+<div class="container-fluid p-4">
+    <h2>🎭 Roles</h2>
+
+    <a asp-controller="Admin" asp-action="ManageRolePermissions" class="btn btn-sm btn-primary mb-3">Manage Permissions</a>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Active</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in Model)
+            {
+                <tr>
+                    <td>@r.Name</td>
+                    <td>@r.Description</td>
+                    <td>@(r.IsActive ? "Yes" : "No")</td>
+                    <td>
+                        <a asp-controller="Admin" asp-action="ManageRolePermissions" asp-route-id="@r.Id" class="btn btn-sm btn-outline-secondary">Permissions</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

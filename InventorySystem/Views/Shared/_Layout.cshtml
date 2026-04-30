@@ -1,4 +1,7 @@
-﻿<!DOCTYPE html>
+﻿@using System.Security.Claims
+@inject InventorySystem.Core.Services.IMenuService MenuService
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -31,17 +34,17 @@
             border-left: 3px solid transparent;
         }
 
-            .sidebar-sublink:hover {
-                background: #e8f4f8;
-                color: var(--primary-color);
-            }
+        .sidebar-sublink:hover {
+            background: #e8f4f8;
+            color: var(--primary-color);
+        }
 
-            .sidebar-sublink.active {
-                background: #e8f4f8;
-                color: var(--primary-color);
-                border-left-color: var(--primary-color);
-                font-weight: 600;
-            }
+        .sidebar-sublink.active {
+            background: #e8f4f8;
+            color: var(--primary-color);
+            border-left-color: var(--primary-color);
+            font-weight: 600;
+        }
 
         .sidebar-arrow {
             margin-left: auto;
@@ -107,6 +110,18 @@
             background: rgba(220, 53, 69, 0.55);
             border-color: rgba(220, 53, 69, 0.7);
         }
+
+        /* Admin badge */
+        .admin-badge {
+            display: inline-block;
+            background: #dc3545;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -124,13 +139,19 @@
             @if (User.Identity?.IsAuthenticated == true)
             {
                 var fullName = User.FindFirst("FullName")?.Value ?? User.Identity.Name ?? "User";
-                var role     = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+                var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
                 var initials = string.Concat(fullName.Split(' ').Take(2).Select(w => w[0])).ToUpper();
 
                 <div class="header-user">
                     <div class="header-user-avatar">@initials</div>
                     <div>
-                        <div class="header-user-name">@fullName</div>
+                        <div class="header-user-name">
+                            @fullName
+                            @if (role == "Admin")
+                            {
+                                <span class="admin-badge">ADMIN</span>
+                            }
+                        </div>
                         <div class="header-user-role">@role</div>
                     </div>
                     <form asp-controller="Auth" asp-action="Logout" method="post" style="margin:0;">
@@ -142,262 +163,100 @@
         </div>
     </header>
 
-    <!-- Sidebar -->
+    <!-- Sidebar with Dynamic Menu -->
     <aside class="sidebar" id="sidebarId">
         <ul class="sidebar-menu">
-            <li class="sidebar-item">
-                <a asp-controller="Home" asp-action="Index"
-                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Home" ? "active" : "")">
-                    <span class="sidebar-icon">📊</span>
-                    <span class="sidebar-text">Dashboard</span>
-                </a>
-            </li>
-            <li class="sidebar-item">
-                <a asp-controller="Category" asp-action="Index"
-                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Category" ? "active" : "")">
-                    <span class="sidebar-icon">📦</span>
-                    <span class="sidebar-text">Item Category</span>
-                </a>
-            </li>
-            <li class="sidebar-item">
-                <a asp-controller="Item" asp-action="Index"
-                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Item" ? "active" : "")">
-                    <span class="sidebar-icon">🏷️</span>
-                    <span class="sidebar-text">Item Management</span>
-                </a>
-            </li>
-            <li class="sidebar-item">
-                <a asp-controller="ItemRateList" asp-action="Index"
-                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "ItemRateList" ? "active" : "")">
-                    <span class="sidebar-icon">💰</span>
-                    <span class="sidebar-text">Product List</span>
-                </a>
-            </li>
-            <li class="sidebar-item">
-                <a asp-controller="Parties" asp-action="Index"
-                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Parties" ? "active" : "")">
-                    <span class="sidebar-icon">👥</span>
-                    <span class="sidebar-text">Parties (Accounts)</span>
-                </a>
-            </li>
-            <li class="sidebar-item">
-                <a asp-controller="Purchase" asp-action="Index"
-                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Purchase" ? "active" : "")">
-                    <span class="sidebar-icon">📝</span>
-                    <span class="sidebar-text">Purchase Invoice</span>
-                </a>
-            </li>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+                
+                // Get menu items for this user
+                var menuItems = await MenuService.GetMenuForUserAsync(userId);
 
-            <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "StockAdjustment" ? "open" : "")"
-                id="stockAdjustmentMenuItem">
-                <a href="#" class="sidebar-link"
-                   onclick="event.preventDefault(); document.getElementById('stockAdjustmentMenuItem').classList.toggle('open')">
-                    <span class="sidebar-icon">📦</span>
-                    <span class="sidebar-text">Stock Adjustment</span>
-                    <span class="sidebar-arrow">▼</span>
-                </a>
-                <ul class="sidebar-submenu">
-                    <li>
-                        <a asp-controller="StockAdjustment" asp-action="Index"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "StockAdjustment" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")">
-                            📋 All Adjustments
-                        </a>
-                    </li>
-                    <li>
-                        <a asp-controller="StockAdjustment" asp-action="Create"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "StockAdjustment" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")">
-                            ➕ New Adjustment
-                        </a>
-                    </li>
-                </ul>
-            </li>
+                @foreach (var item in menuItems)
+                {
+                    if (item.Children != null && item.Children.Count > 0)
+                    {
+                        // Parent menu item with submenu
+                        var isOpen = ViewContext.RouteData.Values["controller"]?.ToString() == item.Controller;
+                        var menuIdSafe = System.Text.RegularExpressions.Regex.Replace(item.Name, @"[^\w]", "");
 
-            <li class="sidebar-item">
-                <a asp-controller="Sale" asp-action="Index"
-                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Sale" ? "active" : "")">
-                    <span class="sidebar-icon">🧾</span>
-                    <span class="sidebar-text">Sale Invoice</span>
-                </a>
-            </li>
+                        <li class="sidebar-item @(isOpen ? "open" : "")" id="@menuIdSafe">
+                            <a href="#" class="sidebar-link"
+                               onclick="event.preventDefault(); document.getElementById('@menuIdSafe').classList.toggle('open')">
+                                <span class="sidebar-icon">@item.Icon</span>
+                                <span class="sidebar-text">@item.Name</span>
+                                <span class="sidebar-arrow">▼</span>
+                            </a>
+                            <ul class="sidebar-submenu">
+                                @foreach (var subitem in item.Children)
+                                {
+                                    var isSubActive = ViewContext.RouteData.Values["controller"]?.ToString() == subitem.Controller &&
+                                                    ViewContext.RouteData.Values["action"]?.ToString() == subitem.Action;
 
-             <li class="sidebar-item">
-                <a asp-controller="Consume" asp-action="Index"
-                   class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Consume" ? "active" : "")">
-                    <span class="sidebar-icon">🏭</span>
-                    <span class="sidebar-text">Raw Material Consume</span>
-                </a>
-            </li>
+                                    <li>
+                                        <a asp-controller="@subitem.Controller" asp-action="@subitem.Action"
+                                           class="sidebar-sublink @(isSubActive ? "active" : "")">
+                                            @subitem.Icon @subitem.Name
+                                        </a>
+                                    </li>
+                                }
+                            </ul>
+                        </li>
+                    }
+                    else
+                    {
+                        // Simple menu item without submenu
+                        var isActive = ViewContext.RouteData.Values["controller"]?.ToString() == item.Controller;
 
-            <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() is "CostSheet" ? "open" : "")"
-                id="costSheetMenuItem">
-                <a href="#" class="sidebar-link"
-                   onclick="event.preventDefault(); document.getElementById('costSheetMenuItem').classList.toggle('open')">
-                    <span class="sidebar-icon">📦</span>
-                    <span class="sidebar-text">Cost Sheet</span>
-                    <span class="sidebar-arrow">▼</span>
-                </a>
-                <ul class="sidebar-submenu">
-                    <li>
-                        <a asp-controller="CostSheet" asp-action="Index"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "CostSheet" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")">
-                            📋 All Cost Sheets
-                        </a>
-                    </li>
-                    <li>
-                        <a asp-controller="CostSheet" asp-action="Create"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "CostSheet" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")">
-                            ➕ New Cost Sheet
-                        </a>
-                    </li>
-                    <li>
-                        <a asp-controller="CostSheet" asp-action="Settings"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "CostSheet" && ViewContext.RouteData.Values["action"]?.ToString() == "Settings" ? "active" : "")">
-                            ⚙️ Settings
-                        </a>
-                    </li>
-                </ul>
-            </li>
-            <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Production" ? "open" : "")"
-                id="productionMenuItem">
-                <a href="#" class="sidebar-link"
-                   onclick="event.preventDefault(); document.getElementById('productionMenuItem').classList.toggle('open')">
-                    <span class="sidebar-icon">🏭</span>
-                    <span class="sidebar-text">Production</span>
-                    <span class="sidebar-arrow">▼</span>
-                </a>
-                <ul class="sidebar-submenu">
-                    <li>
-                        <a asp-controller="Production" asp-action="Index"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Production" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")">
-                            📋 All Orders
-                        </a>
-                    </li>
-                    <li>
-                        <a asp-controller="Production" asp-action="Create"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Production" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")">
-                            ➕ New Order
-                        </a>
-                    </li>
-                </ul>
-            </li>
+                        <li class="sidebar-item">
+                            <a asp-controller="@item.Controller" asp-action="@item.Action"
+                               class="sidebar-link @(isActive ? "active" : "")">
+                                <span class="sidebar-icon">@item.Icon</span>
+                                <span class="sidebar-text">@item.Name</span>
+                            </a>
+                        </li>
+                    }
+                }
 
-            <!-- Returns submenu -->
-            <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() is "PurchaseReturn" or "SaleReturn" ? "open" : "")"
-                id="returnsMenuItem">
-                <a href="#" class="sidebar-link"
-                   onclick="event.preventDefault(); document.getElementById('returnsMenuItem').classList.toggle('open')">
-                    <span class="sidebar-icon">↩️</span>
-                    <span class="sidebar-text">Returns</span>
-                    <span class="sidebar-arrow">▼</span>
-                </a>
-                <ul class="sidebar-submenu">
-                    <li>
-                        <a asp-controller="PurchaseReturn" asp-action="Index"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "PurchaseReturn" ? "active" : "")">
-                            📦 Purchase Return
+                <!-- Admin Panel - Only for Admin -->
+                @if (User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value == "Admin")
+                {
+                    <li class="sidebar-item" style="border-top: 1px solid #e0e0e0; margin-top: 1rem; padding-top: 1rem;">
+                        <a asp-controller="Admin" asp-action="Dashboard"
+                           class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Admin" ? "active" : "")">
+                            <span class="sidebar-icon">⚙️</span>
+                            <span class="sidebar-text">Admin Panel</span>
                         </a>
                     </li>
-                    <li>
-                        <a asp-controller="SaleReturn" asp-action="Index"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "SaleReturn" ? "active" : "")">
-                            🔄 Sale Return
-                        </a>
-                    </li>
-                </ul>
-            </li>
+                }
 
-            <!-- Reports submenu -->
-            <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" ? "open" : "")"
-                id="reportsMenuItem">
-                <a href="#" class="sidebar-link"
-                   onclick="event.preventDefault(); document.getElementById('reportsMenuItem').classList.toggle('open')">
-                    <span class="sidebar-icon">📈</span>
-                    <span class="sidebar-text">Reports</span>
-                    <span class="sidebar-arrow">▼</span>
-                </a>
-                <ul class="sidebar-submenu">
-                    <li>
-                        <a asp-controller="Report" asp-action="StockReport"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" && ViewContext.RouteData.Values["action"]?.ToString() == "StockReport" ? "active" : "")">
-                            📦 Stock Report
-                        </a>
-                    </li>
-                    <li>
-                        <a asp-controller="Report" asp-action="PurchaseReport"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" && ViewContext.RouteData.Values["action"]?.ToString() == "PurchaseReport" ? "active" : "")">
-                            🧾 Purchase Report
-                        </a>
-                    </li>
-                    <li>
-                        <a asp-controller="Report" asp-action="SaleReport"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" && ViewContext.RouteData.Values["action"]?.ToString() == "SaleReport" ? "active" : "")">
-                            💵 Sale Report
-                        </a>
-                    </li>
-                    <li>
-                        <a asp-controller="Report" asp-action="ConsumeReport"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Report" && ViewContext.RouteData.Values["action"]?.ToString() == "ConsumeReport" ? "active" : "")">
-                            🏭 Consume Report
-                        </a>
-                    </li>
-                </ul>
-            </li>
-
-            <!-- Accounts submenu -->
-            @* <li class="sidebar-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Accounts" ? "open" : "")"
-                id="accountsMenuItem">
-                <a href="#" class="sidebar-link"
-                   onclick="event.preventDefault(); document.getElementById('accountsMenuItem').classList.toggle('open')">
-                    <span class="sidebar-icon">💳</span>
-                    <span class="sidebar-text">Accounts</span>
-                    <span class="sidebar-arrow">▼</span>
-                </a>
-                <ul class="sidebar-submenu">
-                    <li>
-                        <a asp-controller="Accounts" asp-action="PaymentVoucher"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Accounts" && ViewContext.RouteData.Values["action"]?.ToString() == "PaymentVoucher" ? "active" : "")">
-                            💸 Payment / Receipt
-                        </a>
-                    </li>
-                    <li>
-                        <a asp-controller="Accounts" asp-action="PartyLedger"
-                           class="sidebar-sublink @(ViewContext.RouteData.Values["controller"]?.ToString() == "Accounts" && ViewContext.RouteData.Values["action"]?.ToString() == "PartyLedger" ? "active" : "")">
-                            📒 Party Ledger
-                        </a>
-                    </li>
-                </ul>
-            </li>
-
-            <li class="sidebar-item">
-                <a href="#" class="sidebar-link">
-                    <span class="sidebar-icon">⚙️</span>
-                    <span>Settings</span>
-                </a>
-            </li> *@
+                <!-- Logout -->
+                <li class="sidebar-item" style="margin-top: auto; border-top: 1px solid #e0e0e0; padding-top: 1rem;">
+                    <form asp-controller="Auth" asp-action="Logout" method="post" style="width: 100%; margin: 0;">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="sidebar-link" style="width: 100%; text-align: left; background: none; border: none; cursor: pointer;">
+                            <span class="sidebar-icon">🚪</span>
+                            <span class="sidebar-text">Logout</span>
+                        </button>
+                    </form>
+                </li>
+            }
         </ul>
     </aside>
 
-    <!-- Main Content Wrapper -->
-    <div class="main-wrapper" id="mainWrapper">
-        <div class="content-area">
-            @RenderBody()
-        </div>
-    </div>
-
-    <script>
-        // Sidebar toggle (hamburger)
-        document.querySelector('.menu-toggle')?.addEventListener('click', () => {
-            document.getElementById('sidebarId').classList.toggle('collapsed');
-            document.getElementById('mainWrapper').classList.toggle('expanded');
-        });
-    </script>
-
-    <!-- jQuery - loaded globally so all views can use it -->
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"
-            integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
-            crossorigin="anonymous"></script>
+    <!-- Main Content -->
+    <main class="main-wrapper">
+        @RenderBody()
+    </main>
 
     @await RenderSectionAsync("Scripts", required: false)
 
+    <script>
+        // Menu toggle for mobile
+        document.querySelector('.menu-toggle')?.addEventListener('click', function () {
+            document.getElementById('sidebarId').classList.toggle('active');
+        });
+    </script>
 </body>
 </html>

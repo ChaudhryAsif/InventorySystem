@@ -1,5 +1,8 @@
 using InventorySystem.Data;
+using InventorySystem.Core.Services;
+using InventorySystem.Authorization;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,14 +18,29 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     {
         options.LoginPath        = "/Auth/Login";
         options.LogoutPath       = "/Auth/Logout";
-        options.AccessDeniedPath = "/Auth/Login";
+        options.AccessDeniedPath = "/Auth/AccessDenied";
         options.ExpireTimeSpan   = TimeSpan.FromHours(8);
         options.SlidingExpiration = true;
         options.Cookie.HttpOnly  = true;
         options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.SameAsRequest;
     });
 
-builder.Services.AddAuthorization();
+// ── Authorization with policies ────────────────────────────────────────────────
+builder.Services.AddAuthorization(options =>
+{
+    // Dynamic permission-based policies
+    options.AddPolicy("PermissionBased", policy =>
+        policy.Requirements.Add(new PermissionRequirement("")));
+         // requirements.Add(new PermissionRequirement(""));
+    
+});
+
+// ── Custom authorization handler ────────────────────────────────────────────────
+builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
+// ── Services ────────────────────────────────────────────────────────────────────
+builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<IMenuService, MenuService>();
 
 var app = builder.Build();
 
@@ -34,12 +52,12 @@ if (!app.Environment.IsDevelopment())
 app.UseStaticFiles();
 app.UseRouting();
 
-app.UseAuthentication();   // ← must be before UseAuthorization
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Auth}/{action=Login}/{id?}");   // ← default route → Login
+    pattern: "{controller=Auth}/{action=Login}/{id?}");
 
 app.Run();
 

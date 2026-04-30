@@ -1,0 +1,35 @@
+@model IEnumerable<InventorySystem.Core.Models.MenuItem>
+
+@{
+    ViewData["Title"] = "Menu Items";
+}
+
+<div class="container-fluid p-4">
+    <h2>📋 Menu Items</h2>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Controller</th>
+                <th>Action</th>
+                <th>Permission</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var m in Model)
+            {
+                <tr>
+                    <td>@m.Name</td>
+                    <td>@m.Controller</td>
+                    <td>@m.Action</td>
+                    <td>@m.RequiredPermission</td>
+                    <td>
+                        <a asp-controller="Admin" asp-action="EditMenuItem" asp-route-id="@m.Id" class="btn btn-sm btn-outline-secondary">Edit</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

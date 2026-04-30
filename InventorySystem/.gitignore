@@ -70,7 +70,7 @@ Thumbs.db
 ScaffoldingReadMe.txt
 
 # Entity Framework Migrations (optional — comment out if you track migrations)
-[Mm]igrations/
+#[Mm]igrations/
 
 # User secrets (never commit these)
 **/secrets.json

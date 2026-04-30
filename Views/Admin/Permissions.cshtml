@@ -1,0 +1,31 @@
+@model IEnumerable<InventorySystem.Core.Models.Permission>
+
+@{
+    ViewData["Title"] = "Permissions";
+}
+
+<div class="container-fluid p-4">
+    <h2>🔐 Permissions</h2>
+
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Module</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in Model)
+            {
+                <tr>
+                    <td>@p.Code</td>
+                    <td>@p.Name</td>
+                    <td>@p.Module</td>
+                    <td>@p.Action</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

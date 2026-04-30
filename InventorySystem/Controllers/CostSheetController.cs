@@ -1,9 +1,11 @@
 ﻿using InventorySystem.Core.Models;
 using InventorySystem.Data;
 using InventorySystem.Models;
+using InventorySystem.Core.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace InventorySystem.Controllers
 {
@@ -11,16 +13,30 @@ namespace InventorySystem.Controllers
     public class CostSheetController : Controller
     {
         private readonly ApplicationDbContext _context;
+        private readonly IPermissionService _permissionService;
 
-        public CostSheetController(ApplicationDbContext context)
+        public CostSheetController(ApplicationDbContext context, IPermissionService permissionService)
         {
             _context = context;
+            _permissionService = permissionService;
+        }
+
+        // Helper method to check permission
+        private async Task<IActionResult?> CheckPermissionAsync(string permissionCode)
+        {
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var hasPermission = await _permissionService.HasPermissionAsync(userId, permissionCode);
+
+            return !hasPermission ? Forbid() : null;
         }
 
         // ── List ────────────────────────────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> Index()
         {
+            var permission = await CheckPermissionAsync("CostSheet.View");
+            if (permission != null) return permission;
+
             var sheets = await _context.CostSheet
                 .OrderByDescending(c => c.SheetDate)
                 .Select(c => new
@@ -44,12 +60,21 @@ namespace InventorySystem.Controllers
 
         // ── Create (GET) ────────────────────────────────────────────────────────
         [HttpGet]
-        public IActionResult Create() => View();
+        public async Task<IActionResult> Create()
+        {
+            var permission = await CheckPermissionAsync("CostSheet.Create");
+            if (permission != null) return permission;
+
+            return View();
+        }
 
         // ── Edit (GET) ──────────────────────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> Edit(int id)
         {
+            var permission = await CheckPermissionAsync("CostSheet.Edit");
+            if (permission != null) return permission;
+
             var sheet = await _context.CostSheet
                 .Include(c => c.Plies)
                 .FirstOrDefaultAsync(c => c.CostSheetId == id);
@@ -167,6 +192,9 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public async Task<IActionResult> Settings()
         {
+            var permission = await CheckPermissionAsync("CostSheet.Settings");
+            if (permission != null) return permission;
+
             var s = await _context.CostSheetSettings.FirstOrDefaultAsync()
                     ?? new CostSheetSettings();
             return View(s);
