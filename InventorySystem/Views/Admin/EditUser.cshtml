@@ -5,65 +5,97 @@
     Layout = "_Layout";
 }
 
-<div class="container-fluid p-4">
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2>✏️ Edit User: @Model.FullName</h2>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-lg-8">
-            <div class="card">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0">User Details</h5>
-                </div>
-                <form method="post" class="card-body">
-                    @Html.HiddenFor(m => m.Id)
-
-                    <div class="mb-3">
-                        <label class="form-label">Username</label>
-                        <input type="text" class="form-control" value="@Model.Username" disabled>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Full Name</label>
-                        <input type="text" asp-for="FullName" class="form-control" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Status</label>
-                        <div class="form-check">
-                            <input type="checkbox" asp-for="IsActive" class="form-check-input" id="isActive">
-                            <label class="form-check-label" for="isActive">Active</label>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Assign Roles</label>
-                        <div class="row">
-                            @foreach (var role in ViewBag.AllRoles)
-                            {
-                                var isChecked = ViewBag.UserRoleIds.Contains(role.Id);
-                                <div class="col-md-6">
-                                    <div class="form-check">
-                                        <input type="checkbox" name="selectedRoles" value="@role.Id"
-                                               class="form-check-input" id="role@role.Id" @(isChecked ? "checked" : "")>
-                                        <label class="form-check-label" for="role@role.Id">
-                                            @role.Name
-                                        </label>
-                                    </div>
-                                </div>
-                            }
-                        </div>
-                    </div>
-
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                        <a asp-action="Users" class="btn btn-secondary">← Back</a>
-                        <button type="submit" class="btn btn-primary">💾 Save Changes</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+<div class="admin-page-header">
+    <span class="admin-page-icon">✏️</span>
+    <div>
+        <h1 class="admin-page-title">Edit User</h1>
+        <p class="admin-page-subtitle">Update user details and permissions for: <strong style="color: var(--primary-color);">@Model.FullName</strong></p>
     </div>
 </div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; max-width: 1200px;">
+    <!-- User Details Section -->
+    <div class="admin-form">
+        <h3 style="margin-bottom: 1.5rem; color: var(--text-primary); font-size: 1.1rem;">
+            👤 User Details
+        </h3>
+        
+        <form method="post">
+            @Html.HiddenFor(m => m.Id)
+
+            <div class="admin-form-group">
+                <label class="admin-form-label">Username</label>
+                <input type="text" class="admin-form-input" value="@Model.Username" disabled
+                       style="background-color: #f8fafc; cursor: not-allowed;">
+            </div>
+
+            <div class="admin-form-group">
+                <label class="admin-form-label" for="FullName">Full Name *</label>
+                <input type="text" id="FullName" asp-for="FullName" class="admin-form-input" required>
+            </div>
+
+            <div class="admin-form-group">
+                <label class="admin-form-label">Account Status</label>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="isActive" asp-for="IsActive"
+                           style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
+                    <label for="isActive" style="margin: 0; cursor: pointer; color: var(--text-primary);">
+                        Active User
+                    </label>
+                </div>
+            </div>
+
+            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid var(--border-color); display: flex; gap: 1rem; justify-content: flex-end;">
+                <a href="javascript:history.back()" class="admin-btn admin-btn-secondary">
+                    ← Back
+                </a>
+                <button type="submit" class="admin-btn admin-btn-success">
+                    💾 Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Role Assignment Section -->
+    <div class="admin-form">
+        <h3 style="margin-bottom: 1.5rem; color: var(--text-primary); font-size: 1.1rem;">
+            🎭 Assign Roles
+        </h3>
+        
+        <form method="post" style="margin: 0;">
+            @Html.HiddenFor(m => m.Id)
+
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                @foreach (var role in ViewBag.AllRoles)
+                {
+                    var isChecked = ViewBag.UserRoleIds.Contains(role.Id);
+                    <div class="permission-item" style="padding: 0.8rem; background: #f8fafc; border-radius: var(--radius-sm); border-left: 3px solid var(--border-color);">
+                        <input type="checkbox" name="selectedRoles" value="@role.Id"
+                               id="role@role.Id" @(isChecked ? "checked" : "")
+                               style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
+                        <label for="role@role.Id" style="margin: 0; cursor: pointer; color: var(--text-primary); font-weight: 500;">
+                            @role.Name
+                        </label>
+                    </div>
+                }
+            </div>
+
+            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid var(--border-color);">
+                <button type="submit" name="saveRoles" value="true" class="admin-btn admin-btn-primary" style="width: 100%;">
+                    💾 Update Roles
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Optional: Add form validation or dynamic role updates here
+        document.querySelectorAll('input[name="selectedRoles"]').forEach(checkbox => {
+            checkbox.addEventListener('change', function () {
+                console.log('Role selection changed: ' + this.value);
+            });
+        });
+    </script>
+}

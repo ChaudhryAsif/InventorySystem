@@ -5,32 +5,76 @@
     Layout = "_Layout";
 }
 
-<div class="container-fluid p-4">
-    <h2>📋 Menu Items</h2>
+<div class="admin-page-header">
+    <span class="admin-page-icon">📋</span>
+    <div>
+        <h1 class="admin-page-title">Menu Items</h1>
+        <p class="admin-page-subtitle">Manage navigation menu items and their settings</p>
+    </div>
+</div>
 
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Controller</th>
-                <th>Action</th>
-                <th>Permission</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var m in Model)
-            {
+<div class="admin-table-container">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">All Menu Items</h3>
+    </div>
+
+    @if (Model.Any())
+    {
+        <table class="admin-table">
+            <thead>
                 <tr>
-                    <td>@m.Name</td>
-                    <td>@m.Controller</td>
-                    <td>@m.Action</td>
-                    <td>@m.RequiredPermission</td>
-                    <td>
-                        <a asp-controller="Admin" asp-action="EditMenuItem" asp-route-id="@m.Id" class="btn btn-sm btn-outline-secondary">Edit</a>
-                    </td>
+                    <th>Name</th>
+                    <th>Controller</th>
+                    <th>Action</th>
+                    <th>Required Permission</th>
+                    <th>Actions</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var menuItem in Model)
+                {
+                    <tr>
+                        <td>
+                            <strong>@menuItem.Name</strong>
+                        </td>
+                        <td>
+                            <code style="background: #f8fafc; padding: 0.25rem 0.5rem; border-radius: 4px;">
+                                @menuItem.Controller
+                            </code>
+                        </td>
+                        <td>
+                            <code style="background: #f8fafc; padding: 0.25rem 0.5rem; border-radius: 4px;">
+                                @menuItem.Action
+                            </code>
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(menuItem.RequiredPermission))
+                            {
+                                <span style="background: rgba(45, 95, 127, 0.1); padding: 0.35rem 0.75rem; border-radius: 4px; font-size: 0.85rem;">
+                                    @menuItem.RequiredPermission
+                                </span>
+                            }
+                            else
+                            {
+                                <span style="color: var(--text-secondary); font-style: italic;">None</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="admin-table-actions">
+                                <a asp-action="EditMenuItem" asp-route-id="@menuItem.Id" class="admin-btn admin-btn-primary">
+                                    ✏️ Edit
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+            <p>No menu items found.</p>
+        </div>
+    }
 </div>

@@ -5,67 +5,87 @@
     Layout = "_Layout";
 }
 
-<div class="container-fluid p-4">
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2>👥 User Management</h2>
-        </div>
+<div class="admin-page-header">
+    <span class="admin-page-icon">👥</span>
+    <div>
+        <h1 class="admin-page-title">User Management</h1>
+        <p class="admin-page-subtitle">Manage system users and their roles</p>
     </div>
+</div>
 
-    <div class="card">
-        <div class="card-body">
-            <table class="table table-hover">
-                <thead class="table-light">
+<div class="admin-table-container">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">All Users</h3>
+        <a asp-action="CreateUser" class="admin-btn admin-btn-success">
+            ➕ Create New User
+        </a>
+    </div>
+    
+    @if (Model.Any())
+    {
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Full Name</th>
+                    <th>Roles</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in Model)
+                {
                     <tr>
-                        <th>Username</th>
-                        <th>Full Name</th>
-                        <th>Roles</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var user in Model)
-                    {
-                        <tr>
-                            <td>
-                                <strong>@user.Username</strong>
-                            </td>
-                            <td>@user.FullName</td>
-                            <td>
-                                @if (user.UserRoles?.Count > 0)
+                        <td>
+                            <strong>@user.Username</strong>
+                        </td>
+                        <td>@user.FullName</td>
+                        <td>
+                            @if (user.UserRoles?.Count > 0)
+                            {
+                                @foreach (var role in user.UserRoles)
                                 {
-                                    @foreach (var role in user.UserRoles)
-                                    {
-                                        <span class="badge bg-primary">@role.Role?.Name</span>
-                                    }
+                                    <span class="admin-table .status-badge" style="background: rgba(45, 95, 127, 0.15); color: var(--primary-color);">
+                                        @role.Role?.Name
+                                    </span>
                                 }
-                                else
-                                {
-                                    <span class="badge bg-secondary">No Role</span>
-                                }
-                            </td>
-                            <td>
-                                @if (user.IsActive)
-                                {
-                                    <span class="badge bg-success">Active</span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-danger">Inactive</span>
-                                }
-                            </td>
-                            <td>@user.CreatedAt.ToString("dd/MM/yyyy")</td>
-                            <td>
-                                <a asp-action="EditUser" asp-route-id="@user.Id" class="btn btn-sm btn-primary">
+                            }
+                            else
+                            {
+                                <span class="admin-table .status-badge" style="background: rgba(108, 117, 125, 0.15); color: var(--text-secondary);">
+                                    No Role
+                                </span>
+                            }
+                        </td>
+                        <td>
+                            @if (user.IsActive)
+                            {
+                                <span class="admin-table .status-badge admin-table .status-active">Active</span>
+                            }
+                            else
+                            {
+                                <span class="admin-table .status-badge admin-table .status-inactive">Inactive</span>
+                            }
+                        </td>
+                        <td>@user.CreatedAt.ToString("dd/MM/yyyy")</td>
+                        <td>
+                            <div class="admin-table-actions">
+                                <a asp-action="EditUser" asp-route-id="@user.Id" class="admin-btn admin-btn-primary">
                                     ✏️ Edit
                                 </a>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+            <p>No users found. <a asp-action="CreateUser" style="color: var(--primary-color); text-decoration: underline;">Create one now</a>.</p>
         </div>
-    </div>
+    }
 </div>

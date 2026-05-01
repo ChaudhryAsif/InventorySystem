@@ -6,50 +6,55 @@
     var rolePermissionIds = ViewBag.RolePermissionIds as List<int>;
 }
 
-<div class="container-fluid p-4">
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2>🔐 Manage Permissions for: <strong>@role?.Name</strong></h2>
-        </div>
+<div class="admin-page-header">
+    <span class="admin-page-icon">🔐</span>
+    <div>
+        <h1 class="admin-page-title">Manage Permissions</h1>
+        <p class="admin-page-subtitle">For: <strong style="color: var(--primary-color);">@role?.Name</strong></p>
     </div>
+</div>
 
-    <form method="post" class="row">
-        @Html.AntiForgeryToken()
+<form method="post">
+    @Html.AntiForgeryToken()
 
+    <div class="permissions-container">
         @foreach (var group in groupedPermissions)
         {
             var module = group.Key;
-            <div class="col-lg-6 mb-4">
-                <div class="card">
-                    <div class="card-header bg-light">
-                        <h5 class="mb-0">📦 @module</h5>
-                    </div>
-                    <div class="card-body">
-                        @foreach (var permission in group)
-                        {
-                            var isChecked = rolePermissionIds?.Contains(permission.Id) ?? false;
-                            <div class="form-check">
-                                <input type="checkbox" name="permissions" value="@permission.Id"
-                                       class="form-check-input" id="perm@permission.Id" @(isChecked ? "checked" : "")>
-                                <label class="form-check-label" for="perm@permission.Id">
-                                    <strong>@permission.Name</strong>
-                                    @if (!string.IsNullOrEmpty(permission.Description))
-                                    {
-                                        <small class="text-muted d-block">@permission.Description</small>
-                                    }
-                                </label>
-                            </div>
-                        }
-                    </div>
+            <div class="permission-group">
+                <div class="permission-group-title">
+                    <span class="permission-group-icon">📦</span>
+                    @module
+                </div>
+                <div class="permission-items">
+                    @foreach (var permission in group)
+                    {
+                        var isChecked = rolePermissionIds?.Contains(permission.Id) ?? false;
+                        <div class="permission-item">
+                            <input type="checkbox" name="permissions" value="@permission.Id"
+                                   id="perm@permission.Id" @(isChecked ? "checked" : "")>
+                            <label for="perm@permission.Id">
+                                <strong>@permission.Name</strong>
+                                @if (!string.IsNullOrEmpty(permission.Description))
+                                {
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.2rem;">
+                                        @permission.Description
+                                    </div>
+                                }
+                            </label>
+                        </div>
+                    }
                 </div>
             </div>
         }
+    </div>
 
-        <div class="col-12">
-            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                <a asp-action="Roles" class="btn btn-secondary">← Back</a>
-                <button type="submit" class="btn btn-primary">💾 Save Permissions</button>
-            </div>
-        </div>
-    </form>
-</div>
+    <div style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border-color); display: flex; gap: 1rem; justify-content: flex-end;">
+        <a asp-action="Roles" class="admin-btn admin-btn-secondary">
+            ← Back to Roles
+        </a>
+        <button type="submit" class="admin-btn admin-btn-success">
+            💾 Save Permissions
+        </button>
+    </div>
+</form>

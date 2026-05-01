@@ -70,6 +70,98 @@ namespace InventorySystem.Controllers
             return View(users);
         }
 
+        [HttpGet("Users/Create")]
+        public async Task<IActionResult> CreateUser()
+        {
+            var check = AdminOnly();
+            if (check != null) return check;
+
+            ViewBag.AllRoles = await _context.Roles.Where(r => r.IsActive).ToListAsync();
+            
+            return View();
+        }
+
+        [HttpPost("Users/Create")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateUser(AppUser model, [FromForm] List<int> selectedRoles, string password)
+        {
+            var check = AdminOnly();
+            if (check != null) return check;
+
+            // Validate form data
+            if (string.IsNullOrWhiteSpace(model.Username))
+            {
+                ModelState.AddModelError("Username", "Username is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(model.FullName))
+            {
+                ModelState.AddModelError("FullName", "Full name is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                ModelState.AddModelError("password", "Password is required.");
+            }
+            else if (password.Length < 6)
+            {
+                ModelState.AddModelError("password", "Password must be at least 6 characters long.");
+            }
+
+            // Check if username already exists
+            var userExists = await _context.AppUsers.AnyAsync(u => u.Username == model.Username);
+            if (userExists)
+            {
+                ModelState.AddModelError("Username", "Username already exists.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                ViewBag.AllRoles = await _context.Roles.Where(r => r.IsActive).ToListAsync();
+                return View(model);
+            }
+
+            // Hash password
+            var user = new AppUser
+            {
+                Username = model.Username,
+                FullName = model.FullName,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            // Add roles
+            if (selectedRoles?.Count > 0)
+            {
+                user.PrimaryRoleId = selectedRoles.First();
+                user.Role = (await _context.Roles.FindAsync(user.PrimaryRoleId))?.Name ?? "Admin";
+            }
+
+            _context.AppUsers.Add(user);
+            await _context.SaveChangesAsync();
+
+            // Add user roles
+            foreach (var roleId in selectedRoles ?? new List<int>())
+            {
+                var roleExists = await _context.Roles.AnyAsync(r => r.Id == roleId);
+                if (roleExists)
+                {
+                    _context.UserRoles.Add(new UserRole
+                    {
+                        UserId = user.Id,
+                        RoleId = roleId,
+                        AssignedAt = DateTime.UtcNow
+                    });
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            TempData["Success"] = $"User '{model.Username}' created successfully!";
+            return RedirectToAction("Users");
+        }
+
         [HttpGet("Users/{id}/Edit")]
         public async Task<IActionResult> EditUser(int id)
         {

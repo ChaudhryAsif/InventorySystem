@@ -5,32 +5,76 @@
     Layout = "_Layout";
 }
 
-<div class="container-fluid p-4">
-    <h2>🎭 Roles</h2>
+<div class="admin-page-header">
+    <span class="admin-page-icon">🎭</span>
+    <div>
+        <h1 class="admin-page-title">Roles Management</h1>
+        <p class="admin-page-subtitle">Manage system roles and their permissions</p>
+    </div>
+</div>
 
-    <a asp-controller="Admin" asp-action="ManageRolePermissions" class="btn btn-sm btn-primary mb-3">Manage Permissions</a>
+<div class="admin-table-container">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">All Roles</h3>
+        <a asp-action="ManageRolePermissions" class="admin-btn admin-btn-success">
+            🔐 Manage Permissions
+        </a>
+    </div>
 
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Description</th>
-                <th>Active</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var r in Model)
-            {
+    @if (Model.Any())
+    {
+        <table class="admin-table">
+            <thead>
                 <tr>
-                    <td>@r.Name</td>
-                    <td>@r.Description</td>
-                    <td>@(r.IsActive ? "Yes" : "No")</td>
-                    <td>
-                        <a asp-controller="Admin" asp-action="ManageRolePermissions" asp-route-id="@r.Id" class="btn btn-sm btn-outline-secondary">Permissions</a>
-                    </td>
+                    <th>Role Name</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th>Actions</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var role in Model)
+                {
+                    <tr>
+                        <td>
+                            <strong>@role.Name</strong>
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(role.Description))
+                            {
+                                <span>@role.Description</span>
+                            }
+                            else
+                            {
+                                <span style="color: var(--text-secondary); font-style: italic;">No description</span>
+                            }
+                        </td>
+                        <td>
+                            @if (role.IsActive)
+                            {
+                                <span class="admin-table .status-badge admin-table .status-active">Active</span>
+                            }
+                            else
+                            {
+                                <span class="admin-table .status-badge admin-table .status-inactive">Inactive</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="admin-table-actions">
+                                <a asp-action="ManageRolePermissions" asp-route-id="@role.Id" class="admin-btn admin-btn-primary">
+                                    🔐 Permissions
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+            <p>No roles found.</p>
+        </div>
+    }
 </div>
