@@ -1,106 +1,64 @@
 @{
     ViewData["Title"] = "Admin Dashboard";
+    Layout = "_Layout";
 }
 
-<div class="container-fluid p-4">
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2>⚙️ Admin Dashboard</h2>
-            <p class="text-muted">Manage roles, permissions, and users</p>
-        </div>
+<div class="admin-page-header">
+    <span class="admin-page-icon">⚙️</span>
+    <div>
+        <h1 class="admin-page-title">Admin Dashboard</h1>
+        <p class="admin-page-subtitle">Manage roles, permissions, and users</p>
+    </div>
+</div>
+
+<!-- Stats Cards Grid -->
+<div class="admin-cards-grid">
+    <div class="admin-card">
+        <div class="admin-card-icon">👥</div>
+        <div class="admin-card-label">Total Users</div>
+        <div class="admin-card-value">@ViewBag.Stats.TotalUsers</div>
     </div>
 
-    <!-- Stats -->
-    <div class="row g-4 mb-4">
-        <div class="col-md-6 col-lg-3">
-            <div class="card bg-primary text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <p class="card-title mb-0">Total Users</p>
-                            <h3 class="mb-0">@ViewBag.Stats.TotalUsers</h3>
-                        </div>
-                        <span style="font-size: 2.5rem;">👥</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-6 col-lg-3">
-            <div class="card bg-success text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <p class="card-title mb-0">Total Roles</p>
-                            <h3 class="mb-0">@ViewBag.Stats.TotalRoles</h3>
-                        </div>
-                        <span style="font-size: 2.5rem;">🎭</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-6 col-lg-3">
-            <div class="card bg-info text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <p class="card-title mb-0">Total Permissions</p>
-                            <h3 class="mb-0">@ViewBag.Stats.TotalPermissions</h3>
-                        </div>
-                        <span style="font-size: 2.5rem;">🔐</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-6 col-lg-3">
-            <div class="card bg-warning text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <p class="card-title mb-0">Menu Items</p>
-                            <h3 class="mb-0">@ViewBag.Stats.TotalMenuItems</h3>
-                        </div>
-                        <span style="font-size: 2.5rem;">📋</span>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="admin-card">
+        <div class="admin-card-icon">🎭</div>
+        <div class="admin-card-label">Total Roles</div>
+        <div class="admin-card-value">@ViewBag.Stats.TotalRoles</div>
     </div>
 
-    <!-- Quick Links -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0">Quick Management</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row g-2">
-                        <div class="col-md-3">
-                            <a asp-action="Users" class="btn btn-primary w-100">
-                                👥 Manage Users
-                            </a>
-                        </div>
-                        <div class="col-md-3">
-                            <a asp-action="Roles" class="btn btn-success w-100">
-                                🎭 Manage Roles
-                            </a>
-                        </div>
-                        <div class="col-md-3">
-                            <a asp-action="Permissions" class="btn btn-info w-100">
-                                🔐 View Permissions
-                            </a>
-                        </div>
-                        <div class="col-md-3">
-                            <a asp-action="MenuItems" class="btn btn-warning w-100">
-                                📋 Manage Menus
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="admin-card">
+        <div class="admin-card-icon">🔐</div>
+        <div class="admin-card-label">Total Permissions</div>
+        <div class="admin-card-value">@ViewBag.Stats.TotalPermissions</div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-icon">📋</div>
+        <div class="admin-card-label">Menu Items</div>
+        <div class="admin-card-value">@ViewBag.Stats.TotalMenuItems</div>
+    </div>
+</div>
+
+<!-- Quick Management Links -->
+<div class="admin-quick-management">
+    <h3 class="admin-quick-title">
+        <span>⚡</span>Quick Management
+    </h3>
+    <div class="admin-quick-links">
+        <a asp-action="Users" class="admin-quick-link">
+            <span class="admin-quick-link-icon">👥</span>
+            Manage Users
+        </a>
+        <a asp-action="Roles" class="admin-quick-link">
+            <span class="admin-quick-link-icon">🎭</span>
+            Manage Roles
+        </a>
+        <a asp-action="Permissions" class="admin-quick-link">
+            <span class="admin-quick-link-icon">🔐</span>
+            View Permissions
+        </a>
+        <a asp-action="MenuItems" class="admin-quick-link">
+            <span class="admin-quick-link-icon">📋</span>
+            Manage Menus
+        </a>
     </div>
 </div>
