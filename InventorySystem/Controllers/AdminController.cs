@@ -197,7 +197,11 @@ namespace InventorySystem.Controllers
                 return NotFound();
 
             // Update user properties
-            user.FullName = model.FullName;
+            if (!string.IsNullOrEmpty(model.FullName))
+            {
+                user.FullName = model.FullName;
+            }
+
             user.IsActive = model.IsActive;
 
             // Update roles

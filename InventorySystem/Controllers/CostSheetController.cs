@@ -21,20 +21,11 @@ namespace InventorySystem.Controllers
             _permissionService = permissionService;
         }
 
-        // Helper method to check permission
-        private async Task<IActionResult?> CheckPermissionAsync(string permissionCode)
-        {
-            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
-            var hasPermission = await _permissionService.HasPermissionAsync(userId, permissionCode);
-
-            return !hasPermission ? Forbid() : null;
-        }
-
         // ── List ────────────────────────────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> Index()
         {
-            var permission = await CheckPermissionAsync("CostSheet.View");
+            var permission = await this.CheckPermissionAsync(_permissionService, "CostSheet.View");
             if (permission != null) return permission;
 
             var sheets = await _context.CostSheet
@@ -62,7 +53,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public async Task<IActionResult> Create()
         {
-            var permission = await CheckPermissionAsync("CostSheet.Create");
+            var permission = await this.CheckPermissionAsync(_permissionService, "CostSheet.Create");
             if (permission != null) return permission;
 
             return View();
@@ -72,7 +63,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public async Task<IActionResult> Edit(int id)
         {
-            var permission = await CheckPermissionAsync("CostSheet.Edit");
+            var permission = await this.CheckPermissionAsync(_permissionService, "CostSheet.Edit");
             if (permission != null) return permission;
 
             var sheet = await _context.CostSheet
@@ -192,7 +183,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public async Task<IActionResult> Settings()
         {
-            var permission = await CheckPermissionAsync("CostSheet.Settings");
+            var permission = await this.CheckPermissionAsync(_permissionService, "CostSheet.Settings");
             if (permission != null) return permission;
 
             var s = await _context.CostSheetSettings.FirstOrDefaultAsync()
