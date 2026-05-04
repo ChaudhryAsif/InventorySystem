@@ -2,6 +2,7 @@ using InventorySystem.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace InventorySystem.Controllers
 {
@@ -13,8 +14,17 @@ namespace InventorySystem.Controllers
 
         public IActionResult Index()
         {
+            var role = User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+
+            if (role == "Admin")
+            {
+                ViewData["Title"] = "Dashboard";
+                return View(); // Views/Home/Index.cshtml (admin dashboard)
+            }
+
+            // All non-admin roles (including CostSheet) see the generic POS dashboard
             ViewData["Title"] = "Dashboard";
-            return View();
+            return View("GenericDashboard");
         }
     }
 }

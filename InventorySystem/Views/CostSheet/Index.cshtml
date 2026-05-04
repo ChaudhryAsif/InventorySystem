@@ -18,12 +18,20 @@
     .btn-delete   { background:#ef4444; color:#fff; margin-left:.3rem; }
 </style>
 
-<div class="cs-index-header">
+<!-- Add this top section for info and actions -->
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
     <div>
-        <h2>📦 Cost Sheets</h2>
-        <p style="color:#666; margin:0;">All saved product cost / rate sheets</p>
+        <h2>📋 Cost Sheets</h2>
+        <p style="color:#666; margin:0;">Manage and track all your product cost sheets</p>
     </div>
-    <a href="/CostSheet/Create" class="btn btn-success">➕ New Cost Sheet</a>
+    <div style="display:flex; gap:0.75rem;">
+        <a href="/CostSheet/CalculationGuide" class="btn btn-info" title="View Calculation Guide">
+            📚 How Calculations Work
+        </a>
+        <a href="/CostSheet/Create" class="btn btn-primary">
+            ➕ Create New
+        </a>
+    </div>
 </div>
 
 <table class="cs-table">

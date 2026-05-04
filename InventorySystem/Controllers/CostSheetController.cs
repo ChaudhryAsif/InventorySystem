@@ -364,6 +364,29 @@ namespace InventorySystem.Controllers
             }
         }
 
+        // ── Generic Calculation Guide (GET) ─────────────────────────────────────────
+        [HttpGet]
+        [AllowAnonymous]  // Allow clients to view without login if needed
+        public IActionResult CalculationGuide()
+        {
+            var settings = _context.CostSheetSettings.FirstOrDefault()
+                ?? new CostSheetSettings
+                {
+                    LabourRate = 5,
+                    EnergyRate = 5.08m,
+                    WastePercentage = 6,
+                    AdminExpPercentage = 1.52m,
+                    SellingDistPercentage = 1,
+                    RepairMaintenancePercentage = 1.5m,
+                    StoreSparesPercentage = 1.5m,
+                    ManufacturingCostPercentage = 1.72m,
+                    DefaultFreightRate = 0.5m,
+                    DefaultProfitPct = 11
+                };
+
+            return View(settings);
+        }
+
         // ── Helper: map ViewModel → Entity ─────────────────────────────────────
         private static void MapToEntity(CostSheetViewModel m, CostSheet e)
         {

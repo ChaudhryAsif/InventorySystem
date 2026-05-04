@@ -1,0 +1,619 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Cost Sheet Calculation Guide - Styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+    padding-bottom: 3rem;
+}
+
+.guide-wrapper {
+    max-width: 1300px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+/* ─────────────────── HERO SECTION ─────────────────── */
+.hero-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    padding: 3rem 2rem;
+    border-radius: 16px;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    text-align: center;
+}
+
+.hero-section h1 {
+    font-size: 2.5rem;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.5px;
+}
+
+.hero-section p {
+    font-size: 1.1rem;
+    opacity: 0.95;
+    margin-bottom: 1rem;
+}
+
+.hero-tag {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    backdrop-filter: blur(10px);
+}
+
+/* ─────────────────── NAVIGATION GUIDE ─────────────────── */
+.guide-nav {
+    background: #fff;
+    padding: 1.5rem;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border-left: 4px solid #667eea;
+}
+
+.guide-nav h3 {
+    color: #1f2937;
+    margin-bottom: 1rem;
+    font-size: 1rem;
+}
+
+.nav-links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.8rem;
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1rem;
+    background: #f3f4f6;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #374151;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.nav-link:hover {
+    background: #667eea;
+    color: #fff;
+    transform: translateX(4px);
+}
+
+/* ─────────────────── MAIN CONTENT ─────────────────── */
+.section {
+    background: #fff;
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    border-top: 4px solid #667eea;
+    scroll-margin-top: 100px;
+}
+
+.section.variant-1 {
+    border-top-color: #3b82f6;
+}
+
+.section.variant-2 {
+    border-top-color: #8b5cf6;
+}
+
+.section.variant-3 {
+    border-top-color: #ec4899;
+}
+
+.section.variant-4 {
+    border-top-color: #f97316;
+}
+
+.section.variant-5 {
+    border-top-color: #06b6d4;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.section-icon {
+    font-size: 2.5rem;
+    line-height: 1;
+}
+
+.section-title {
+    flex: 1;
+}
+
+.section-title h2 {
+    font-size: 1.8rem;
+    color: #1f2937;
+    margin: 0;
+    font-weight: 700;
+}
+
+.section-title p {
+    color: #6b7280;
+    font-size: 0.95rem;
+    margin-top: 0.3rem;
+}
+
+.section-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: #667eea;
+    color: #fff;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 1.2rem;
+}
+
+/* ─────────────────── CONTENT BLOCKS ─────────────────── */
+.content-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.content-box {
+    background: #f8faff;
+    border: 2px solid #e0e7ff;
+    border-radius: 10px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.content-box:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.content-box h4 {
+    color: #667eea;
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.content-box p {
+    color: #4b5563;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* ─────────────────── FORMULA DISPLAY ─────────────────── */
+.formula-section {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    border-left: 4px solid #667eea;
+}
+
+.formula-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #374151;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.8rem;
+}
+
+.formula-box {
+    background: #fff;
+    border-radius: 8px;
+    padding: 1rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.8;
+    color: #1f2937;
+    overflow-x: auto;
+    margin-bottom: 0.8rem;
+}
+
+.formula-box code {
+    color: #667eea;
+    font-weight: 600;
+}
+
+.formula-note {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
+/* ─────────────────── STEP BY STEP ─────────────────── */
+.step-flow {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.5rem 0;
+    flex-wrap: wrap;
+}
+
+.step-item {
+    background: #f3f4f6;
+    border-left: 3px solid #667eea;
+    padding: 1rem;
+    border-radius: 6px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.step-item.input {
+    background: #dbeafe;
+    border-left-color: #3b82f6;
+}
+
+.step-item.process {
+    background: #e0e7ff;
+    border-left-color: #667eea;
+}
+
+.step-item.output {
+    background: #dcfce7;
+    border-left-color: #10b981;
+}
+
+.step-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6b7280;
+    margin-bottom: 0.3rem;
+}
+
+.step-content {
+    font-size: 0.95rem;
+    color: #1f2937;
+    font-weight: 500;
+}
+
+.step-arrow {
+    flex: 0 0 auto;
+    font-size: 1.5rem;
+    color: #667eea;
+    display: none;
+}
+
+@media (min-width: 1024px) {
+    .step-flow {
+        flex-wrap: nowrap;
+    }
+
+    .step-arrow {
+        display: block;
+    }
+}
+
+/* ─────────────────── TABLE STYLES ─────────────────── */
+.calc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5rem 0;
+    font-size: 0.9rem;
+}
+
+.calc-table thead {
+    background: #667eea;
+    color: #fff;
+}
+
+.calc-table th {
+    padding: 0.8rem;
+    text-align: left;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.calc-table td {
+    padding: 0.8rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.calc-table tbody tr:hover {
+    background: #f8faff;
+}
+
+.calc-table tbody tr:nth-child(even) {
+    background: #f9fafb;
+}
+
+.calc-table .value {
+    text-align: right;
+    font-weight: 600;
+    color: #1e40af;
+    font-family: 'Courier New', monospace;
+}
+
+.calc-table .percentage {
+    color: #667eea;
+    font-weight: 600;
+}
+
+/* ─────────────────── CALCULATION FLOW ─────────────────── */
+.flow-diagram {
+    background: #fff;
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 2rem 1rem;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+}
+
+.flow-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    justify-content: space-between;
+    min-width: 100%;
+}
+
+.flow-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 140px;
+    padding: 1rem;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.flow-box.input {
+    background: #dbeafe;
+    color: #1e40af;
+    border: 2px solid #3b82f6;
+}
+
+.flow-box.calculation {
+    background: #e0e7ff;
+    color: #4338ca;
+    border: 2px solid #667eea;
+}
+
+.flow-box.output {
+    background: #dcfce7;
+    color: #15803d;
+    border: 2px solid #10b981;
+}
+
+.flow-arrow {
+    color: #9ca3af;
+    font-size: 1.5rem;
+    flex: 0 0 auto;
+}
+
+/* ─────────────────── EXAMPLE SECTION ─────────────────── */
+.example-box {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border-left: 4px solid #f59e0b;
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.example-box h4 {
+    color: #92400e;
+    margin-bottom: 0.8rem;
+    font-size: 1rem;
+}
+
+.example-box p {
+    color: #78350f;
+    margin: 0.5rem 0;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.example-box code {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+}
+
+/* ─────────────────── SUMMARY TABLE ─────────────────── */
+.summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 1.5rem 0;
+}
+
+.summary-table thead {
+    background: #1f2937;
+    color: #fff;
+}
+
+.summary-table th,
+.summary-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.summary-table tbody tr:hover {
+    background: #f8faff;
+}
+
+.summary-table .component {
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.summary-table .percentage {
+    text-align: center;
+    color: #667eea;
+    font-weight: 600;
+}
+
+.summary-table .amount {
+    text-align: right;
+    font-family: 'Courier New', monospace;
+    color: #1e40af;
+    font-weight: 600;
+}
+
+/* ─────────────────── COMPARISON CARDS ─────────────────── */
+.comparison-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.comparison-card {
+    background: #fff;
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.comparison-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.comparison-card h5 {
+    color: #1f2937;
+    margin-bottom: 1rem;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.comparison-card ul {
+    list-style: none;
+    padding: 0;
+}
+
+.comparison-card li {
+    padding: 0.5rem 0;
+    padding-left: 1.5rem;
+    position: relative;
+    color: #4b5563;
+    font-size: 0.9rem;
+}
+
+.comparison-card li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: #10b981;
+    font-weight: 700;
+}
+
+/* ─────────────────── INFO BOX ─────────────────── */
+.info-box {
+    background: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.info-box strong {
+    color: #1e40af;
+}
+
+.info-box p {
+    color: #1f2937;
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+/* ─────────────────── FOOTER ─────────────────── */
+.guide-footer {
+    background: #1f2937;
+    color: #fff;
+    padding: 2rem;
+    border-radius: 12px;
+    text-align: center;
+    margin-top: 3rem;
+}
+
+.guide-footer h3 {
+    margin-bottom: 0.5rem;
+}
+
+.guide-footer p {
+    opacity: 0.9;
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+/* ─────────────────── UTILITY CLASSES ─────────────────── */
+.no-print {
+    /* Will be hidden on print */
+}
+
+/* ─────────────────── PRINT STYLES ─────────────────── */
+@media print {
+    .guide-nav,
+    .no-print {
+        display: none;
+    }
+
+    .section {
+        page-break-inside: avoid;
+    }
+
+    .hero-section {
+        page-break-after: page;
+    }
+}
+
+/* ─────────────────── RESPONSIVE ─────────────────── */
+@media (max-width: 768px) {
+    .hero-section h1 {
+        font-size: 1.8rem;
+    }
+
+    .section {
+        padding: 1.5rem;
+    }
+
+    .section-title h2 {
+        font-size: 1.5rem;
+    }
+
+    .content-grid {
+        grid-template-columns: 1fr;
+    }
+}

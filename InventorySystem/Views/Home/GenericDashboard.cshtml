@@ -1,0 +1,106 @@
+@{
+    Layout = "_Layout";
+    var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "User";
+    var fullName = User.FindFirst("FullName")?.Value ?? User.Identity?.Name ?? "User";
+}
+
+<link href="~/css/dashboard.css" rel="stylesheet" />
+
+<main class="main-content">
+    <div class="page-header">
+        <h2>Dashboard</h2>
+        <div class="breadcrumb">
+            <span>Home</span>
+            <span>›</span>
+            <span>Dashboard</span>
+        </div>
+    </div>
+
+    <!-- Welcome Banner -->
+    <div class="card" style="margin-bottom:1.5rem; padding:1.5rem; background: linear-gradient(135deg,#1e3a5f,#2d6a9f); color:white; border-radius:12px;">
+        <h3 style="margin:0 0 0.4rem 0; font-size:1.3rem;">Welcome, @fullName 👋</h3>
+        <p style="margin:0; opacity:0.85; font-size:0.92rem;">You are logged in as <strong>@role</strong>. Use the sidebar to navigate to your modules.</p>
+    </div>
+
+    <!-- Quick Access Cards -->
+    <div class="stats-grid">
+        @if (role == "CostSheet")
+        {
+            <div class="stat-card info">
+                <div class="stat-header">
+                    <span class="stat-label">Cost Sheet</span>
+                    <span class="stat-icon">📋</span>
+                </div>
+                <div class="stat-value" style="font-size:1.2rem;">Manage</div>
+                <div class="stat-change">
+                    <a asp-controller="CostSheet" asp-action="Index" style="color:inherit;">Go to Cost Sheet →</a>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="stat-card success">
+                <div class="stat-header">
+                    <span class="stat-label">Sale Invoices</span>
+                    <span class="stat-icon">🛒</span>
+                </div>
+                <div class="stat-value" style="font-size:1.2rem;">My Sales</div>
+                @* <div class="stat-change">
+                    <a asp-controller="SaleInvoice" asp-action="Index" style="color:inherit;">View Invoices →</a>
+                </div> *@
+            </div>
+
+            <div class="stat-card warning">
+                <div class="stat-header">
+                    <span class="stat-label">Products</span>
+                    <span class="stat-icon">🏷️</span>
+                </div>
+                <div class="stat-value" style="font-size:1.2rem;">Browse</div>
+               @*  <div class="stat-change">
+                    <a asp-controller="Item" asp-action="Index" style="color:inherit;">View Products →</a>
+                </div>*@
+            </div> 
+        }
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Quick Actions</h3>
+        </div>
+        <div class="quick-actions">
+            @if (role == "CostSheet")
+            {
+                        <div class="quick-action-icon">📋</div>
+                        <div class="quick-action-label">Cost Sheet</div>
+                @* <a asp-controller="CostSheet" asp-action="Index" class="quick-action-btn">
+                    <div class="quick-action-icon">📋</div>
+                    <div class="quick-action-label">Cost Sheet</div>
+                 </a>*@
+            }
+            else
+            {
+                <div class="quick-action-icon">🛒</div>
+                <div class="quick-action-label">Sale Invoice</div>
+                @* <a asp-controller="SaleInvoice" asp-action="Index" class="quick-action-btn">
+                    <div class="quick-action-icon">🛒</div>
+                    <div class="quick-action-label">Sale Invoice</div>
+                </a> *@
+                <div class="quick-action-icon">🏷️</div>
+                <div class="quick-action-label">Products</div>
+
+                <div class="quick-action-icon">👥</div>
+                <div class="quick-action-label">Parties</div>
+
+                @* <a asp-controller="Item" asp-action="Index" class="quick-action-btn">
+                    <div class="quick-action-icon">🏷️</div>
+                    <div class="quick-action-label">Products</div>
+                </a>
+                <a asp-controller="Parties" asp-action="Index" class="quick-action-btn">
+                    <div class="quick-action-icon">👥</div>
+                    <div class="quick-action-label">Parties</div>
+                </a> *@
+            }
+        </div>
+    </div>
+</main>
