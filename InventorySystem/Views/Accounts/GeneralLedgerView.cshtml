@@ -1,0 +1,137 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "General Ledger";
+}
+
+<link href="~/css/Accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <div class="page-header">
+        <div class="page-title">
+            <h2>📖 General Ledger</h2>
+            <p>View all transactions posted to any account head</p>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label class="form-label">Account Head <span style="color:red">*</span></label>
+                <select class="form-control" id="accountHeadId">
+                    <option value="">— Select Account —</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">From Date</label>
+                <input type="date" class="form-control" id="fromDate">
+            </div>
+            <div class="form-group">
+                <label class="form-label">To Date</label>
+                <input type="date" class="form-control" id="toDate">
+            </div>
+            <div class="form-group" style="align-self:end">
+                <button class="btn btn-primary" onclick="loadLedger()">🔍 View Ledger</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="summary-cards" id="summaryCards" style="margin-top:1.2rem;display:none"></div>
+
+    <!-- Table -->
+    <div class="card no-top-radius" id="ledgerCard" style="display:none">
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Voucher No</th>
+                        <th>Type</th>
+                        <th>Party</th>
+                        <th>Narration</th>
+                        <th style="text-align:right">Debit</th>
+                        <th style="text-align:right">Credit</th>
+                        <th style="text-align:right">Balance</th>
+                    </tr>
+                </thead>
+                <tbody id="ledgerBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+async function loadAccounts() {
+    const res  = await fetch('/Accounts/GetPostableAccounts');
+    const json = await res.json();
+    const sel  = document.getElementById('accountHeadId');
+    json.data.forEach(a => {
+        sel.innerHTML += `<option value="${a.accountHeadId}">[${a.accountCode}] ${a.accountName} (${a.accountType})</option>`;
+    });
+}
+
+const today = new Date().toISOString().split('T')[0];
+const fom   = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+document.getElementById('fromDate').value = fom;
+document.getElementById('toDate').value   = today;
+
+async function loadLedger() {
+    const id   = document.getElementById('accountHeadId').value;
+    if (!id) { alert('Please select an account head.'); return; }
+    const from = document.getElementById('fromDate').value;
+    const to   = document.getElementById('toDate').value;
+
+    const res  = await fetch(`/Accounts/GetGeneralLedger?accountHeadId=${id}&from=${from}&to=${to}`);
+    const json = await res.json();
+    if (!json.success) return;
+
+    const { data, summary } = json;
+
+    const sc = document.getElementById('summaryCards');
+    sc.style.display = '';
+    sc.innerHTML = `
+        <div class="summary-card blue">
+            <div class="summary-label">Total Entries</div>
+            <div class="summary-value">${data.length}</div>
+        </div>
+        <div class="summary-card red">
+            <div class="summary-label">Total Debit</div>
+            <div class="summary-value">${fmt(summary.totalDebit)}</div>
+        </div>
+        <div class="summary-card green">
+            <div class="summary-label">Total Credit</div>
+            <div class="summary-value">${fmt(summary.totalCredit)}</div>
+        </div>
+        <div class="summary-card ${summary.closing >= 0 ? '' : 'red'}">
+            <div class="summary-label">Closing Balance</div>
+            <div class="summary-value">${fmt(Math.abs(summary.closing))} ${summary.closing >= 0 ? 'Dr' : 'Cr'}</div>
+        </div>`;
+
+    document.getElementById('ledgerCard').style.display = '';
+    const tbody = document.getElementById('ledgerBody');
+    if (!data.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:var(--text-secondary)">No entries found.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = data.map(r => `
+        <tr>
+            <td>${r.date}</td>
+            <td><span class="acc-code">${r.voucherNo}</span></td>
+            <td><span class="badge badge-primary" style="font-size:0.75rem">${r.voucherType}</span></td>
+            <td>${r.partyName || '—'}</td>
+            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.narration || '—'}</td>
+            <td style="text-align:right;color:#2d5f7f;font-weight:600">${r.debit > 0 ? fmt(r.debit) : ''}</td>
+            <td style="text-align:right;color:#28a745;font-weight:600">${r.credit > 0 ? fmt(r.credit) : ''}</td>
+            <td style="text-align:right" class="${r.balance >= 0 ? 'bal-positive' : 'bal-negative'}">${fmt(Math.abs(r.balance))} ${r.balance >= 0 ? 'Dr' : 'Cr'}</td>
+        </tr>`).join('');
+}
+
+function fmt(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 }); }
+
+loadAccounts();
+</script>
+}

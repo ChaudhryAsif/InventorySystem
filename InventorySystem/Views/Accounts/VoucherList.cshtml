@@ -1,0 +1,176 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Voucher List";
+}
+
+<link href="~/css/Accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <div class="page-header">
+        <div class="page-title">
+            <h2>📋 Voucher List</h2>
+            <p>View and manage all posted vouchers</p>
+        </div>
+        <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
+            <a href="/Accounts/PaymentVoucher"  class="btn btn-danger btn-sm">💳 New PV</a>
+            <a href="/Accounts/ReceiptVoucher"  class="btn btn-success btn-sm">🧾 New RV</a>
+            <a href="/Accounts/JournalVoucher"  class="btn btn-primary btn-sm">📓 New JV</a>
+            <a href="/Accounts/ContraVoucher"   class="btn btn-sm" style="background:#6f42c1;color:white">🏦 New CV</a>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label class="form-label">Voucher Type</label>
+                <select class="form-control" id="filterType">
+                    <option value="">All Types</option>
+                    <option value="PV">PV — Payment</option>
+                    <option value="RV">RV — Receipt</option>
+                    <option value="JV">JV — Journal</option>
+                    <option value="CV">CV — Contra</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">From Date</label>
+                <input type="date" class="form-control" id="fromDate">
+            </div>
+            <div class="form-group">
+                <label class="form-label">To Date</label>
+                <input type="date" class="form-control" id="toDate">
+            </div>
+            <div class="form-group" style="align-self:end">
+                <button class="btn btn-primary" onclick="loadVouchers()">🔍 Search</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="summary-cards" id="summaryCards" style="margin-top:1.2rem"></div>
+
+    <!-- Table -->
+    <div class="card no-top-radius">
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Voucher No</th>
+                        <th>Type</th>
+                        <th>Date</th>
+                        <th>Party</th>
+                        <th>Payment Mode</th>
+                        <th>Reference No</th>
+                        <th>Narration</th>
+                        <th style="text-align:right">Amount</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="voucherBody">
+                    <tr><td colspan="10" style="padding:2rem;text-align:center;color:var(--text-secondary)">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const today = new Date().toISOString().split('T')[0];
+const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+document.getElementById('fromDate').value = firstOfMonth;
+document.getElementById('toDate').value   = today;
+
+// Pre-select type from URL
+const urlType = new URLSearchParams(location.search).get('type');
+if (urlType) document.getElementById('filterType').value = urlType;
+
+const vtypeMeta = {
+    PV: { label:'Payment',  badge:'badge-danger',  icon:'💳' },
+    RV: { label:'Receipt',  badge:'badge-success', icon:'🧾' },
+    JV: { label:'Journal',  badge:'badge-primary', icon:'📓' },
+    CV: { label:'Contra',   badge:'badge-purple',  icon:'🏦' },
+};
+
+async function loadVouchers() {
+    const type = document.getElementById('filterType').value;
+    const from = document.getElementById('fromDate').value;
+    const to   = document.getElementById('toDate').value;
+
+    let url = `/Accounts/GetVouchers?from=${from}&to=${to}`;
+    if (type) url += `&type=${type}`;
+
+    const res  = await fetch(url);
+    const json = await res.json();
+    if (!json.success) return;
+
+    const data = json.data;
+
+    // Summary cards
+    const groups = { PV:0, RV:0, JV:0, CV:0 };
+    data.forEach(v => { if (groups[v.voucherType] !== undefined) groups[v.voucherType] += v.totalAmount; });
+
+    document.getElementById('summaryCards').innerHTML = `
+        <div class="summary-card blue">
+            <div class="summary-label">Total Records</div>
+            <div class="summary-value">${data.length}</div>
+        </div>
+        <div class="summary-card red">
+            <div class="summary-label">💳 Payments (PV)</div>
+            <div class="summary-value">${fmt(groups.PV)}</div>
+        </div>
+        <div class="summary-card green">
+            <div class="summary-label">🧾 Receipts (RV)</div>
+            <div class="summary-value">${fmt(groups.RV)}</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">📓 Journals (JV)</div>
+            <div class="summary-value">${fmt(groups.JV)}</div>
+        </div>`;
+
+    const tbody = document.getElementById('voucherBody');
+    if (!data.length) {
+        tbody.innerHTML = '<tr><td colspan="10" style="padding:2rem;text-align:center;color:var(--text-secondary)">No vouchers found.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = data.map(v => {
+        const m = vtypeMeta[v.voucherType] || { label: v.voucherType, badge:'badge-system', icon:'📄' };
+        return `<tr>
+            <td><strong style="font-family:monospace;color:#2d5f7f">${v.voucherNo}</strong></td>
+            <td><span class="badge ${m.badge}">${m.icon} ${m.label}</span></td>
+            <td>${v.voucherDate}</td>
+            <td>${v.partyName}</td>
+            <td>${v.paymentMode || '—'}</td>
+            <td>${v.referenceNo || '—'}</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${v.narration||''}">${v.narration || '—'}</td>
+            <td style="text-align:right;font-weight:600">${fmt(v.totalAmount)}</td>
+            <td><span class="badge ${v.status==='Void'?'badge-danger':'badge-success'}">${v.status}</span></td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-danger btn-sm" onclick="voidVoucher(${v.voucherId}, '${v.voucherNo}')">🚫 Void</button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function voidVoucher(id, no) {
+    if (!confirm(`Void voucher ${no}? This cannot be undone.`)) return;
+    const res  = await fetch('/Accounts/VoidVoucher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(id)
+    });
+    const json = await res.json();
+    if (json.success) loadVouchers();
+    else alert('❌ ' + json.message);
+}
+
+function fmt(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 }); }
+
+loadVouchers();
+</script>
+}

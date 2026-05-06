@@ -1,0 +1,169 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Balance Sheet";
+}
+
+<link href="~/css/Accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <div class="page-header">
+        <div class="page-title">
+            <h2>🏦 Balance Sheet</h2>
+            <p>Assets = Liabilities + Equity — financial position at a given date</p>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label class="form-label">As of Date</label>
+                <input type="date" class="form-control" id="asOf">
+            </div>
+            <div class="form-group" style="align-self:end">
+                <button class="btn btn-primary" onclick="loadReport()">📊 Generate Report</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reportSection" style="display:none;margin-top:1.2rem">
+
+        <!-- Summary Cards -->
+        <div class="summary-cards" style="margin-bottom:1.2rem">
+            <div class="summary-card blue">
+                <div class="summary-label">🏗️ Total Assets</div>
+                <div class="summary-value" id="totalAssets"></div>
+            </div>
+            <div class="summary-card orange">
+                <div class="summary-label">📉 Total Liabilities</div>
+                <div class="summary-value" id="totalLiabilities"></div>
+            </div>
+            <div class="summary-card teal">
+                <div class="summary-label">💼 Total Equity</div>
+                <div class="summary-value" id="totalEquity"></div>
+            </div>
+            <div class="summary-card" id="statusCard">
+                <div class="summary-label">Balance Check</div>
+                <div class="summary-value" id="rptStatus"></div>
+            </div>
+        </div>
+
+        <!-- Two column layout -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+
+            <!-- Assets -->
+            <div class="card">
+                <div class="section-header">
+                    <span>🏗️ Assets</span>
+                    <span id="assetHeader" style="font-family:monospace"></span>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead><tr><th>Code</th><th>Account</th><th style="text-align:right">Balance</th></tr></thead>
+                        <tbody id="assetBody"></tbody>
+                        <tfoot>
+                            <tr class="report-total-row">
+                                <td colspan="2" style="text-align:right">Total Assets</td>
+                                <td style="text-align:right;color:#084298" id="assetTotal"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Liabilities + Equity -->
+            <div>
+                <!-- Liabilities -->
+                <div class="card" style="margin-bottom:1.2rem">
+                    <div class="section-header" style="background:linear-gradient(135deg,#f0ad4e,#856404)">
+                        <span>📉 Liabilities</span>
+                        <span id="liabHeader" style="font-family:monospace"></span>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Code</th><th>Account</th><th style="text-align:right">Balance</th></tr></thead>
+                            <tbody id="liabilityBody"></tbody>
+                            <tfoot>
+                                <tr class="report-total-row">
+                                    <td colspan="2" style="text-align:right">Total Liabilities</td>
+                                    <td style="text-align:right;color:#856404" id="liabTotal"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Equity -->
+                <div class="card">
+                    <div class="section-header" style="background:linear-gradient(135deg,#20c997,#0a6b4f)">
+                        <span>💼 Equity</span>
+                        <span id="eqHeader" style="font-family:monospace"></span>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr><th>Code</th><th>Account</th><th style="text-align:right">Balance</th></tr></thead>
+                            <tbody id="equityBody"></tbody>
+                            <tfoot>
+                                <tr class="report-total-row">
+                                    <td colspan="2" style="text-align:right">Total Equity</td>
+                                    <td style="text-align:right;color:#0a6b4f" id="eqTotal"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+document.getElementById('asOf').value = new Date().toISOString().split('T')[0];
+
+const fmt = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 });
+
+async function loadReport() {
+    const asOf = document.getElementById('asOf').value;
+    const res  = await fetch(`/Accounts/GetBalanceSheet?asOf=${asOf}`);
+    const json = await res.json();
+    if (!json.success) return;
+    const d = json.data;
+
+    document.getElementById('reportSection').style.display = '';
+    document.getElementById('totalAssets').textContent      = fmt(d.totalAssets);
+    document.getElementById('totalLiabilities').textContent = fmt(d.totalLiabilities);
+    document.getElementById('totalEquity').textContent      = fmt(d.totalEquity);
+    document.getElementById('assetHeader').textContent      = fmt(d.totalAssets);
+    document.getElementById('liabHeader').textContent       = fmt(d.totalLiabilities);
+    document.getElementById('eqHeader').textContent         = fmt(d.totalEquity);
+    document.getElementById('assetTotal').textContent       = fmt(d.totalAssets);
+    document.getElementById('liabTotal').textContent        = fmt(d.totalLiabilities);
+    document.getElementById('eqTotal').textContent          = fmt(d.totalEquity);
+
+    const sc = document.getElementById('statusCard');
+    const rs = document.getElementById('rptStatus');
+    if (d.isBalanced) {
+        sc.classList.add('green');
+        rs.innerHTML = '<span style="color:#155724">✅ Balanced</span>';
+    } else {
+        sc.classList.add('red');
+        rs.innerHTML = `<span style="color:#721c24">❌ Diff: ${fmt(Math.abs(d.totalAssets - d.totalLiabilities - d.totalEquity))}</span>`;
+    }
+
+    const rows = (arr, id) => {
+        document.getElementById(id).innerHTML = arr.length
+            ? arr.map(r => `<tr>
+                <td><span class="acc-code">${r.accountCode}</span></td>
+                <td>${r.accountName}</td>
+                <td style="text-align:right;font-weight:600">${fmt(r.balance)}</td>
+              </tr>`).join('')
+            : '<tr><td colspan="3" style="text-align:center;color:var(--text-secondary);padding:1rem">No data</td></tr>';
+    };
+    rows(d.assetRows,     'assetBody');
+    rows(d.liabilityRows, 'liabilityBody');
+    rows(d.equityRows,    'equityBody');
+}
+</script>
+}

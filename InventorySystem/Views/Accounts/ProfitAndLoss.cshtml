@@ -1,0 +1,162 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Profit & Loss Statement";
+}
+
+<link href="~/css/Accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <div class="page-header">
+        <div class="page-title">
+            <h2>📈 Profit &amp; Loss Statement</h2>
+            <p>Income vs Expenses for a given period</p>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label class="form-label">From Date</label>
+                <input type="date" class="form-control" id="fromDate">
+            </div>
+            <div class="form-group">
+                <label class="form-label">To Date</label>
+                <input type="date" class="form-control" id="toDate">
+            </div>
+            <div class="form-group" style="align-self:end">
+                <button class="btn btn-primary" onclick="loadReport()">📊 Generate Report</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reportSection" style="display:none;margin-top:1.2rem">
+
+        <!-- Net result banner -->
+        <div id="netBanner" style="border-radius:var(--radius-md);padding:1.2rem 2rem;margin-bottom:1.2rem;display:flex;justify-content:space-between;align-items:center">
+            <span id="netLabel" style="font-size:1.2rem;font-weight:700"></span>
+            <span id="netAmount" style="font-size:2rem;font-weight:800"></span>
+        </div>
+
+        <!-- Summary cards -->
+        <div class="summary-cards" style="margin-bottom:1.2rem">
+            <div class="summary-card green">
+                <div class="summary-label">📥 Total Income</div>
+                <div class="summary-value" id="totalIncome"></div>
+            </div>
+            <div class="summary-card red">
+                <div class="summary-label">📤 Total Expenses</div>
+                <div class="summary-value" id="totalExpense"></div>
+            </div>
+        </div>
+
+        <!-- Two column layout -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+
+            <!-- Income -->
+            <div class="card">
+                <div class="section-header" style="background:linear-gradient(135deg,#28a745,#155724)">
+                    <span>📥 Income</span>
+                    <span id="incomeTotal" style="font-family:monospace"></span>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Code</th>
+                                <th>Account</th>
+                                <th style="text-align:right">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="incomeBody"></tbody>
+                        <tfoot>
+                            <tr class="report-total-row">
+                                <td colspan="2" style="text-align:right">Total Income</td>
+                                <td style="text-align:right;color:#155724" id="incomeTotalFoot"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Expenses -->
+            <div class="card">
+                <div class="section-header" style="background:linear-gradient(135deg,#dc3545,#721c24)">
+                    <span>📤 Expenses</span>
+                    <span id="expenseTotal" style="font-family:monospace"></span>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Code</th>
+                                <th>Account</th>
+                                <th style="text-align:right">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expenseBody"></tbody>
+                        <tfoot>
+                            <tr class="report-total-row">
+                                <td colspan="2" style="text-align:right">Total Expenses</td>
+                                <td style="text-align:right;color:#721c24" id="expenseTotalFoot"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const today  = new Date();
+const fom    = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+document.getElementById('fromDate').value = fom;
+document.getElementById('toDate').value   = today.toISOString().split('T')[0];
+
+const fmt = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 });
+
+async function loadReport() {
+    const from = document.getElementById('fromDate').value;
+    const to   = document.getElementById('toDate').value;
+    const res  = await fetch(`/Accounts/GetProfitLoss?from=${from}&to=${to}`);
+    const json = await res.json();
+    if (!json.success) return;
+    const d = json.data;
+
+    document.getElementById('reportSection').style.display = '';
+
+    document.getElementById('totalIncome').textContent  = fmt(d.totalIncome);
+    document.getElementById('totalExpense').textContent = fmt(d.totalExpense);
+    document.getElementById('incomeTotalFoot').textContent  = fmt(d.totalIncome);
+    document.getElementById('expenseTotalFoot').textContent = fmt(d.totalExpense);
+    document.getElementById('incomeTotal').textContent  = fmt(d.totalIncome);
+    document.getElementById('expenseTotal').textContent = fmt(d.totalExpense);
+
+    const isProfit = d.netProfit >= 0;
+    const banner   = document.getElementById('netBanner');
+    banner.style.background  = isProfit ? 'linear-gradient(135deg,#d4edda,#c3e6cb)' : 'linear-gradient(135deg,#f8d7da,#f5c6cb)';
+    banner.style.border      = `2px solid ${isProfit ? '#28a745' : '#dc3545'}`;
+    banner.style.borderRadius = 'var(--radius-md)';
+    document.getElementById('netLabel').textContent  = isProfit ? '✅ Net Profit' : '❌ Net Loss';
+    document.getElementById('netLabel').style.color  = isProfit ? '#155724' : '#721c24';
+    document.getElementById('netAmount').textContent = fmt(Math.abs(d.netProfit));
+    document.getElementById('netAmount').style.color = isProfit ? '#155724' : '#721c24';
+
+    const rows = (arr, id) => {
+        const tbody = document.getElementById(id);
+        tbody.innerHTML = arr.length
+            ? arr.map(r => `<tr>
+                <td><span class="acc-code">${r.accountCode}</span></td>
+                <td>${r.accountName}</td>
+                <td style="text-align:right;font-weight:600">${fmt(r.amount)}</td>
+              </tr>`).join('')
+            : '<tr><td colspan="3" style="text-align:center;color:var(--text-secondary);padding:1rem">No entries</td></tr>';
+    };
+    rows(d.incomeRows,  'incomeBody');
+    rows(d.expenseRows, 'expenseBody');
+}
+</script>
+}

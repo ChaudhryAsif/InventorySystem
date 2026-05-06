@@ -1,0 +1,249 @@
+@model string
+@{
+    Layout = "_Layout";
+    var vType = Model ?? "PV";
+    var meta = new Dictionary<string, (string title, string icon, string color)>
+    {
+        ["PV"] = ("Payment Voucher",  "💳", "#dc3545"),
+        ["RV"] = ("Receipt Voucher",  "🧾", "#28a745"),
+        ["JV"] = ("Journal Voucher",  "📓", "#2d5f7f"),
+        ["CV"] = ("Contra Voucher",   "🏦", "#6f42c1"),
+    };
+    var (title, icon, color) = meta.GetValueOrDefault(vType, ("Voucher", "📄", "#2d5f7f"));
+    ViewData["Title"] = title;
+}
+
+<link href="~/css/Accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="page-title">
+            <h2>@icon @title</h2>
+            <p>Create and post @title entries to the General Ledger</p>
+        </div>
+        <a href="/Accounts/VoucherList?type=@vType" class="btn btn-outline">📋 All @vType Vouchers</a>
+    </div>
+
+    <!-- Voucher Header Card -->
+    <div class="card" style="margin-bottom:1.2rem">
+        <div class="section-header" style="background:linear-gradient(135deg, @color 0%, #1e4159 100%)">
+            <span>@icon Voucher Information</span>
+            <span id="voucherNoDisplay" style="font-family:monospace;font-size:1rem;background:rgba(255,255,255,0.15);padding:0.3rem 0.9rem;border-radius:6px;"></span>
+        </div>
+        <div class="modal-body" style="padding:1.5rem">
+            <input type="hidden" id="voucherType" value="@vType" />
+            <div class="form-grid-4">
+                <div class="form-group">
+                    <label class="form-label">Voucher No</label>
+                    <input type="text" class="form-control" id="voucherNo" readonly>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Date <span style="color:red">*</span></label>
+                    <input type="date" class="form-control" id="voucherDate">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Party</label>
+                    <select class="form-control" id="partyId">
+                        <option value="">— Select Party —</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Payment Mode</label>
+                    <select class="form-control" id="paymentMode">
+                        <option>Cash</option>
+                        <option>Cheque</option>
+                        <option>Bank Transfer</option>
+                        <option>Online</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Reference No</label>
+                    <input type="text" class="form-control" id="referenceNo" placeholder="Cheque / Txn #">
+                </div>
+                <div class="form-group full-width" style="grid-column:span 3">
+                    <label class="form-label">Narration</label>
+                    <input type="text" class="form-control" id="narration" placeholder="Description / purpose of this voucher">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Voucher Lines -->
+    <div class="card" style="margin-bottom:1.2rem">
+        <div class="section-header">
+            <span>📋 Voucher Lines</span>
+            <button class="btn btn-success btn-sm" onclick="addLine()">➕ Add Line</button>
+        </div>
+        <div class="table-container">
+            <table class="line-table">
+                <thead>
+                    <tr>
+                        <th style="width:32%">Account Head <span style="color:#ffc107">*</span></th>
+                        <th style="width:18%">Party</th>
+                        <th style="width:22%">Narration</th>
+                        <th style="width:11%;text-align:right">Debit</th>
+                        <th style="width:11%;text-align:right">Credit</th>
+                        <th style="width:6%;text-align:center">Del</th>
+                    </tr>
+                </thead>
+                <tbody id="lineBody"></tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3" style="text-align:right">Totals:</td>
+                        <td style="text-align:right;color:#2d5f7f" id="totalDebit">0.00</td>
+                        <td style="text-align:right;color:#28a745" id="totalCredit">0.00</td>
+                        <td></td>
+                    </tr>
+                    <tr id="diffRow" style="display:none" class="total-row-diff">
+                        <td colspan="3" style="text-align:right">⚠️ Difference:</td>
+                        <td colspan="2" style="text-align:right" id="diffAmt"></td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div style="display:flex;justify-content:flex-end;gap:0.8rem">
+        <button class="btn btn-outline" onclick="clearForm()">🔄 Clear</button>
+        <button class="btn btn-primary btn-lg" onclick="saveVoucher()">💾 Save Voucher</button>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const VTYPE = '@vType';
+let accounts = [], parties = [], lineId = 0;
+
+async function init() {
+    // Accounts
+    let r = await fetch('/Accounts/GetPostableAccounts');
+    let j = await r.json();
+    accounts = j.data;
+
+    // Parties
+    r = await fetch('/Accounts/GetParties');
+    j = await r.json();
+    parties = j.data;
+
+    const pd = document.getElementById('partyId');
+    parties.forEach(p => pd.innerHTML += `<option value="${p.value}">${p.text} (${p.partyType})</option>`);
+
+    document.getElementById('voucherDate').value = new Date().toISOString().split('T')[0];
+    await loadVoucherNo();
+    addLine(); addLine();
+}
+
+async function loadVoucherNo() {
+    const r = await fetch(`/Accounts/GetNextVoucherNo?type=${VTYPE}`);
+    const j = await r.json();
+    document.getElementById('voucherNo').value      = j.voucherNo;
+    document.getElementById('voucherNoDisplay').textContent = j.voucherNo;
+}
+
+function acctOptions(sel = '') {
+    return accounts.map(a =>
+        `<option value="${a.accountHeadId}" ${a.accountHeadId == sel ? 'selected' : ''}>[${a.accountCode}] ${a.accountName}</option>`
+    ).join('');
+}
+
+function partyOptions(sel = '') {
+    return `<option value="">—</option>` + parties.map(p =>
+        `<option value="${p.value}" ${p.value == sel ? 'selected' : ''}>${p.text}</option>`
+    ).join('');
+}
+
+function addLine(d = {}) {
+    lineId++;
+    const id = lineId;
+    const tr = document.createElement('tr');
+    tr.id = `ln_${id}`;
+    tr.innerHTML = `
+        <td><select class="form-control a-sel" onchange="recalc()">${acctOptions(d.accountHeadId)}</select></td>
+        <td><select class="form-control p-sel">${partyOptions(d.partyId)}</select></td>
+        <td><input class="form-control n-inp" value="${d.narration||''}"></td>
+        <td><input type="number" class="form-control d-inp" style="text-align:right" value="${d.debit||''}" min="0" step="0.01" oninput="recalc()"></td>
+        <td><input type="number" class="form-control c-inp" style="text-align:right" value="${d.credit||''}" min="0" step="0.01" oninput="recalc()"></td>
+        <td style="text-align:center"><button class="btn-icon" onclick="removeLine(${id})">🗑️</button></td>`;
+    document.getElementById('lineBody').appendChild(tr);
+}
+
+function removeLine(id) {
+    document.getElementById(`ln_${id}`)?.remove();
+    recalc();
+}
+
+function recalc() {
+    const dr = [...document.querySelectorAll('.d-inp')].reduce((s, e) => s + (+e.value || 0), 0);
+    const cr = [...document.querySelectorAll('.c-inp')].reduce((s, e) => s + (+e.value || 0), 0);
+    document.getElementById('totalDebit').textContent  = dr.toFixed(2);
+    document.getElementById('totalCredit').textContent = cr.toFixed(2);
+    const diff = Math.abs(dr - cr);
+    const row  = document.getElementById('diffRow');
+    if (diff > 0.001) {
+        row.style.display = '';
+        document.getElementById('diffAmt').textContent = diff.toFixed(2);
+    } else {
+        row.style.display = 'none';
+    }
+}
+
+function getLines() {
+    return [...document.querySelectorAll('#lineBody tr')].map(row => ({
+        accountHeadId: +row.querySelector('.a-sel').value,
+        partyId:       +row.querySelector('.p-sel').value || null,
+        narration:      row.querySelector('.n-inp').value,
+        debit:         +row.querySelector('.d-inp').value || 0,
+        credit:        +row.querySelector('.c-inp').value || 0,
+    })).filter(l => l.accountHeadId && (l.debit > 0 || l.credit > 0));
+}
+
+async function saveVoucher() {
+    const lines  = getLines();
+    if (lines.length < 2) { alert('Add at least 2 valid lines.'); return; }
+
+    const totalD = lines.reduce((s, l) => s + l.debit, 0);
+    const totalC = lines.reduce((s, l) => s + l.credit, 0);
+    if (Math.abs(totalD - totalC) > 0.001) {
+        alert(`❌ Voucher is not balanced!\nDebit: ${totalD.toFixed(2)}  |  Credit: ${totalC.toFixed(2)}`);
+        return;
+    }
+
+    const payload = {
+        voucherId:   0,
+        voucherType: VTYPE,
+        voucherDate: document.getElementById('voucherDate').value,
+        partyId:    +document.getElementById('partyId').value || null,
+        paymentMode: document.getElementById('paymentMode').value,
+        referenceNo: document.getElementById('referenceNo').value,
+        narration:   document.getElementById('narration').value,
+        details:     lines
+    };
+
+    const res  = await fetch('/Accounts/SaveVoucher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (json.success) { alert('✅ ' + json.message); clearForm(); }
+    else { alert('❌ ' + json.message); }
+}
+
+async function clearForm() {
+    document.getElementById('lineBody').innerHTML = '';
+    lineId = 0;
+    document.getElementById('narration').value = '';
+    document.getElementById('referenceNo').value = '';
+    document.getElementById('partyId').value = '';
+    await loadVoucherNo();
+    addLine(); addLine();
+    recalc();
+}
+
+init();
+</script>
+}

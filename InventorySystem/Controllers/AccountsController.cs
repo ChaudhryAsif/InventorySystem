@@ -1,6 +1,6 @@
 using InventorySystem.Core.Models;
+using InventorySystem.Core.Services;
 using InventorySystem.Data;
-using InventorySystem.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,165 +10,169 @@ namespace InventorySystem.Controllers
     [Authorize]
     public class AccountsController : Controller
     {
-        private readonly ApplicationDbContext _context;
+        private readonly ApplicationDbContext _db;
+        private readonly IAccountService _accounts;
 
-        public AccountsController(ApplicationDbContext context)
+        public AccountsController(ApplicationDbContext db, IAccountService accounts)
         {
-            _context = context;
+            _db = db;
+            _accounts = accounts;
         }
 
-        [HttpGet] public IActionResult PaymentVoucher() => View();
-        [HttpGet] public IActionResult PartyLedger()    => View();
+        // ═══════════════════════════════════════════════════════════════════════
+        // CHART OF ACCOUNTS
+        // ═══════════════════════════════════════════════════════════════════════
 
-        // ── Parties dropdown ─────────────────────────────────────────────────
         [HttpGet]
-        public async Task<IActionResult> GetParties(string? type = null)
-        {
-            var query = _context.Parties.AsQueryable();
+        public IActionResult ChartOfAccounts() => View();
 
-            if (!string.IsNullOrEmpty(type))
-                query = query.Where(p => p.PartyType == type || p.PartyType == "both");
-
-            var parties = await query
-                .Where(p => p.Status != "inactive")
-                .Select(p => new
-                {
-                    value     = p.PartyId,
-                    text      = p.PartyName,
-                    partyType = p.PartyType,
-                    phone     = p.Phone ?? ""
-                })
-                .OrderBy(p => p.text)
-                .ToListAsync();
-
-            return Json(new { success = true, data = parties });
-        }
-
-        // ── Party balance (live, computed from AccountLedger) ────────────────
         [HttpGet]
-        public async Task<IActionResult> GetPartyBalance(int partyId)
+        public async Task<IActionResult> GetChartOfAccounts()
         {
-            var party = await _context.Parties.FindAsync(partyId);
-            if (party == null) return Json(new { success = false, message = "Party not found." });
-
-            var entries = await _context.AccountLedger
-                .Where(l => l.PartyId == partyId && !l.IsVoid)
-                .ToListAsync();
-
-            var totalDebit  = entries.Sum(e => e.Debit);
-            var totalCredit = entries.Sum(e => e.Credit);
-
-            bool isSupplier = party.PartyType == "supplier" || party.PartyType == "both";
-            var balance     = isSupplier ? totalCredit - totalDebit : totalDebit - totalCredit;
-
+            var list = await _accounts.GetChartOfAccountsAsync();
             return Json(new
             {
-                success     = true,
-                partyId,
-                partyName   = party.PartyName,
-                partyType   = party.PartyType,
-                totalDebit,
-                totalCredit,
-                balance,
-                balanceType = isSupplier ? "Payable" : "Receivable",
-                status      = balance <= 0 ? "Cleared" : "Outstanding"
+                success = true,
+                data = list.Select(a => new {
+                    a.AccountHeadId,
+                    a.AccountCode,
+                    a.AccountName,
+                    a.AccountType,
+                    a.Level,
+                    a.NormalBalance,
+                    a.IsPostable,
+                    a.IsSystem,
+                    a.IsActive,
+                    a.OpeningBalance,
+                    a.OpeningBalanceType,
+                    a.ParentId,
+                    parentName = a.Parent?.AccountName ?? ""
+                })
             });
         }
 
-        // ── Pending invoices for a party (unpaid / partially paid) ──────────
-        [HttpGet]
-        public async Task<IActionResult> GetPendingInvoices(int partyId)
+        [HttpPost]
+        public async Task<IActionResult> SaveAccountHead([FromBody] AccountHead model)
         {
-            var party = await _context.Parties.FindAsync(partyId);
-            if (party == null) return Json(new { success = true, data = Array.Empty<object>() });
-
-            bool isSupplier = party.PartyType is "supplier" or "both";
-
-            if (isSupplier)
-            {
-                var invoices = await _context.PurchaseInvoice
-                    .Where(p => p.VendorID == partyId.ToString())
-                    .OrderByDescending(p => p.PurchaseDate)
-                    .Select(p => new
-                    {
-                        id            = p.PurchaseId,
-                        date          = p.PurchaseDate,
-                        refNo         = p.BillNo ?? "-",
-                        invoiceAmount = p.AmountPaid ?? 0,
-                        paidSoFar     = _context.AccountLedger
-                            .Where(l => l.PartyId == partyId
-                                     && l.TransactionType == TransactionTypes.Payment
-                                     && l.ReferenceId != null
-                                     && _context.PaymentVoucher
-                                            .Where(v => v.PurchaseId == p.PurchaseId)
-                                            .Select(v => (int?)v.VoucherId)
-                                            .Contains(l.ReferenceId)
-                                     && !l.IsVoid)
-                            .Sum(l => (decimal?)l.Debit) ?? 0
-                    })
-                    .ToListAsync();
-
-                var pending = invoices
-                    .Select(i => new
-                    {
-                        i.id,
-                        date      = i.date.HasValue ? i.date.Value.ToString("yyyy-MM-dd") : "-",
-                        label     = $"Purchase #{i.id}  ({(i.date.HasValue ? i.date.Value.ToString("yyyy-MM-dd") : "-")})  — ${(i.invoiceAmount - i.paidSoFar):F2} remaining",
-                        i.invoiceAmount,
-                        i.paidSoFar,
-                        remaining = i.invoiceAmount - i.paidSoFar
-                    })
-                    .Where(i => i.remaining > 0.01m)
-                    .ToList();
-
-                return Json(new { success = true, data = pending });
-            }
-            else
-            {
-                var invoices = await _context.SaleInvoice
-                    .Where(s => s.CustomerID == partyId.ToString())
-                    .OrderByDescending(s => s.SaleDate)
-                    .Select(s => new
-                    {
-                        id            = s.SaleId,
-                        date          = s.SaleDate,
-                        refNo         = s.RefNo ?? "-",
-                        invoiceAmount = s.NetAmount ?? 0,
-                        paidSoFar     = _context.AccountLedger
-                            .Where(l => l.PartyId == partyId
-                                     && l.TransactionType == TransactionTypes.Receipt
-                                     && l.ReferenceId != null
-                                     && _context.PaymentVoucher
-                                            .Where(v => v.SaleId == s.SaleId)
-                                            .Select(v => (int?)v.VoucherId)
-                                            .Contains(l.ReferenceId)
-                                     && !l.IsVoid)
-                            .Sum(l => (decimal?)l.Credit) ?? 0
-                    })
-                    .ToListAsync();
-
-                var pending = invoices
-                    .Select(i => new
-                    {
-                        i.id,
-                        date      = i.date.HasValue ? i.date.Value.ToString("yyyy-MM-dd") : "-",
-                        label     = $"Sale #{i.id}  ({(i.date.HasValue ? i.date.Value.ToString("yyyy-MM-dd") : "-")})  — ${(i.invoiceAmount - i.paidSoFar):F2} remaining",
-                        i.invoiceAmount,
-                        i.paidSoFar,
-                        remaining = i.invoiceAmount - i.paidSoFar
-                    })
-                    .Where(i => i.remaining > 0.01m)
-                    .ToList();
-
-                return Json(new { success = true, data = pending });
-            }
+            var result = await _accounts.SaveAccountHeadAsync(model);
+            return Json(new { result.success, result.message });
         }
 
-        // ── Full ledger for a party with running balance ─────────────────────
+        [HttpPost]
+        public async Task<IActionResult> DeleteAccountHead([FromBody] int id)
+        {
+            var result = await _accounts.DeleteAccountHeadAsync(id);
+            return Json(new { result.success, result.message });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // VOUCHERS
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult PaymentVoucher() => View("Voucher", "PV");
+        [HttpGet] public IActionResult ReceiptVoucher() => View("Voucher", "RV");
+        [HttpGet] public IActionResult JournalVoucher() => View("Voucher", "JV");
+        [HttpGet] public IActionResult ContraVoucher() => View("Voucher", "CV");
+        [HttpGet] public IActionResult VoucherList() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetVouchers(string? type, DateTime? from, DateTime? to)
+        {
+            var list = await _accounts.GetVouchersAsync(type, from, to);
+            return Json(new
+            {
+                success = true,
+                data = list.Select(v => new {
+                    v.VoucherId,
+                    v.VoucherNo,
+                    v.VoucherType,
+                    v.TotalAmount,
+                    voucherDate = v.VoucherDate.ToString("yyyy-MM-dd"),
+                    partyName = v.Party?.PartyName ?? "-",
+                    v.PaymentMode,
+                    v.ReferenceNo,
+                    v.Narration,
+                    v.Status
+                })
+            });
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetVoucher(int id)
+        {
+            var v = await _accounts.GetVoucherAsync(id);
+            if (v == null) return Json(new { success = false, message = "Not found." });
+            return Json(new { success = true, data = v });
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> SaveVoucher([FromBody] Voucher model)
+        {
+            model.CreatedBy = User.Identity?.Name ?? "system";
+            var result = await _accounts.SaveVoucherAsync(model);
+            return Json(new { result.success, result.message, result.voucherId });
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> VoidVoucher([FromBody] int id)
+        {
+            var result = await _accounts.VoidVoucherAsync(id);
+            return Json(new { result.success, result.message });
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetNextVoucherNo(string type)
+        {
+            var no = await _accounts.GenerateVoucherNoAsync(type);
+            return Json(new { success = true, voucherNo = no });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // LEDGER VIEW
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult GeneralLedgerView() => View();
+        [HttpGet] public IActionResult PartyLedger() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetGeneralLedger(int accountHeadId, DateTime? from, DateTime? to)
+        {
+            var entries = await _accounts.GetAccountLedgerAsync(accountHeadId, from, to);
+            decimal running = 0;
+            var rows = entries.Select(e => {
+                running += e.Debit - e.Credit;
+                return new
+                {
+                    date = e.VoucherDate.ToString("yyyy-MM-dd"),
+                    e.VoucherNo,
+                    e.VoucherType,
+                    narration = e.Narration,
+                    partyName = e.Party?.PartyName ?? "",
+                    e.Debit,
+                    e.Credit,
+                    balance = running
+                };
+            });
+            return Json(new
+            {
+                success = true,
+                data = rows,
+                summary = new { totalDebit = entries.Sum(e => e.Debit), totalCredit = entries.Sum(e => e.Credit), closing = running }
+            });
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetPartyStatement(int partyId, DateTime? from, DateTime? to)
+        {
+            var rows = await _accounts.GetPartyStatementAsync(partyId, from, to);
+            return Json(new { success = true, data = rows });
+        }
+
+        // ── Party Ledger (used by PartyLedger.cshtml) ─────────────────
         [HttpGet]
         public async Task<IActionResult> GetLedger(int partyId, DateTime? from = null, DateTime? to = null)
         {
-            var party = await _context.Parties.FindAsync(partyId);
+            var party = await _db.Parties.FindAsync(partyId);
             if (party == null) return Json(new { success = false, message = "Party not found." });
 
             var fromDate = from ?? DateTime.MinValue;
@@ -176,133 +180,111 @@ namespace InventorySystem.Controllers
 
             bool isSupplier = party.PartyType is "supplier" or "both";
 
-            var entries = await _context.AccountLedger
+            var entries = await _db.GeneralLedger
                 .Where(l => l.PartyId == partyId && !l.IsVoid
-                         && l.EntryDate >= fromDate && l.EntryDate <= toDate)
-                .OrderBy(l => l.EntryDate)
-                .ThenBy(l => l.LedgerId)
+                         && l.VoucherDate >= fromDate && l.VoucherDate <= toDate)
+                .OrderBy(l => l.VoucherDate)
+                .ThenBy(l => l.GLId)
                 .ToListAsync();
 
             decimal runningBalance = 0;
             var rows = entries.Select(e =>
             {
                 runningBalance += isSupplier
-                    ? e.Credit - e.Debit      // supplier: credit=owed, debit=paid
-                    : e.Debit  - e.Credit;    // customer: debit=owed, credit=received
+                    ? e.Credit - e.Debit
+                    : e.Debit  - e.Credit;
                 return new
                 {
-                    date            = e.EntryDate.ToString("yyyy-MM-dd"),
-                    description     = e.Description,
-                    transactionType = e.TransactionType,
+                    date            = e.VoucherDate.ToString("yyyy-MM-dd"),
+                    description     = e.Narration ?? e.VoucherType,
+                    transactionType = e.VoucherType,
                     debit           = e.Debit,
                     credit          = e.Credit,
                     balance         = runningBalance,
-                    refNo           = $"{e.TransactionType[..3].ToUpper()}-{e.ReferenceId}"
+                    refNo           = e.VoucherNo
                 };
             }).ToList();
 
+            var totalDebit  = entries.Sum(e => e.Debit);
+            var totalCredit = entries.Sum(e => e.Credit);
+
             return Json(new
             {
-                success  = true,
-                data     = rows,
-                summary  = new
+                success = true,
+                data    = rows,
+                summary = new
                 {
-                    totalDebit  = entries.Sum(e => e.Debit),
-                    totalCredit = entries.Sum(e => e.Credit),
+                    totalDebit,
+                    totalCredit,
                     balance     = runningBalance,
-                    balanceType = isSupplier ? "Payable" : "Receivable"
+                    balanceType = isSupplier ? "Payable" : "Receivable",
+                    status      = runningBalance <= 0 ? "Cleared" : "Outstanding",
+                    partyName   = party.PartyName,
+                    partyType   = party.PartyType
                 }
             });
         }
 
-        // ── Save payment / receipt voucher ───────────────────────────────────
-        [HttpPost]
-        public async Task<IActionResult> SaveVoucher([FromBody] PaymentVoucherViewModel model)
+        // ═══════════════════════════════════════════════════════════════════════
+        // REPORTS
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult TrialBalance() => View();
+        [HttpGet] public IActionResult ProfitAndLoss() => View();
+        [HttpGet] public IActionResult BalanceSheet() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetTrialBalance(DateTime? asOf)
         {
-            if (model.PartyId == 0 || model.Amount <= 0)
-                return Ok(new { success = false, message = "Party and a valid amount are required." });
-
-            var party = await _context.Parties.FindAsync(model.PartyId);
-            if (party == null) return Ok(new { success = false, message = "Party not found." });
-
-            // Overpayment guard
-            var balanceResult = await GetPartyBalance(model.PartyId) as JsonResult;
-            // (simple re-compute inline)
-            var entries     = await _context.AccountLedger.Where(l => l.PartyId == model.PartyId && !l.IsVoid).ToListAsync();
-            bool isSupplier = party.PartyType is "supplier" or "both";
-            var balance     = isSupplier
-                ? entries.Sum(e => e.Credit) - entries.Sum(e => e.Debit)
-                : entries.Sum(e => e.Debit)  - entries.Sum(e => e.Credit);
-
-            if (model.Amount > balance && balance > 0)
-                return Ok(new
-                {
-                    success = false,
-                    message = $"Amount ${model.Amount:F2} exceeds outstanding balance of ${balance:F2}."
-                });
-
-            var voucher = new PaymentVoucher
-            {
-                PartyId     = model.PartyId,
-                VoucherType = model.VoucherType,
-                VoucherDate = model.VoucherDate == default ? DateTime.Now : model.VoucherDate,
-                Amount      = model.Amount,
-                PaymentMode = model.PaymentMode,
-                ReferenceNo = model.ReferenceNo,
-                PurchaseId  = model.PurchaseId,
-                SaleId      = model.SaleId,
-                BranchId    = model.BranchId,
-                Notes       = model.Notes,
-                CreatedDate = DateTime.Now
-            };
-
-            _context.PaymentVoucher.Add(voucher);
-            await _context.SaveChangesAsync();
-
-            // Create corresponding ledger entry
-            bool isPayment = model.VoucherType == "Payment";
-            _context.AccountLedger.Add(new AccountLedger
-            {
-                PartyId         = model.PartyId,
-                EntryDate       = voucher.VoucherDate,
-                TransactionType = isPayment ? TransactionTypes.Payment : TransactionTypes.Receipt,
-                ReferenceId     = voucher.VoucherId,
-                Description     = isPayment
-                    ? $"Payment Voucher #{voucher.VoucherId}" +
-                      (model.PurchaseId.HasValue ? $" | Invoice #{model.PurchaseId}" : "")
-                    : $"Receipt Voucher #{voucher.VoucherId}" +
-                      (model.SaleId.HasValue ? $" | Sale #{model.SaleId}" : ""),
-                Debit           = isPayment ? model.Amount : 0,
-                Credit          = isPayment ? 0 : model.Amount,
-                BranchId        = model.BranchId,
-                CreatedDate     = DateTime.Now
-            });
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new { success = true, message = $"{model.VoucherType} recorded successfully.", id = voucher.VoucherId });
+            var result = await _accounts.GetTrialBalanceAsync(asOf ?? DateTime.Today);
+            return Json(new { success = true, data = result });
         }
 
-        // ── Void (soft-delete) a voucher ─────────────────────────────────────
-        [HttpPost]
-        public async Task<IActionResult> VoidVoucher([FromBody] int voucherId)
+        [HttpGet]
+        public async Task<IActionResult> GetProfitLoss(DateTime? from, DateTime? to)
         {
-            var voucher = await _context.PaymentVoucher.FindAsync(voucherId);
-            if (voucher == null) return Ok(new { success = false, message = "Voucher not found." });
+            var result = await _accounts.GetProfitLossAsync(
+                from ?? new DateTime(DateTime.Today.Year, 1, 1),
+                to ?? DateTime.Today);
+            return Json(new { success = true, data = result });
+        }
 
-            voucher.IsVoid = true;
+        [HttpGet]
+        public async Task<IActionResult> GetBalanceSheet(DateTime? asOf)
+        {
+            var result = await _accounts.GetBalanceSheetAsync(asOf ?? DateTime.Today);
+            return Json(new { success = true, data = result });
+        }
 
-            // Also void the corresponding ledger entry
-            var ledgerEntry = await _context.AccountLedger
-                .FirstOrDefaultAsync(l => l.ReferenceId == voucherId
-                    && (l.TransactionType == TransactionTypes.Payment
-                     || l.TransactionType == TransactionTypes.Receipt)
-                    && !l.IsVoid);
+        // ═══════════════════════════════════════════════════════════════════════
+        // HELPERS (kept from original)
+        // ═══════════════════════════════════════════════════════════════════════
 
-            if (ledgerEntry != null) ledgerEntry.IsVoid = true;
+        [HttpGet]
+        public async Task<IActionResult> GetParties(string? type = null)
+        {
+            var query = _db.Parties.AsQueryable();
+            if (!string.IsNullOrEmpty(type))
+                query = query.Where(p => p.PartyType == type || p.PartyType == "both");
 
-            await _context.SaveChangesAsync();
-            return Ok(new { success = true, message = "Voucher voided." });
+            var parties = await query
+                .Where(p => p.Status != "inactive")
+                .Select(p => new { value = p.PartyId, text = p.PartyName, p.PartyType, phone = p.Phone ?? "" })
+                .OrderBy(p => p.text)
+                .ToListAsync();
+
+            return Json(new { success = true, data = parties });
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetPostableAccounts()
+        {
+            var accounts = await _db.AccountHeads
+                .Where(a => a.Level == 3 && a.IsActive)
+                .OrderBy(a => a.AccountCode)
+                .Select(a => new { a.AccountHeadId, a.AccountCode, a.AccountName, a.AccountType })
+                .ToListAsync();
+            return Json(new { success = true, data = accounts });
         }
     }
 }

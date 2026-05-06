@@ -41,6 +41,7 @@ builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler
 // ── Services ────────────────────────────────────────────────────────────────────
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IMenuService, MenuService>();
+builder.Services.AddScoped<IAccountService, AccountService>();
 
 var app = builder.Build();
 

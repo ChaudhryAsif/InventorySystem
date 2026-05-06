@@ -63,6 +63,14 @@ namespace InventorySystem.Data
         public DbSet<ProductionMaterial> ProductionMaterial => Set<ProductionMaterial>();
         public DbSet<ProductionConsumption> ProductionConsumption => Set<ProductionConsumption>();
 
+        // ADD these DbSets inside ApplicationDbContext (after existing Accounts DbSets):
+
+        // ── Accounts (Full Module) ────────────────────────────────────────────────
+        public DbSet<AccountHead> AccountHeads => Set<AccountHead>();
+        public DbSet<GeneralLedger> GeneralLedger => Set<GeneralLedger>();
+        public DbSet<Voucher> Vouchers => Set<Voucher>();
+        public DbSet<VoucherDetail> VoucherDetails => Set<VoucherDetail>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             // ── Value Generation ────────────────────────────────────────────────────
@@ -780,6 +788,42 @@ namespace InventorySystem.Data
                 .Property(x => x.FinalRateWithGST)
                 .HasPrecision(18, 2);
 
+            // ── AccountHead Precision ─────────────────────────────────────────────────
+            modelBuilder.Entity<AccountHead>()
+                .Property(x => x.OpeningBalance).HasPrecision(18, 2);
+
+            modelBuilder.Entity<GeneralLedger>()
+                .Property(x => x.Debit).HasPrecision(18, 2);
+            modelBuilder.Entity<GeneralLedger>()
+                .Property(x => x.Credit).HasPrecision(18, 2);
+
+            modelBuilder.Entity<Voucher>()
+                .Property(x => x.TotalAmount).HasPrecision(18, 2);
+
+            modelBuilder.Entity<VoucherDetail>()
+                .Property(x => x.Debit).HasPrecision(18, 2);
+            modelBuilder.Entity<VoucherDetail>()
+                .Property(x => x.Credit).HasPrecision(18, 2);
+
+            // ── Indexes ───────────────────────────────────────────────────────────────
+            modelBuilder.Entity<AccountHead>()
+                .HasIndex(a => a.AccountCode).IsUnique();
+
+            modelBuilder.Entity<AccountHead>()
+                .HasOne(a => a.Parent)
+                .WithMany(a => a.Children)
+                .HasForeignKey(a => a.ParentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<GeneralLedger>()
+                .HasIndex(g => new { g.VoucherNo, g.VoucherType });
+
+            modelBuilder.Entity<Voucher>()
+                .HasIndex(v => v.VoucherNo).IsUnique();
+
+            // ── Seed Chart of Accounts ────────────────────────────────────────────────
+            SeedChartOfAccounts(modelBuilder);
+
             SeedRoles(modelBuilder);
             SeedPermissions(modelBuilder);
             SeedRolePermissions(modelBuilder);
@@ -823,7 +867,10 @@ namespace InventorySystem.Data
                 new Permission { Id = 21, Code = "Sale.View", Name = "View Sale Invoices", Module = "Sale", Action = "View" },
                 new Permission { Id = 22, Code = "Sale.Create", Name = "Create Sale Invoice", Module = "Sale", Action = "Create" },
                 new Permission { Id = 23, Code = "Production.View", Name = "View Production", Module = "Production", Action = "View" },
-                new Permission { Id = 24, Code = "Production.Create", Name = "Create Production", Module = "Production", Action = "Create" }
+                new Permission { Id = 24, Code = "Production.Create", Name = "Create Production", Module = "Production", Action = "Create" },
+                new Permission { Id = 25, Code = "Accounts.View",   Name = "View Accounts",   Module = "Accounts", Action = "View" },
+                new Permission { Id = 26, Code = "Accounts.Create", Name = "Create Vouchers", Module = "Accounts", Action = "Create" },
+                new Permission { Id = 27, Code = "Accounts.Delete", Name = "Void Vouchers",   Module = "Accounts", Action = "Delete" },
             };
             modelBuilder.Entity<Permission>().HasData(permissions);
         }
@@ -847,6 +894,11 @@ namespace InventorySystem.Data
 
             modelBuilder.Entity<RolePermission>().HasData(adminPermissions);
             modelBuilder.Entity<RolePermission>().HasData(costSheetUserPermissions);
+            modelBuilder.Entity<RolePermission>().HasData(
+                new RolePermission { Id = 29, RoleId = 1, PermissionId = 25 },
+                new RolePermission { Id = 30, RoleId = 1, PermissionId = 26 },
+                new RolePermission { Id = 31, RoleId = 1, PermissionId = 27 }
+            );
         }
 
         private void SeedMenuItems(ModelBuilder modelBuilder)
@@ -870,7 +922,21 @@ namespace InventorySystem.Data
                 new MenuItem { Id = 15, Name = "Settings", Icon = "⚙️", Controller = "CostSheet", Action = "Settings", ParentId = 12, SortOrder = 3, RequiredPermission = "CostSheet.Settings" },
                 new MenuItem { Id = 16, Name = "Production", Icon = "🏭", SortOrder = 11, RequiredPermission = "Production.View" },
                 new MenuItem { Id = 17, Name = "All Orders", Icon = "📋", Controller = "Production", Action = "Index", ParentId = 16, SortOrder = 1, RequiredPermission = "Production.View" },
-                new MenuItem { Id = 18, Name = "New Order", Icon = "➕", Controller = "Production", Action = "Create", ParentId = 16, SortOrder = 2, RequiredPermission = "Production.Create" }
+                new MenuItem { Id = 18, Name = "New Order", Icon = "➕", Controller = "Production", Action = "Create", ParentId = 16, SortOrder = 2, RequiredPermission = "Production.Create" },
+
+                // Add to the menuItems array inside SeedMenuItems():
+                new MenuItem { Id = 19, Name = "Accounts",           Icon = "💰", SortOrder = 12, RequiredPermission = "Accounts.View" },
+                new MenuItem { Id = 20, Name = "Chart of Accounts",  Icon = "📒", Controller = "Accounts", Action = "ChartOfAccounts", ParentId = 19, SortOrder = 1, RequiredPermission = "Accounts.View" },
+                new MenuItem { Id = 21, Name = "Payment Voucher",    Icon = "💳", Controller = "Accounts", Action = "PaymentVoucher",  ParentId = 19, SortOrder = 2, RequiredPermission = "Accounts.Create" },
+                new MenuItem { Id = 22, Name = "Receipt Voucher",    Icon = "🧾", Controller = "Accounts", Action = "ReceiptVoucher",  ParentId = 19, SortOrder = 3, RequiredPermission = "Accounts.Create" },
+                new MenuItem { Id = 23, Name = "Journal Voucher",    Icon = "📓", Controller = "Accounts", Action = "JournalVoucher",  ParentId = 19, SortOrder = 4, RequiredPermission = "Accounts.Create" },
+                new MenuItem { Id = 24, Name = "Contra Voucher",     Icon = "🏦", Controller = "Accounts", Action = "ContraVoucher",   ParentId = 19, SortOrder = 5, RequiredPermission = "Accounts.Create" },
+                new MenuItem { Id = 25, Name = "Voucher List",       Icon = "📋", Controller = "Accounts", Action = "VoucherList",     ParentId = 19, SortOrder = 6, RequiredPermission = "Accounts.View" },
+                new MenuItem { Id = 26, Name = "General Ledger",     Icon = "📖", Controller = "Accounts", Action = "GeneralLedgerView", ParentId = 19, SortOrder = 7, RequiredPermission = "Accounts.View" },
+                new MenuItem { Id = 27, Name = "Party Statement",    Icon = "👤", Controller = "Accounts", Action = "PartyLedger",     ParentId = 19, SortOrder = 8, RequiredPermission = "Accounts.View" },
+                new MenuItem { Id = 28, Name = "Trial Balance",      Icon = "⚖️", Controller = "Accounts", Action = "TrialBalance",    ParentId = 19, SortOrder = 9, RequiredPermission = "Accounts.View" },
+                new MenuItem { Id = 29, Name = "Profit & Loss",      Icon = "📈", Controller = "Accounts", Action = "ProfitAndLoss",   ParentId = 19, SortOrder = 10, RequiredPermission = "Accounts.View" },
+                new MenuItem { Id = 30, Name = "Balance Sheet",      Icon = "🏦", Controller = "Accounts", Action = "BalanceSheet",    ParentId = 19, SortOrder = 11, RequiredPermission = "Accounts.View" },
             };
             modelBuilder.Entity<MenuItem>().HasData(menuItems);
         }
@@ -896,6 +962,64 @@ namespace InventorySystem.Data
                 RoleId = 1,
                 AssignedAt = SeedDate // Use static date
             });
+        }
+
+        private void SeedChartOfAccounts(ModelBuilder modelBuilder)
+        {
+            var accounts = new AccountHead[]
+            {
+        // ── LEVEL 1: ROOT GROUPS ─────────────────────────────────────────────
+        new AccountHead { AccountHeadId=1,  AccountCode="1000", AccountName="Assets",              AccountType="Assets",      Level=1, NormalBalance="Debit",  IsSystem=true, ParentId=null },
+        new AccountHead { AccountHeadId=2,  AccountCode="2000", AccountName="Liabilities",         AccountType="Liabilities", Level=1, NormalBalance="Credit", IsSystem=true, ParentId=null },
+        new AccountHead { AccountHeadId=3,  AccountCode="3000", AccountName="Equity",              AccountType="Equity",      Level=1, NormalBalance="Credit", IsSystem=true, ParentId=null },
+        new AccountHead { AccountHeadId=4,  AccountCode="4000", AccountName="Income",              AccountType="Income",      Level=1, NormalBalance="Credit", IsSystem=true, ParentId=null },
+        new AccountHead { AccountHeadId=5,  AccountCode="5000", AccountName="Expenses",            AccountType="Expenses",    Level=1, NormalBalance="Debit",  IsSystem=true, ParentId=null },
+
+        // ── LEVEL 2: SUB-GROUPS ──────────────────────────────────────────────
+        new AccountHead { AccountHeadId=10, AccountCode="1100", AccountName="Current Assets",      AccountType="Assets",      Level=2, NormalBalance="Debit",  IsSystem=true, ParentId=1 },
+        new AccountHead { AccountHeadId=11, AccountCode="1200", AccountName="Fixed Assets",        AccountType="Assets",      Level=2, NormalBalance="Debit",  IsSystem=true, ParentId=1 },
+        new AccountHead { AccountHeadId=12, AccountCode="1300", AccountName="Accounts Receivable", AccountType="Assets",      Level=2, NormalBalance="Debit",  IsSystem=true, ParentId=1 },
+        new AccountHead { AccountHeadId=20, AccountCode="2100", AccountName="Current Liabilities", AccountType="Liabilities", Level=2, NormalBalance="Credit", IsSystem=true, ParentId=2 },
+        new AccountHead { AccountHeadId=21, AccountCode="2200", AccountName="Accounts Payable",    AccountType="Liabilities", Level=2, NormalBalance="Credit", IsSystem=true, ParentId=2 },
+        new AccountHead { AccountHeadId=30, AccountCode="3100", AccountName="Owner's Equity",      AccountType="Equity",      Level=2, NormalBalance="Credit", IsSystem=true, ParentId=3 },
+        new AccountHead { AccountHeadId=40, AccountCode="4100", AccountName="Sales Revenue",       AccountType="Income",      Level=2, NormalBalance="Credit", IsSystem=true, ParentId=4 },
+        new AccountHead { AccountHeadId=41, AccountCode="4200", AccountName="Other Income",        AccountType="Income",      Level=2, NormalBalance="Credit", IsSystem=true, ParentId=4 },
+        new AccountHead { AccountHeadId=50, AccountCode="5100", AccountName="Cost of Goods Sold",  AccountType="Expenses",    Level=2, NormalBalance="Debit",  IsSystem=true, ParentId=5 },
+        new AccountHead { AccountHeadId=51, AccountCode="5200", AccountName="Operating Expenses",  AccountType="Expenses",    Level=2, NormalBalance="Debit",  IsSystem=true, ParentId=5 },
+        new AccountHead { AccountHeadId=52, AccountCode="5300", AccountName="Financial Expenses",  AccountType="Expenses",    Level=2, NormalBalance="Debit",  IsSystem=true, ParentId=5 },
+
+        // ── LEVEL 3: POSTABLE LEDGER ACCOUNTS ───────────────────────────────
+        new AccountHead { AccountHeadId=100, AccountCode="1101", AccountName="Cash in Hand",          AccountType="Assets",      Level=3, NormalBalance="Debit",  IsSystem=true, ParentId=10 },
+        new AccountHead { AccountHeadId=101, AccountCode="1102", AccountName="Bank Account",          AccountType="Assets",      Level=3, NormalBalance="Debit",  IsSystem=true, ParentId=10 },
+        new AccountHead { AccountHeadId=102, AccountCode="1103", AccountName="Inventory / Stock",     AccountType="Assets",      Level=3, NormalBalance="Debit",  IsSystem=true, ParentId=10 },
+        new AccountHead { AccountHeadId=103, AccountCode="1301", AccountName="Trade Receivables",     AccountType="Assets",      Level=3, NormalBalance="Debit",  IsSystem=true, ParentId=12 },
+        new AccountHead { AccountHeadId=104, AccountCode="1201", AccountName="Machinery & Equipment", AccountType="Assets",      Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=11 },
+        new AccountHead { AccountHeadId=200, AccountCode="2101", AccountName="GST Payable",           AccountType="Liabilities", Level=3, NormalBalance="Credit", IsSystem=true, ParentId=20 },
+        new AccountHead { AccountHeadId=201, AccountCode="2102", AccountName="Salaries Payable",      AccountType="Liabilities", Level=3, NormalBalance="Credit", IsSystem=false, ParentId=20 },
+        new AccountHead { AccountHeadId=202, AccountCode="2201", AccountName="Trade Payables",        AccountType="Liabilities", Level=3, NormalBalance="Credit", IsSystem=true, ParentId=21 },
+        new AccountHead { AccountHeadId=300, AccountCode="3101", AccountName="Capital Account",       AccountType="Equity",      Level=3, NormalBalance="Credit", IsSystem=true, ParentId=30 },
+        new AccountHead { AccountHeadId=301, AccountCode="3102", AccountName="Retained Earnings",     AccountType="Equity",      Level=3, NormalBalance="Credit", IsSystem=true, ParentId=30 },
+        new AccountHead { AccountHeadId=400, AccountCode="4101", AccountName="Sales",                 AccountType="Income",      Level=3, NormalBalance="Credit", IsSystem=true, ParentId=40 },
+        new AccountHead { AccountHeadId=401, AccountCode="4102", AccountName="Sales Returns",         AccountType="Income",      Level=3, NormalBalance="Debit",  IsSystem=true, ParentId=40 },
+        new AccountHead { AccountHeadId=402, AccountCode="4201", AccountName="Discount Received",     AccountType="Income",      Level=3, NormalBalance="Credit", IsSystem=false, ParentId=41 },
+        new AccountHead { AccountHeadId=500, AccountCode="5101", AccountName="Purchases",             AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=true, ParentId=50 },
+        new AccountHead { AccountHeadId=501, AccountCode="5102", AccountName="Purchase Returns",      AccountType="Expenses",    Level=3, NormalBalance="Credit", IsSystem=true, ParentId=50 },
+        new AccountHead { AccountHeadId=502, AccountCode="5103", AccountName="Freight & Cartage",     AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=50 },
+        new AccountHead { AccountHeadId=510, AccountCode="5201", AccountName="Salaries & Wages",      AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
+        new AccountHead { AccountHeadId=511, AccountCode="5202", AccountName="Rent Expense",          AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
+        new AccountHead { AccountHeadId=512, AccountCode="5203", AccountName="Utilities Expense",     AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
+        new AccountHead { AccountHeadId=513, AccountCode="5204", AccountName="Depreciation",          AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
+        new AccountHead { AccountHeadId=520, AccountCode="5301", AccountName="Bank Charges",          AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=52 },
+        new AccountHead { AccountHeadId=521, AccountCode="5302", AccountName="Discount Allowed",      AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=52 },
+            };
+
+            foreach (var a in accounts)
+            {
+                a.IsActive = true;
+                a.CreatedDate = SeedDate;
+            }
+
+            modelBuilder.Entity<AccountHead>().HasData(accounts);
         }
     }
 }

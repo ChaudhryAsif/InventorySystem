@@ -1,0 +1,320 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Chart of Accounts";
+}
+
+<link href="~/css/Accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="page-title">
+            <h2>📒 Chart of Accounts</h2>
+            <p>Manage your account heads, groups and ledgers</p>
+        </div>
+        <button class="btn btn-success" onclick="openModal()">➕ Add Account</button>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="form-group">
+                <input type="text" class="form-control" id="searchInput" placeholder="🔍 Search accounts...">
+            </div>
+            <div class="form-group">
+                <select class="form-control" id="filterType">
+                    <option value="">All Types</option>
+                    <option>Assets</option>
+                    <option>Liabilities</option>
+                    <option>Equity</option>
+                    <option>Income</option>
+                    <option>Expenses</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <select class="form-control" id="filterLevel">
+                    <option value="">All Levels</option>
+                    <option value="1">Level 1 — Root Group</option>
+                    <option value="2">Level 2 — Sub-Group</option>
+                    <option value="3">Level 3 — Ledger</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card no-top-radius">
+        <div class="table-container">
+            <table class="data-table" id="coaTable">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Account Name</th>
+                        <th>Type</th>
+                        <th>Level</th>
+                        <th>Normal Balance</th>
+                        <th>Opening Balance</th>
+                        <th>Parent</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="coaBody">
+                    <tr><td colspan="9" class="text-center" style="padding:2rem;color:var(--text-secondary);">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Add / Edit Modal ═══════════════════════════════════════ -->
+<div class="modal-overlay" id="coaModal">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modalTitle">Add Account Head</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="accountHeadId" value="0" />
+
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="form-label">Account Code <span style="color:red">*</span></label>
+                    <input type="text" class="form-control" id="accountCode" placeholder="e.g. 1101">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Account Name <span style="color:red">*</span></label>
+                    <input type="text" class="form-control" id="accountName" placeholder="e.g. Cash in Hand">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Account Type <span style="color:red">*</span></label>
+                    <select class="form-control" id="accountType">
+                        <option>Assets</option>
+                        <option>Liabilities</option>
+                        <option>Equity</option>
+                        <option>Income</option>
+                        <option>Expenses</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Level <span style="color:red">*</span></label>
+                    <select class="form-control" id="level">
+                        <option value="1">1 — Root Group</option>
+                        <option value="2">2 — Sub-Group</option>
+                        <option value="3" selected>3 — Ledger (Postable)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Normal Balance</label>
+                    <select class="form-control" id="normalBalance">
+                        <option>Debit</option>
+                        <option>Credit</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Parent Account</label>
+                    <select class="form-control" id="parentId">
+                        <option value="">— None (Root Group) —</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Opening Balance</label>
+                    <input type="number" class="form-control" id="openingBalance" value="0" step="0.01" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">OB Side</label>
+                    <select class="form-control" id="openingBalanceType">
+                        <option>Debit</option>
+                        <option>Credit</option>
+                    </select>
+                </div>
+                <div class="form-group full-width">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" id="description" rows="2" placeholder="Optional description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select class="form-control" id="isActive">
+                        <option value="true">Active</option>
+                        <option value="false">Inactive</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveAccount()">💾 Save Account</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+let allAccounts = [];
+
+/* ── Load ──────────────────────────────────────────────────────── */
+async function loadAccounts() {
+    const res  = await fetch('/Accounts/GetChartOfAccounts');
+    const json = await res.json();
+    if (!json.success) return;
+    allAccounts = json.data;
+
+    // Populate parent dropdown (non-Level-3 only)
+    const pd = document.getElementById('parentId');
+    pd.innerHTML = '<option value="">— None (Root Group) —</option>';
+    allAccounts.filter(a => a.level < 3).forEach(a => {
+        pd.innerHTML += `<option value="${a.accountHeadId}">[${a.accountCode}] ${a.accountName}</option>`;
+    });
+
+    renderTable(allAccounts);
+}
+
+function renderTable(data) {
+    const tbody = document.getElementById('coaBody');
+    if (!data.length) {
+        tbody.innerHTML = '<tr><td colspan="9" style="padding:2rem;text-align:center;color:var(--text-secondary);">No accounts found.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = data.map(a => {
+        const rowClass = a.level === 1 ? 'row-group-1' : a.level === 2 ? 'row-group-2' : '';
+        const nameClass = a.level === 2 ? 'indent-2' : a.level === 3 ? 'indent-3' : '';
+        const typeBadge = typeTag(a.accountType);
+        const statusBadge = a.isActive
+            ? '<span class="badge badge-success">Active</span>'
+            : '<span class="badge badge-system">Inactive</span>';
+
+        const actions = a.isSystem
+            ? '<span class="badge badge-system" style="font-size:0.75rem;">System</span>'
+            : `<div class="action-buttons">
+                 <button class="btn btn-primary btn-sm" onclick="editAccount(${a.accountHeadId})">✏️ Edit</button>
+                 <button class="btn btn-danger btn-sm"  onclick="deleteAccount(${a.accountHeadId})">🗑️ Delete</button>
+               </div>`;
+
+        const obDisplay = a.openingBalance > 0
+            ? `${fmt(a.openingBalance)} <span style="font-size:0.75rem;color:var(--text-secondary)">${a.openingBalanceType}</span>`
+            : '—';
+
+        return `<tr class="${rowClass}" data-type="${a.accountType}" data-level="${a.level}">
+            <td><span class="acc-code">${a.accountCode}</span></td>
+            <td class="${nameClass}">${a.accountName}</td>
+            <td>${typeBadge}</td>
+            <td style="text-align:center">${a.level}</td>
+            <td>${a.normalBalance}</td>
+            <td style="text-align:right">${obDisplay}</td>
+            <td>${a.parentName || '—'}</td>
+            <td>${statusBadge}</td>
+            <td>${actions}</td>
+        </tr>`;
+    }).join('');
+}
+
+function typeTag(t) {
+    const map = {
+        Assets:      '<span class="badge badge-primary">Assets</span>',
+        Liabilities: '<span class="badge badge-warning">Liabilities</span>',
+        Equity:      '<span class="badge badge-info">Equity</span>',
+        Income:      '<span class="badge badge-success">Income</span>',
+        Expenses:    '<span class="badge badge-danger">Expenses</span>'
+    };
+    return map[t] || `<span class="badge badge-system">${t}</span>`;
+}
+
+function fmt(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 }); }
+
+/* ── Filter ────────────────────────────────────────────────────── */
+function applyFilter() {
+    const q  = document.getElementById('searchInput').value.toLowerCase();
+    const tp = document.getElementById('filterType').value;
+    const lv = document.getElementById('filterLevel').value;
+    const filtered = allAccounts.filter(a =>
+        (!q  || a.accountCode.toLowerCase().includes(q) || a.accountName.toLowerCase().includes(q)) &&
+        (!tp || a.accountType === tp) &&
+        (!lv || a.level == lv)
+    );
+    renderTable(filtered);
+}
+
+document.getElementById('searchInput').addEventListener('keyup', applyFilter);
+document.getElementById('filterType').addEventListener('change', applyFilter);
+document.getElementById('filterLevel').addEventListener('change', applyFilter);
+
+/* ── Modal ─────────────────────────────────────────────────────── */
+function openModal(data = null) {
+    document.getElementById('modalTitle').textContent   = data ? 'Edit Account Head' : 'Add Account Head';
+    document.getElementById('accountHeadId').value      = data?.accountHeadId   || 0;
+    document.getElementById('accountCode').value        = data?.accountCode     || '';
+    document.getElementById('accountName').value        = data?.accountName     || '';
+    document.getElementById('accountType').value        = data?.accountType     || 'Assets';
+    document.getElementById('level').value              = data?.level           || 3;
+    document.getElementById('normalBalance').value      = data?.normalBalance   || 'Debit';
+    document.getElementById('parentId').value           = data?.parentId        || '';
+    document.getElementById('openingBalance').value     = data?.openingBalance  || 0;
+    document.getElementById('openingBalanceType').value = data?.openingBalanceType || 'Debit';
+    document.getElementById('description').value        = data?.description     || '';
+    document.getElementById('isActive').value           = data ? String(data.isActive) : 'true';
+    document.getElementById('coaModal').classList.add('show');
+}
+
+function closeModal() {
+    document.getElementById('coaModal').classList.remove('show');
+}
+
+function editAccount(id) {
+    const a = allAccounts.find(x => x.accountHeadId === id);
+    if (a) openModal(a);
+}
+
+/* ── Save ──────────────────────────────────────────────────────── */
+async function saveAccount() {
+    const code = document.getElementById('accountCode').value.trim();
+    const name = document.getElementById('accountName').value.trim();
+    if (!code || !name) { alert('Account Code and Name are required.'); return; }
+
+    const payload = {
+        accountHeadId:      +document.getElementById('accountHeadId').value,
+        accountCode:         code,
+        accountName:         name,
+        accountType:         document.getElementById('accountType').value,
+        level:              +document.getElementById('level').value,
+        normalBalance:       document.getElementById('normalBalance').value,
+        parentId:            document.getElementById('parentId').value || null,
+        openingBalance:     +document.getElementById('openingBalance').value,
+        openingBalanceType:  document.getElementById('openingBalanceType').value,
+        description:         document.getElementById('description').value,
+        isActive:            document.getElementById('isActive').value === 'true'
+    };
+
+    const res  = await fetch('/Accounts/SaveAccountHead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (json.success) { closeModal(); await loadAccounts(); }
+    else { alert('❌ ' + json.message); }
+}
+
+/* ── Delete ────────────────────────────────────────────────────── */
+async function deleteAccount(id) {
+    if (!confirm('Delete this account? This cannot be undone.')) return;
+    const res  = await fetch('/Accounts/DeleteAccountHead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(id)
+    });
+    const json = await res.json();
+    if (json.success) { await loadAccounts(); }
+    else { alert('❌ ' + json.message); }
+}
+
+// Close on backdrop click
+document.getElementById('coaModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+loadAccounts();
+</script>
+}

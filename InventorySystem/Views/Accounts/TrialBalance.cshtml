@@ -1,0 +1,152 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Trial Balance";
+}
+
+<link href="~/css/Accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <div class="page-header">
+        <div class="page-title">
+            <h2>⚖️ Trial Balance</h2>
+            <p>Verify that total debits equal total credits across all accounts</p>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label class="form-label">As of Date</label>
+                <input type="date" class="form-control" id="asOf">
+            </div>
+            <div class="form-group" style="align-self:end">
+                <button class="btn btn-primary" onclick="loadReport()">📊 Generate Report</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reportSection" style="display:none">
+        <!-- Balance status card -->
+        <div class="summary-cards" style="margin-top:1.2rem">
+            <div class="summary-card blue">
+                <div class="summary-label">Report Date</div>
+                <div class="summary-value" id="rptDate" style="font-size:1.1rem"></div>
+            </div>
+            <div class="summary-card blue">
+                <div class="summary-label">Total Accounts</div>
+                <div class="summary-value" id="rptCount"></div>
+            </div>
+            <div class="summary-card" id="drCard">
+                <div class="summary-label">Total Debit</div>
+                <div class="summary-value" id="rptTotalDr"></div>
+            </div>
+            <div class="summary-card" id="crCard">
+                <div class="summary-label">Total Credit</div>
+                <div class="summary-value" id="rptTotalCr"></div>
+            </div>
+            <div class="summary-card" id="statusCard">
+                <div class="summary-label">Balance Status</div>
+                <div class="summary-value" id="rptStatus"></div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="card" style="margin-top:1.2rem">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Account Name</th>
+                            <th>Type</th>
+                            <th style="text-align:right">Opening Dr</th>
+                            <th style="text-align:right">Opening Cr</th>
+                            <th style="text-align:right">Period Dr</th>
+                            <th style="text-align:right">Period Cr</th>
+                            <th style="text-align:right">Closing Dr</th>
+                            <th style="text-align:right">Closing Cr</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbBody"></tbody>
+                    <tfoot>
+                        <tr class="report-total-row">
+                            <td colspan="3" style="text-align:right;font-weight:700">Grand Total</td>
+                            <td style="text-align:right" id="totOpenDr"></td>
+                            <td style="text-align:right" id="totOpenCr"></td>
+                            <td style="text-align:right" id="totPerDr"></td>
+                            <td style="text-align:right" id="totPerCr"></td>
+                            <td style="text-align:right;color:#2d5f7f" id="totClDr"></td>
+                            <td style="text-align:right;color:#28a745" id="totClCr"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+document.getElementById('asOf').value = new Date().toISOString().split('T')[0];
+
+const typeTag = t => ({
+    Assets:      '<span class="badge badge-primary">Assets</span>',
+    Liabilities: '<span class="badge badge-warning">Liabilities</span>',
+    Equity:      '<span class="badge badge-info">Equity</span>',
+    Income:      '<span class="badge badge-success">Income</span>',
+    Expenses:    '<span class="badge badge-danger">Expenses</span>'
+}[t] || `<span class="badge badge-system">${t}</span>`);
+
+const fmt  = n => n > 0 ? Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '';
+const fmtZ = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 });
+
+async function loadReport() {
+    const asOf = document.getElementById('asOf').value;
+    const res  = await fetch(`/Accounts/GetTrialBalance?asOf=${asOf}`);
+    const json = await res.json();
+    if (!json.success) return;
+    const d = json.data;
+
+    document.getElementById('reportSection').style.display = '';
+    document.getElementById('rptDate').textContent  = asOf;
+    document.getElementById('rptCount').textContent = d.rows.length;
+    document.getElementById('rptTotalDr').textContent = fmtZ(d.totalDebit);
+    document.getElementById('rptTotalCr').textContent = fmtZ(d.totalCredit);
+
+    const sc = document.getElementById('statusCard');
+    const rs = document.getElementById('rptStatus');
+    if (d.isBalanced) {
+        sc.classList.add('green');
+        rs.innerHTML = '<span style="color:#155724">✅ Balanced</span>';
+    } else {
+        sc.classList.add('red');
+        rs.innerHTML = '<span style="color:#721c24">❌ Not Balanced</span>';
+    }
+    document.getElementById('drCard').classList.add('blue');
+    document.getElementById('crCard').classList.add('green');
+
+    const sum = k => d.rows.reduce((s, r) => s + (r[k] || 0), 0);
+    document.getElementById('totOpenDr').textContent = fmtZ(sum('openingDebit'));
+    document.getElementById('totOpenCr').textContent = fmtZ(sum('openingCredit'));
+    document.getElementById('totPerDr').textContent  = fmtZ(sum('periodDebit'));
+    document.getElementById('totPerCr').textContent  = fmtZ(sum('periodCredit'));
+    document.getElementById('totClDr').textContent   = fmtZ(d.totalDebit);
+    document.getElementById('totClCr').textContent   = fmtZ(d.totalCredit);
+
+    document.getElementById('tbBody').innerHTML = d.rows.map(r => `
+        <tr>
+            <td><span class="acc-code">${r.accountCode}</span></td>
+            <td>${r.accountName}</td>
+            <td>${typeTag(r.accountType)}</td>
+            <td style="text-align:right;color:#2d5f7f">${fmt(r.openingDebit)}</td>
+            <td style="text-align:right;color:#28a745">${fmt(r.openingCredit)}</td>
+            <td style="text-align:right;color:#2d5f7f">${fmt(r.periodDebit)}</td>
+            <td style="text-align:right;color:#28a745">${fmt(r.periodCredit)}</td>
+            <td style="text-align:right;font-weight:700;color:#2d5f7f">${fmt(r.closingDebit)}</td>
+            <td style="text-align:right;font-weight:700;color:#28a745">${fmt(r.closingCredit)}</td>
+        </tr>`).join('');
+}
+</script>
+}
