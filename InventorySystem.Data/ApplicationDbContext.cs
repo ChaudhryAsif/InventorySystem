@@ -871,6 +871,7 @@ namespace InventorySystem.Data
                 new Permission { Id = 25, Code = "Accounts.View",   Name = "View Accounts",   Module = "Accounts", Action = "View" },
                 new Permission { Id = 26, Code = "Accounts.Create", Name = "Create Vouchers", Module = "Accounts", Action = "Create" },
                 new Permission { Id = 27, Code = "Accounts.Delete", Name = "Void Vouchers",   Module = "Accounts", Action = "Delete" },
+                new Permission { Id = 28, Code = "Report.View", Name = "View Reports", Module = "Report", Action = "View" },
             };
             modelBuilder.Entity<Permission>().HasData(permissions);
         }
@@ -897,7 +898,8 @@ namespace InventorySystem.Data
             modelBuilder.Entity<RolePermission>().HasData(
                 new RolePermission { Id = 29, RoleId = 1, PermissionId = 25 },
                 new RolePermission { Id = 30, RoleId = 1, PermissionId = 26 },
-                new RolePermission { Id = 31, RoleId = 1, PermissionId = 27 }
+                new RolePermission { Id = 31, RoleId = 1, PermissionId = 27 },
+                new RolePermission { Id = 43, RoleId = 1, PermissionId = 28 }
             );
         }
 
@@ -937,6 +939,13 @@ namespace InventorySystem.Data
                 new MenuItem { Id = 28, Name = "Trial Balance",      Icon = "⚖️", Controller = "Accounts", Action = "TrialBalance",    ParentId = 19, SortOrder = 9, RequiredPermission = "Accounts.View" },
                 new MenuItem { Id = 29, Name = "Profit & Loss",      Icon = "📈", Controller = "Accounts", Action = "ProfitAndLoss",   ParentId = 19, SortOrder = 10, RequiredPermission = "Accounts.View" },
                 new MenuItem { Id = 30, Name = "Balance Sheet",      Icon = "🏦", Controller = "Accounts", Action = "BalanceSheet",    ParentId = 19, SortOrder = 11, RequiredPermission = "Accounts.View" },
+                
+                // Reports
+                new MenuItem { Id = 31, Name = "Reports",          Icon = "📊", SortOrder = 13, RequiredPermission = "Report.View" },
+                new MenuItem { Id = 32, Name = "Stock Report",     Icon = "📦", Controller = "Report", Action = "StockReport",    ParentId = 31, SortOrder = 1, RequiredPermission = "Report.View" },
+                new MenuItem { Id = 33, Name = "Purchase Report",  Icon = "📝", Controller = "Report", Action = "PurchaseReport", ParentId = 31, SortOrder = 2, RequiredPermission = "Report.View" },
+                new MenuItem { Id = 34, Name = "Sale Report",      Icon = "🧾", Controller = "Report", Action = "SaleReport",     ParentId = 31, SortOrder = 3, RequiredPermission = "Report.View" },
+                new MenuItem { Id = 35, Name = "Consume Report",   Icon = "🏭", Controller = "Report", Action = "ConsumeReport",  ParentId = 31, SortOrder = 4, RequiredPermission = "Report.View" },
             };
             modelBuilder.Entity<MenuItem>().HasData(menuItems);
         }
