@@ -11,6 +11,7 @@
     };
     var (title, icon, color) = meta.GetValueOrDefault(vType, ("Voucher", "📄", "#2d5f7f"));
     ViewData["Title"] = title;
+    bool isSimple = vType == "PV" || vType == "RV" || vType == "CV";
 }
 
 <link href="~/css/Accounts.css" rel="stylesheet" />
@@ -28,7 +29,7 @@
 
     <!-- Voucher Header Card -->
     <div class="card" style="margin-bottom:1.2rem">
-        <div class="section-header" style="background:linear-gradient(135deg, @color 0%, #1e4159 100%)">
+        <div class="section-header" style="background:linear-gradient(135deg,@color 0%,#1e4159 100%)">
             <span>@icon Voucher Information</span>
             <span id="voucherNoDisplay" style="font-family:monospace;font-size:1rem;background:rgba(255,255,255,0.15);padding:0.3rem 0.9rem;border-radius:6px;"></span>
         </div>
@@ -49,20 +50,27 @@
                         <option value="">— Select Party —</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Payment Mode</label>
-                    <select class="form-control" id="paymentMode">
-                        <option>Cash</option>
-                        <option>Cheque</option>
-                        <option>Bank Transfer</option>
-                        <option>Online</option>
-                    </select>
-                </div>
+                @if (vType != "CV")
+                {
+                    <div class="form-group">
+                        <label class="form-label">Payment Mode</label>
+                        <select class="form-control" id="paymentMode" onchange="onPaymentModeChange()">
+                            <option value="Cash">Cash</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Online">Online</option>
+                        </select>
+                    </div>
+                }
+                else
+                {
+                    <input type="hidden" id="paymentMode" value="Cash" />
+                }
                 <div class="form-group">
                     <label class="form-label">Reference No</label>
                     <input type="text" class="form-control" id="referenceNo" placeholder="Cheque / Txn #">
                 </div>
-                <div class="form-group full-width" style="grid-column:span 3">
+                <div class="form-group" style="grid-column:span 3">
                     <label class="form-label">Narration</label>
                     <input type="text" class="form-control" id="narration" placeholder="Description / purpose of this voucher">
                 </div>
@@ -70,41 +78,122 @@
         </div>
     </div>
 
-    <!-- Voucher Lines -->
-    <div class="card" style="margin-bottom:1.2rem">
-        <div class="section-header">
-            <span>📋 Voucher Lines</span>
-            <button class="btn btn-success btn-sm" onclick="addLine()">➕ Add Line</button>
+    @if (isSimple)
+    {
+        <!-- ═══ SIMPLE ENTRY (PV / RV / CV) ═══ -->
+        <div class="card" style="margin-bottom:1.2rem">
+            <div class="section-header">
+                <span>📋 Voucher Lines</span>
+                @if (vType != "CV")
+                {
+                    <button class="btn btn-success btn-sm" onclick="addLine()">➕ Add Line</button>
+                }
+            </div>
+
+            @if (vType == "CV")
+            {
+                <!-- Contra: From/To accounts -->
+                <div class="modal-body" style="padding:1.5rem">
+                    <div class="form-grid-3">
+                        <div class="form-group">
+                            <label class="form-label">From Account (Credit) <span style="color:red">*</span></label>
+                            <select class="form-control" id="cvFrom" onchange="recalcCV()"></select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">To Account (Debit) <span style="color:red">*</span></label>
+                            <select class="form-control" id="cvTo" onchange="recalcCV()"></select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Amount <span style="color:red">*</span></label>
+                            <input type="number" class="form-control" id="cvAmount" min="0" step="0.01" placeholder="0.00" oninput="recalcCV()">
+                        </div>
+                    </div>
+
+                    <!-- Auto-generated preview -->
+                    <div id="cvPreview" style="margin-top:1rem;display:none">
+                        <table class="line-table">
+                            <thead>
+                                <tr><th>Account</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th></tr>
+                            </thead>
+                            <tbody id="cvPreviewBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <!-- PV / RV: single-line entry table -->
+                <div class="table-container">
+                    <table class="line-table">
+                        <thead>
+                            <tr>
+                                <th style="width:35%">Account Head <span style="color:#ffc107">*</span></th>
+                                <th style="width:18%">Party</th>
+                                <th style="width:22%">Narration</th>
+                                <th style="width:15%;text-align:right">Amount <span style="color:#ffc107">*</span></th>
+                                <th style="width:10%;text-align:center">Del</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lineBody"></tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="3" style="text-align:right;font-weight:600">Total Amount:</td>
+                                <td style="text-align:right;color:#2d5f7f;font-weight:700" id="totalAmt">0.00</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Auto entry preview -->
+                <div style="padding:1rem 1.5rem;background:#f0f7ff;border-top:1px solid #d0e8f5">
+                    <div style="font-size:0.85rem;color:#555;margin-bottom:0.5rem">
+                        🔄 <strong>Auto-Generated Offsetting Entry</strong>
+                        (based on Payment Mode):
+                    </div>
+                    <div id="autoEntryPreview" style="font-size:0.9rem;color:#2d5f7f;font-weight:600"></div>
+                </div>
+            }
         </div>
-        <div class="table-container">
-            <table class="line-table">
-                <thead>
-                    <tr>
-                        <th style="width:32%">Account Head <span style="color:#ffc107">*</span></th>
-                        <th style="width:18%">Party</th>
-                        <th style="width:22%">Narration</th>
-                        <th style="width:11%;text-align:right">Debit</th>
-                        <th style="width:11%;text-align:right">Credit</th>
-                        <th style="width:6%;text-align:center">Del</th>
-                    </tr>
-                </thead>
-                <tbody id="lineBody"></tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="3" style="text-align:right">Totals:</td>
-                        <td style="text-align:right;color:#2d5f7f" id="totalDebit">0.00</td>
-                        <td style="text-align:right;color:#28a745" id="totalCredit">0.00</td>
-                        <td></td>
-                    </tr>
-                    <tr id="diffRow" style="display:none" class="total-row-diff">
-                        <td colspan="3" style="text-align:right">⚠️ Difference:</td>
-                        <td colspan="2" style="text-align:right" id="diffAmt"></td>
-                        <td></td>
-                    </tr>
-                </tfoot>
-            </table>
+    }
+    else
+    {
+        <!-- ═══ FULL DOUBLE ENTRY (JV) ═══ -->
+        <div class="card" style="margin-bottom:1.2rem">
+            <div class="section-header">
+                <span>📋 Voucher Lines</span>
+                <button class="btn btn-success btn-sm" onclick="addLine()">➕ Add Line</button>
+            </div>
+            <div class="table-container">
+                <table class="line-table">
+                    <thead>
+                        <tr>
+                            <th style="width:30%">Account Head <span style="color:#ffc107">*</span></th>
+                            <th style="width:18%">Party</th>
+                            <th style="width:20%">Narration</th>
+                            <th style="width:12%;text-align:right">Debit</th>
+                            <th style="width:12%;text-align:right">Credit</th>
+                            <th style="width:8%;text-align:center">Del</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lineBody"></tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" style="text-align:right">Totals:</td>
+                            <td style="text-align:right;color:#2d5f7f" id="totalDebit">0.00</td>
+                            <td style="text-align:right;color:#28a745" id="totalCredit">0.00</td>
+                            <td></td>
+                        </tr>
+                        <tr id="diffRow" style="display:none">
+                            <td colspan="3" style="text-align:right">⚠️ Difference:</td>
+                            <td colspan="2" style="text-align:right;color:#dc3545" id="diffAmt"></td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
         </div>
-    </div>
+    }
 
     <!-- Action Buttons -->
     <div style="display:flex;justify-content:flex-end;gap:0.8rem">
@@ -116,15 +205,27 @@
 @section Scripts {
 <script>
 const VTYPE = '@vType';
+const IS_SIMPLE = @(isSimple ? "true" : "false");
 let accounts = [], parties = [], lineId = 0;
 
+// Map Payment Mode → Account Head Id
+// 1101=Cash in Hand, 1102=Bank Account
+const CASH_ACCOUNT_CODE  = '1101';
+const BANK_ACCOUNT_CODE  = '1102';
+
+function getCashBankAccount() {
+    const mode = document.getElementById('paymentMode')?.value || 'Cash';
+    const isBankMode = mode === 'Bank Transfer' || mode === 'Cheque' || mode === 'Online';
+    const code = isBankMode ? BANK_ACCOUNT_CODE : CASH_ACCOUNT_CODE;
+    const acct = accounts.find(a => a.accountCode === code);
+    return acct;
+}
+
 async function init() {
-    // Accounts
     let r = await fetch('/Accounts/GetPostableAccounts');
     let j = await r.json();
     accounts = j.data;
 
-    // Parties
     r = await fetch('/Accounts/GetParties');
     j = await r.json();
     parties = j.data;
@@ -134,19 +235,55 @@ async function init() {
 
     document.getElementById('voucherDate').value = new Date().toISOString().split('T')[0];
     await loadVoucherNo();
-    addLine(); addLine();
+
+    if (VTYPE === 'CV') {
+        // Populate CV dropdowns
+        const opts = getFilteredAccounts().map(a => `<option value="${a.accountHeadId}">[${a.accountCode}] ${a.accountName}</option>`).join('');
+        document.getElementById('cvFrom').innerHTML = opts;
+        document.getElementById('cvTo').innerHTML   = opts;
+    } else {
+        addLine();
+    }
+
+    updateAutoPreview();
 }
 
 async function loadVoucherNo() {
     const r = await fetch(`/Accounts/GetNextVoucherNo?type=${VTYPE}`);
     const j = await r.json();
-    document.getElementById('voucherNo').value      = j.voucherNo;
+    document.getElementById('voucherNo').value           = j.voucherNo;
     document.getElementById('voucherNoDisplay').textContent = j.voucherNo;
 }
 
+// ── Simple line (PV/RV): Amount only ──────────────────────────
+function getFilteredAccounts() {
+    if (VTYPE === 'CV') {
+        // Only Cash and Bank accounts
+        return accounts.filter(a => a.accountCode === CASH_ACCOUNT_CODE || a.accountCode === BANK_ACCOUNT_CODE);
+    }
+    if (VTYPE === 'PV') {
+        // Expenses, Payables, Assets — exclude Cash/Bank (auto-generated)
+        return accounts.filter(a =>
+            a.accountCode !== CASH_ACCOUNT_CODE &&
+            a.accountCode !== BANK_ACCOUNT_CODE &&
+            (a.accountType === 'Expenses' || a.accountType === 'Liabilities' || a.accountType === 'Assets')
+        );
+    }
+    if (VTYPE === 'RV') {
+        // Income, Receivables — exclude Cash/Bank (auto-generated)
+        return accounts.filter(a =>
+            a.accountCode !== CASH_ACCOUNT_CODE &&
+            a.accountCode !== BANK_ACCOUNT_CODE &&
+            (a.accountType === 'Income' || a.accountType === 'Assets')
+        );
+    }
+    // JV — all accounts
+    return accounts;
+}
+
 function acctOptions(sel = '') {
-    return accounts.map(a =>
-        `<option value="${a.accountHeadId}" ${a.accountHeadId == sel ? 'selected' : ''}>[${a.accountCode}] ${a.accountName}</option>`
+    return getFilteredAccounts().map(a =>
+        `<option value="${a.accountHeadId}" data-code="${a.accountCode}" ${a.accountHeadId == sel ? 'selected' : ''}>[${a.accountCode}] ${a.accountName}</option>`
     ).join('');
 }
 
@@ -161,37 +298,143 @@ function addLine(d = {}) {
     const id = lineId;
     const tr = document.createElement('tr');
     tr.id = `ln_${id}`;
-    tr.innerHTML = `
-        <td><select class="form-control a-sel" onchange="recalc()">${acctOptions(d.accountHeadId)}</select></td>
-        <td><select class="form-control p-sel">${partyOptions(d.partyId)}</select></td>
-        <td><input class="form-control n-inp" value="${d.narration||''}"></td>
-        <td><input type="number" class="form-control d-inp" style="text-align:right" value="${d.debit||''}" min="0" step="0.01" oninput="recalc()"></td>
-        <td><input type="number" class="form-control c-inp" style="text-align:right" value="${d.credit||''}" min="0" step="0.01" oninput="recalc()"></td>
-        <td style="text-align:center"><button class="btn-icon" onclick="removeLine(${id})">🗑️</button></td>`;
+
+    if (IS_SIMPLE && VTYPE !== 'CV') {
+        tr.innerHTML = `
+            <td><select class="form-control a-sel" onchange="recalcSimple()">${acctOptions(d.accountHeadId)}</select></td>
+            <td><select class="form-control p-sel">${partyOptions(d.partyId)}</select></td>
+            <td><input class="form-control n-inp" value="${d.narration||''}"></td>
+            <td><input type="number" class="form-control amt-inp" style="text-align:right" value="${d.amount||''}" min="0" step="0.01" oninput="recalcSimple()"></td>
+            <td style="text-align:center"><button class="btn-icon" onclick="removeLine(${id})">🗑️</button></td>`;
+    } else {
+        tr.innerHTML = `
+            <td><select class="form-control a-sel" onchange="recalcJV()">${acctOptions(d.accountHeadId)}</select></td>
+            <td><select class="form-control p-sel">${partyOptions(d.partyId)}</select></td>
+            <td><input class="form-control n-inp" value="${d.narration||''}"></td>
+            <td><input type="number" class="form-control d-inp" style="text-align:right" value="${d.debit||''}" min="0" step="0.01" oninput="recalcJV()"></td>
+            <td><input type="number" class="form-control c-inp" style="text-align:right" value="${d.credit||''}" min="0" step="0.01" oninput="recalcJV()"></td>
+            <td style="text-align:center"><button class="btn-icon" onclick="removeLine(${id})">🗑️</button></td>`;
+    }
     document.getElementById('lineBody').appendChild(tr);
 }
 
 function removeLine(id) {
     document.getElementById(`ln_${id}`)?.remove();
-    recalc();
+    IS_SIMPLE ? recalcSimple() : recalcJV();
 }
 
-function recalc() {
+// ── PV/RV recalc ──────────────────────────────────────────────
+function recalcSimple() {
+    const total = [...document.querySelectorAll('.amt-inp')].reduce((s, e) => s + (+e.value || 0), 0);
+    document.getElementById('totalAmt').textContent = total.toFixed(2);
+    updateAutoPreview();
+}
+
+function onPaymentModeChange() {
+    updateAutoPreview();
+    recalcSimple();
+}
+
+function updateAutoPreview() {
+    if (VTYPE === 'CV' || !IS_SIMPLE) return;
+    const acct = getCashBankAccount();
+    const mode = document.getElementById('paymentMode')?.value || 'Cash';
+    const total = [...document.querySelectorAll('.amt-inp')].reduce((s, e) => s + (+e.value || 0), 0);
+    const el = document.getElementById('autoEntryPreview');
+    if (!el) return;
+
+    if (!acct) { el.textContent = '⚠️ Cash/Bank account not found in Chart of Accounts'; return; }
+
+    if (VTYPE === 'PV') {
+        el.innerHTML = `✅ Will auto-post: <strong>Cr [${acct.accountCode}] ${acct.accountName}</strong> = <strong>${total.toFixed(2)}</strong> &nbsp;|&nbsp; Mode: ${mode}`;
+    } else {
+        el.innerHTML = `✅ Will auto-post: <strong>Dr [${acct.accountCode}] ${acct.accountName}</strong> = <strong>${total.toFixed(2)}</strong> &nbsp;|&nbsp; Mode: ${mode}`;
+    }
+}
+
+// ── Contra recalc ─────────────────────────────────────────────
+function recalcCV() {
+    const fromId = document.getElementById('cvFrom').value;
+    const toId   = document.getElementById('cvTo').value;
+    const amount = +document.getElementById('cvAmount').value || 0;
+    const fromAcct = accounts.find(a => a.accountHeadId == fromId);
+    const toAcct   = accounts.find(a => a.accountHeadId == toId);
+    const preview  = document.getElementById('cvPreview');
+    const body     = document.getElementById('cvPreviewBody');
+
+    if (fromAcct && toAcct && amount > 0) {
+        preview.style.display = '';
+        body.innerHTML = `
+            <tr>
+                <td>Dr [${toAcct.accountCode}] ${toAcct.accountName}</td>
+                <td style="text-align:right;color:#2d5f7f">${amount.toFixed(2)}</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>Cr [${fromAcct.accountCode}] ${fromAcct.accountName}</td>
+                <td></td>
+                <td style="text-align:right;color:#28a745">${amount.toFixed(2)}</td>
+            </tr>`;
+    } else {
+        preview.style.display = 'none';
+    }
+}
+
+// ── JV recalc ─────────────────────────────────────────────────
+function recalcJV() {
     const dr = [...document.querySelectorAll('.d-inp')].reduce((s, e) => s + (+e.value || 0), 0);
     const cr = [...document.querySelectorAll('.c-inp')].reduce((s, e) => s + (+e.value || 0), 0);
     document.getElementById('totalDebit').textContent  = dr.toFixed(2);
     document.getElementById('totalCredit').textContent = cr.toFixed(2);
     const diff = Math.abs(dr - cr);
     const row  = document.getElementById('diffRow');
-    if (diff > 0.001) {
-        row.style.display = '';
-        document.getElementById('diffAmt').textContent = diff.toFixed(2);
-    } else {
-        row.style.display = 'none';
-    }
+    if (diff > 0.001) { row.style.display = ''; document.getElementById('diffAmt').textContent = diff.toFixed(2); }
+    else { row.style.display = 'none'; }
 }
 
-function getLines() {
+// ── Build final lines for API ─────────────────────────────────
+function buildLines() {
+    if (VTYPE === 'CV') {
+        const fromId = +document.getElementById('cvFrom').value;
+        const toId   = +document.getElementById('cvTo').value;
+        const amount = +document.getElementById('cvAmount').value || 0;
+        if (!fromId || !toId || amount <= 0) return null;
+        // Dr To, Cr From
+        return [
+            { accountHeadId: toId,   debit: amount, credit: 0,      narration: 'Contra Transfer' },
+            { accountHeadId: fromId, debit: 0,      credit: amount, narration: 'Contra Transfer' }
+        ];
+    }
+
+    if (IS_SIMPLE) {
+        const rows = [...document.querySelectorAll('#lineBody tr')];
+        const acct = getCashBankAccount();
+        if (!acct) { alert('❌ Cash/Bank account not found in Chart of Accounts. Check account codes 1101/1102.'); return null; }
+
+        const userLines = rows.map(row => ({
+            accountHeadId: +row.querySelector('.a-sel').value,
+            partyId:       +row.querySelector('.p-sel').value || null,
+            narration:      row.querySelector('.n-inp').value,
+            amount:        +row.querySelector('.amt-inp').value || 0,
+        })).filter(l => l.accountHeadId && l.amount > 0);
+
+        if (!userLines.length) return null;
+        const totalAmt = userLines.reduce((s, l) => s + l.amount, 0);
+
+        if (VTYPE === 'PV') {
+            // Dr: each expense/payable account | Cr: Cash/Bank (auto)
+            const lines = userLines.map(l => ({ accountHeadId: l.accountHeadId, partyId: l.partyId, narration: l.narration, debit: l.amount, credit: 0 }));
+            lines.push({ accountHeadId: acct.accountHeadId, debit: 0, credit: totalAmt, narration: 'Payment via ' + document.getElementById('paymentMode').value });
+            return lines;
+        } else {
+            // RV: Dr Cash/Bank (auto) | Cr: each income/receivable account
+            const lines = [{ accountHeadId: acct.accountHeadId, debit: totalAmt, credit: 0, narration: 'Receipt via ' + document.getElementById('paymentMode').value }];
+            userLines.forEach(l => lines.push({ accountHeadId: l.accountHeadId, partyId: l.partyId, narration: l.narration, debit: 0, credit: l.amount }));
+            return lines;
+        }
+    }
+
+    // JV
     return [...document.querySelectorAll('#lineBody tr')].map(row => ({
         accountHeadId: +row.querySelector('.a-sel').value,
         partyId:       +row.querySelector('.p-sel').value || null,
@@ -202,13 +445,14 @@ function getLines() {
 }
 
 async function saveVoucher() {
-    const lines  = getLines();
-    if (lines.length < 2) { alert('Add at least 2 valid lines.'); return; }
+    const lines = buildLines();
+    if (!lines) { alert('❌ Please fill in all required fields.'); return; }
+    if (lines.length < 2) { alert('❌ At least 2 accounting entries are required.'); return; }
 
-    const totalD = lines.reduce((s, l) => s + l.debit, 0);
-    const totalC = lines.reduce((s, l) => s + l.credit, 0);
+    const totalD = lines.reduce((s, l) => s + (l.debit  || 0), 0);
+    const totalC = lines.reduce((s, l) => s + (l.credit || 0), 0);
     if (Math.abs(totalD - totalC) > 0.001) {
-        alert(`❌ Voucher is not balanced!\nDebit: ${totalD.toFixed(2)}  |  Credit: ${totalC.toFixed(2)}`);
+        alert(`❌ Voucher not balanced!\nDebit: ${totalD.toFixed(2)}  |  Credit: ${totalC.toFixed(2)}`);
         return;
     }
 
@@ -217,31 +461,33 @@ async function saveVoucher() {
         voucherType: VTYPE,
         voucherDate: document.getElementById('voucherDate').value,
         partyId:    +document.getElementById('partyId').value || null,
-        paymentMode: document.getElementById('paymentMode').value,
+        paymentMode: document.getElementById('paymentMode')?.value || '',
         referenceNo: document.getElementById('referenceNo').value,
         narration:   document.getElementById('narration').value,
         details:     lines
     };
 
-    const res  = await fetch('/Accounts/SaveVoucher', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
+    const res  = await fetch('/Accounts/SaveVoucher', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const json = await res.json();
     if (json.success) { alert('✅ ' + json.message); clearForm(); }
     else { alert('❌ ' + json.message); }
 }
 
 async function clearForm() {
-    document.getElementById('lineBody').innerHTML = '';
+    document.getElementById('lineBody')?.innerHTML && (document.getElementById('lineBody').innerHTML = '');
     lineId = 0;
-    document.getElementById('narration').value = '';
-    document.getElementById('referenceNo').value = '';
-    document.getElementById('partyId').value = '';
+    document.getElementById('narration').value    = '';
+    document.getElementById('referenceNo').value  = '';
+    document.getElementById('partyId').value      = '';
+    if (VTYPE === 'CV') {
+        document.getElementById('cvAmount').value = '';
+        document.getElementById('cvPreview').style.display = 'none';
+    } else {
+        addLine();
+    }
     await loadVoucherNo();
-    addLine(); addLine();
-    recalc();
+    recalcSimple?.();
+    updateAutoPreview?.();
 }
 
 init();

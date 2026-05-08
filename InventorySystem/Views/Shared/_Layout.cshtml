@@ -181,8 +181,11 @@
                     if (item.Children != null && item.Children.Count > 0)
                     {
                         // Parent menu item with submenu
-                        var isOpen = ViewContext.RouteData.Values["controller"]?.ToString() == item.Controller;
+                        var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+                        var currentAction     = ViewContext.RouteData.Values["action"]?.ToString();
+                        var isOpen = item.Children.Any(c => c.Controller == currentController);
                         var menuIdSafe = System.Text.RegularExpressions.Regex.Replace(item.Name, @"[^\w]", "");
+
 
                         <li class="sidebar-item @(isOpen ? "open" : "")" id="@menuIdSafe">
                             <a href="#" class="sidebar-link"
@@ -249,7 +252,7 @@
     </aside>
 
     <!-- Main Content -->
-    <main class="main-wrapper">
+    <main class="main-wrapper" id="mainContent">
         @RenderBody()
     </main>
 
@@ -258,8 +261,108 @@
     <script>
         // Menu toggle for mobile
         document.querySelector('.menu-toggle')?.addEventListener('click', function () {
-            document.getElementById('sidebarId').classList.toggle('active');
+        document.getElementById('sidebarId').classList.toggle('active');
         });
+
+        // ── SPA-style navigation ──────────────────────────────────────
+        // function scrollSidebarToActive() {
+        // const sidebar  = document.getElementById('sidebarId');
+        // const activeEl = document.querySelector('.sidebar-sublink.active')
+        // || document.querySelector('.sidebar-link.active');
+        // if (!activeEl || !sidebar) return;
+        // const elTop  = activeEl.offsetTop;
+        // const visTop = sidebar.scrollTop;
+        // const visBot = visTop + sidebar.clientHeight;
+        // if (elTop < visTop || elTop + activeEl.offsetHeight > visBot) {
+        // sidebar.scrollTop = elTop - sidebar.clientHeight / 2;
+        // }
+        // }
+
+        // function updateActiveMenu(url) {
+        // // Remove all active states
+        // document.querySelectorAll('.sidebar-sublink, .sidebar-link').forEach(a => a.classList.remove('active'));
+        // document.querySelectorAll('.sidebar-item').forEach(li => li.classList.remove('open'));
+
+        // // Find matching link and activate it + its parent
+        // document.querySelectorAll('.sidebar-sublink, .sidebar-link').forEach(a => {
+        // const href = a.getAttribute('href');
+        // if (href && url.includes(href) && href !== '#') {
+        // a.classList.add('active');
+        // const parentLi = a.closest('ul.sidebar-submenu')?.closest('li.sidebar-item');
+        // if (parentLi) parentLi.classList.add('open');
+        // }
+        // });
+
+        // scrollSidebarToActive();
+        // }
+
+        // async function navigate(url) {
+        // try {
+        // const res  = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        // const html = await res.text();
+
+        // // Parse the response and extract main content + title + scripts
+        // const parser = new DOMParser();
+        // const doc    = parser.parseFromString(html, 'text/html');
+
+        // // Update title
+        // document.title = doc.title;
+
+        // // Swap main content
+        // const newMain = doc.getElementById('mainContent');
+        // if (newMain) {
+        // const main = document.getElementById('mainContent');
+        // main.innerHTML = newMain.innerHTML;
+
+        // // Re-run any inline scripts in the new content
+        // main.querySelectorAll('script').forEach(oldScript => {
+        // const s = document.createElement('script');
+        // if (oldScript.src) { s.src = oldScript.src; s.async = false; }
+        // else { s.textContent = oldScript.textContent; }
+        // oldScript.replaceWith(s);
+        // });
+
+        // // Re-load any new css links
+        // doc.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+        // if (!document.querySelector(`link[href="${link.href}"]`)) {
+        // document.head.appendChild(link.cloneNode());
+        // }
+        // });
+        // }
+
+        // // Update browser URL
+        // history.pushState({ url }, '', url);
+        // updateActiveMenu(url);
+
+        // // Scroll main content to top
+        // window.scrollTo({ top: 0, behavior: 'instant' });
+
+        // } catch (e) {
+        // // Fallback to normal navigation on error
+        // window.location.href = url;
+        // }
+        // }
+
+        // // Intercept sidebar link clicks
+        // document.getElementById('sidebarId').addEventListener('click', function (e) {
+        // const a = e.target.closest('a.sidebar-sublink, a.sidebar-link');
+        // if (!a) return;
+        // const href = a.getAttribute('href');
+        // if (!href || href === '#') return;
+        // e.preventDefault();
+        // navigate(href);
+        // });
+
+        // // Handle browser back/forward
+        // window.addEventListener('popstate', function (e) {
+        // if (e.state?.url) navigate(e.state.url);
+        // });
+
+        // // Init active state on first load
+        // history.replaceState({ url: location.pathname }, '', location.pathname);
+        // updateActiveMenu(location.pathname);
+        // setTimeout(scrollSidebarToActive, 50);
     </script>
+
 </body>
 </html>
