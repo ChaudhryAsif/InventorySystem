@@ -1,0 +1,134 @@
+﻿@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Outstanding Report";
+}
+<link href="~/css/Accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <div class="page-header">
+        <div class="page-title">
+            <h2>📋 Outstanding Report</h2>
+            <p>Net outstanding balance for each party (Payable &amp; Receivable)</p>
+        </div>
+        <button class="btn btn-outline" onclick="window.print()">🖨️ Print</button>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label class="form-label">Party Type</label>
+                <select class="form-control" id="partyType" onchange="loadReport()">
+                    <option value="all">All Parties</option>
+                    <option value="customer">Customers (Receivable)</option>
+                    <option value="supplier">Suppliers (Payable)</option>
+                </select>
+            </div>
+            <div class="form-group" style="align-self:end">
+                <button class="btn btn-primary" onclick="loadReport()">🔍 Refresh</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="summary-cards" id="summaryCards" style="margin-top:1.2rem"></div>
+
+    <!-- Table -->
+    <div class="card no-top-radius">
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Party Name</th>
+                        <th>Type</th>
+                        <th style="text-align:right">Total Debit</th>
+                        <th style="text-align:right">Total Credit</th>
+                        <th style="text-align:right">Outstanding Balance</th>
+                        <th>Balance Type</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="outBody">
+                    <tr><td colspan="8" style="padding:2rem;text-align:center;color:var(--text-secondary)">Loading…</td></tr>
+                </tbody>
+                <tfoot>
+                    <tr class="report-total-row">
+                        <td colspan="5" style="text-align:right;font-weight:700">Grand Total Outstanding</td>
+                        <td style="text-align:right;color:#2d5f7f;font-weight:700" id="grandTotal"></td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const fmt = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 });
+
+        const ptBadge = t => ({
+            customer: '<span class="badge badge-primary">Customer</span>',
+            supplier: '<span class="badge badge-warning">Supplier</span>',
+            both:     '<span class="badge badge-info">Both</span>',
+        }[t?.toLowerCase()] || `<span class="badge badge-system">${t ?? ''}</span>`);
+
+        async function loadReport() {
+            const partyType = document.getElementById('partyType').value;
+            const res  = await fetch(`/Accounts/GetOutstandingReport?partyType=${partyType}`);
+            const json = await res.json();
+            if (!json.success) { alert('Failed to load report.'); return; }
+
+            const data = json.data;
+
+            const totalPayable    = data.filter(r => r.balanceType === 'Payable').reduce((s, r) => s + r.balance, 0);
+            const totalReceivable = data.filter(r => r.balanceType === 'Receivable').reduce((s, r) => s + r.balance, 0);
+            const grandTotal      = data.reduce((s, r) => s + r.balance, 0);
+
+            document.getElementById('summaryCards').innerHTML = `
+                <div class="summary-card blue">
+                    <div class="summary-label">👥 Total Parties</div>
+                    <div class="summary-value">${data.length}</div>
+                </div>
+                <div class="summary-card green">
+                    <div class="summary-label">📥 Total Receivable</div>
+                    <div class="summary-value">${fmt(totalReceivable)}</div>
+                </div>
+                <div class="summary-card red">
+                    <div class="summary-label">📤 Total Payable</div>
+                    <div class="summary-value">${fmt(totalPayable)}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">💰 Net Outstanding</div>
+                    <div class="summary-value">${fmt(grandTotal)}</div>
+                </div>`;
+
+            document.getElementById('grandTotal').textContent = fmt(grandTotal);
+
+            const tbody = document.getElementById('outBody');
+            if (!data.length) {
+                tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:var(--text-secondary)">No outstanding balances found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map((r, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td style="font-weight:600">${r.partyName}</td>
+                    <td>${ptBadge(r.partyType)}</td>
+                    <td style="text-align:right;color:#2d5f7f">${fmt(r.totalDebit)}</td>
+                    <td style="text-align:right;color:#28a745">${fmt(r.totalCredit)}</td>
+                    <td style="text-align:right;font-weight:700;font-size:1rem;color:${r.balanceType === 'Payable' ? '#dc3545' : '#155724'}">${fmt(r.balance)}</td>
+                    <td><span class="badge ${r.balanceType === 'Payable' ? 'badge-danger' : 'badge-success'}">${r.balanceType}</span></td>
+                    <td>
+                        <a href="/Accounts/PartyLedger" onclick="sessionStorage.setItem('osPartyId','${r.partyId}')"
+                           class="btn btn-primary btn-sm">📒 Ledger</a>
+                    </td>
+                </tr>`).join('');
+        }
+
+        loadReport();
+    </script>
+}

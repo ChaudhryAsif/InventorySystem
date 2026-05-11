@@ -286,5 +286,73 @@ namespace InventorySystem.Controllers
                 .ToListAsync();
             return Json(new { success = true, data = accounts });
         }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // CASH BOOK
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult CashBook() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetCashBook(DateTime? from, DateTime? to)
+        {
+            var result = await _accounts.GetCashBookAsync(
+                from ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1),
+                to ?? DateTime.Today);
+            return Json(new { success = true, data = result });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // AGING REPORT
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult AgingReport() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetAgingReport(string partyType = "all", DateTime? asOf = null)
+        {
+            var result = await _accounts.GetAgingReportAsync(partyType, asOf ?? DateTime.Today);
+            return Json(new { success = true, data = result });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // CASH FLOW STATEMENT
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult CashFlow() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetCashFlow(DateTime? from, DateTime? to)
+        {
+            var result = await _accounts.GetCashFlowAsync(
+                from ?? new DateTime(DateTime.Today.Year, 1, 1),
+                to ?? DateTime.Today);
+            return Json(new { success = true, data = result });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // OUTSTANDING REPORT
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult OutstandingReport() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetOutstandingReport(string partyType = "all")
+        {
+            var rows = await _accounts.GetOutstandingReportAsync(partyType);
+            return Json(new { success = true, data = rows });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // PRINT VOUCHER
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet]
+        public async Task<IActionResult> PrintVoucher(int id)
+        {
+            var voucher = await _accounts.GetVoucherAsync(id);
+            if (voucher == null) return NotFound("Voucher not found.");
+            return View(voucher);
+        }
     }
 }

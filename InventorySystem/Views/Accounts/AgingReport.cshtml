@@ -1,0 +1,159 @@
+﻿@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Aging Report";
+}
+<link href="~/css/Accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <div class="page-header">
+        <div class="page-title">
+            <h2>📅 Aging Report</h2>
+            <p>Accounts Receivable &amp; Payable aged by 0-30 / 31-60 / 61-90 / 90+ days</p>
+        </div>
+        <button class="btn btn-outline" onclick="window.print()">🖨️ Print</button>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label class="form-label">Party Type</label>
+                <select class="form-control" id="partyType">
+                    <option value="all">All Parties</option>
+                    <option value="customer">Customers (Receivable)</option>
+                    <option value="supplier">Suppliers (Payable)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">As of Date</label>
+                <input type="date" class="form-control" id="asOf">
+            </div>
+            <div class="form-group" style="align-self:end">
+                <button class="btn btn-primary" onclick="loadReport()">📊 Generate Report</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reportSection" style="display:none;margin-top:1.2rem">
+
+        <!-- Summary Cards -->
+        <div class="summary-cards">
+            <div class="summary-card blue">
+                <div class="summary-label">👥 Total Parties</div>
+                <div class="summary-value" id="totalParties">0</div>
+            </div>
+            <div class="summary-card green">
+                <div class="summary-label">✅ 0–30 Days (Current)</div>
+                <div class="summary-value" id="totalCurrent"></div>
+            </div>
+            <div class="summary-card orange">
+                <div class="summary-label">⚠️ 31–60 Days</div>
+                <div class="summary-value" id="total3160"></div>
+            </div>
+            <div class="summary-card red">
+                <div class="summary-label">🔴 61–90 Days</div>
+                <div class="summary-value" id="total6190"></div>
+            </div>
+            <div class="summary-card red">
+                <div class="summary-label">❗ Over 90 Days</div>
+                <div class="summary-value" id="totalOver90"></div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">💰 Grand Total</div>
+                <div class="summary-value" id="grandTotal"></div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="card" style="margin-top:1.2rem">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Party Name</th>
+                            <th>Type</th>
+                            <th style="text-align:right">0–30 Days</th>
+                            <th style="text-align:right">31–60 Days</th>
+                            <th style="text-align:right">61–90 Days</th>
+                            <th style="text-align:right">Over 90 Days</th>
+                            <th style="text-align:right">Total Outstanding</th>
+                        </tr>
+                    </thead>
+                    <tbody id="agingBody"></tbody>
+                    <tfoot>
+                        <tr class="report-total-row">
+                            <td colspan="3" style="text-align:right;font-weight:700">Grand Total</td>
+                            <td style="text-align:right" id="ftCurrent"></td>
+                            <td style="text-align:right" id="ft3160"></td>
+                            <td style="text-align:right" id="ft6190"></td>
+                            <td style="text-align:right" id="ftOver90"></td>
+                            <td style="text-align:right;color:#2d5f7f;font-weight:700" id="ftTotal"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.getElementById('asOf').value = new Date().toISOString().split('T')[0];
+        const fmt = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 });
+
+        const ptBadge = t => ({
+            customer: '<span class="badge badge-primary">Customer</span>',
+            supplier: '<span class="badge badge-warning">Supplier</span>',
+            both:     '<span class="badge badge-info">Both</span>',
+        }[t?.toLowerCase()] || `<span class="badge badge-system">${t ?? ''}</span>`);
+
+        async function loadReport() {
+            const partyType = document.getElementById('partyType').value;
+            const asOf      = document.getElementById('asOf').value;
+            if (!asOf) { alert('Please select a date.'); return; }
+
+            const res  = await fetch(`/Accounts/GetAgingReport?partyType=${partyType}&asOf=${asOf}`);
+            const json = await res.json();
+            if (!json.success) { alert('Failed to load aging report.'); return; }
+
+            const d = json.data;
+            document.getElementById('reportSection').style.display = '';
+
+            document.getElementById('totalParties').textContent = d.rows.length;
+            document.getElementById('totalCurrent').textContent = fmt(d.totalCurrent);
+            document.getElementById('total3160').textContent    = fmt(d.totalDays31_60);
+            document.getElementById('total6190').textContent    = fmt(d.totalDays61_90);
+            document.getElementById('totalOver90').textContent  = fmt(d.totalOver90);
+            document.getElementById('grandTotal').textContent   = fmt(d.grandTotal);
+
+            document.getElementById('ftCurrent').textContent = fmt(d.totalCurrent);
+            document.getElementById('ft3160').textContent    = fmt(d.totalDays31_60);
+            document.getElementById('ft6190').textContent    = fmt(d.totalDays61_90);
+            document.getElementById('ftOver90').textContent  = fmt(d.totalOver90);
+            document.getElementById('ftTotal').textContent   = fmt(d.grandTotal);
+
+            const tbody = document.getElementById('agingBody');
+            if (!d.rows.length) {
+                tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:var(--text-secondary)">No outstanding balances found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = d.rows.map((r, i) => {
+                // Color-code severity based on where most balance sits
+                const severity = r.over90 > 0 ? 'color:#721c24' : r.days61_90 > 0 ? 'color:#856404' : '';
+                return `<tr>
+                    <td>${i + 1}</td>
+                    <td style="font-weight:600;${severity}">${r.partyName}</td>
+                    <td>${ptBadge(r.partyType)}</td>
+                    <td style="text-align:right;color:#155724">${r.current   > 0 ? fmt(r.current)   : '—'}</td>
+                    <td style="text-align:right;color:#856404">${r.days31_60 > 0 ? fmt(r.days31_60) : '—'}</td>
+                    <td style="text-align:right;color:#c47a00">${r.days61_90 > 0 ? fmt(r.days61_90) : '—'}</td>
+                    <td style="text-align:right;color:#dc3545;font-weight:700">${r.over90 > 0 ? fmt(r.over90) : '—'}</td>
+                    <td style="text-align:right;font-weight:700;color:#2d5f7f">${fmt(r.total)}</td>
+                </tr>`;
+            }).join('');
+        }
+    </script>
+}

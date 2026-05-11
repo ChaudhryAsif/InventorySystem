@@ -389,5 +389,290 @@ namespace InventorySystem.Core.Services
 
             return $"{prefix}-{year}-{(count + 1):D4}";
         }
+
+        // ── CASH BOOK ─────────────────────────────────────────────────────────
+
+        public async Task<CashBookResult> GetCashBookAsync(DateTime from, DateTime to)
+        {
+            // Identify Cash (1101) and Bank (1102) account head IDs
+            var cashBankAccounts = await _db.AccountHeads
+                .Where(a => a.AccountCode == "1101" || a.AccountCode == "1102")
+                .ToListAsync();
+
+            var cashBankIds = cashBankAccounts.Select(a => a.AccountHeadId).ToList();
+
+            // Opening balance = account opening balances + all GL entries before 'from'
+            decimal openingBalance = 0;
+            foreach (var acct in cashBankAccounts)
+            {
+                var glBefore = await _db.GeneralLedger
+                    .Where(g => !g.IsVoid && g.AccountHeadId == acct.AccountHeadId && g.VoucherDate < from)
+                    .SumAsync(g => (decimal?)(g.Debit - g.Credit)) ?? 0;
+
+                var openBal = acct.OpeningBalanceType == "Debit"
+                    ? acct.OpeningBalance
+                    : -acct.OpeningBalance;
+
+                openingBalance += openBal + glBefore;
+            }
+
+            // Period entries on Cash / Bank accounts
+            var entries = await _db.GeneralLedger
+                .Include(g => g.Party)
+                .Include(g => g.AccountHead)
+                .Where(g => !g.IsVoid
+                         && cashBankIds.Contains(g.AccountHeadId)
+                         && g.VoucherDate >= from
+                         && g.VoucherDate <= to.Date.AddDays(1).AddTicks(-1))
+                .OrderBy(g => g.VoucherDate)
+                .ThenBy(g => g.GLId)
+                .ToListAsync();
+
+            decimal running = openingBalance;
+            var rows = entries.Select(e =>
+            {
+                running += e.Debit - e.Credit;
+                return new CashBookRow
+                {
+                    Date = e.VoucherDate,
+                    VoucherNo = e.VoucherNo,
+                    VoucherType = e.VoucherType,
+                    AccountName = e.AccountHead?.AccountName ?? "",
+                    PartyName = e.Party?.PartyName ?? "",
+                    Narration = e.Narration ?? "",
+                    Debit = e.Debit,
+                    Credit = e.Credit,
+                    Balance = running
+                };
+            }).ToList();
+
+            return new CashBookResult
+            {
+                From = from,
+                To = to,
+                OpeningBalance = openingBalance,
+                TotalReceipts = entries.Sum(e => e.Debit),
+                TotalPayments = entries.Sum(e => e.Credit),
+                ClosingBalance = running,
+                Rows = rows
+            };
+        }
+
+        // ── AGING REPORT ──────────────────────────────────────────────────────
+
+        public async Task<AgingReportResult> GetAgingReportAsync(string partyType, DateTime asOf)
+        {
+            var partiesQuery = _db.Parties.Where(p => p.Status != "inactive");
+            if (!string.IsNullOrEmpty(partyType) && partyType != "all")
+                partiesQuery = partiesQuery.Where(p => p.PartyType == partyType || p.PartyType == "both");
+
+            var parties = await partiesQuery.OrderBy(p => p.PartyName).ToListAsync();
+            var partyIds = parties.Select(p => p.PartyId).ToList();
+
+            // Load GL data grouped by partyId + date bucket
+            var glData = await _db.GeneralLedger
+                .Where(g => !g.IsVoid
+                         && g.PartyId != null
+                         && partyIds.Contains(g.PartyId!.Value)
+                         && g.VoucherDate <= asOf)
+                .Select(g => new
+                {
+                    g.PartyId,
+                    Date = g.VoucherDate.Date,
+                    g.Debit,
+                    g.Credit
+                })
+                .ToListAsync();
+
+            var rows = new List<AgingRow>();
+
+            foreach (var party in parties)
+            {
+                bool isSupplier = party.PartyType is "supplier" or "both";
+                var entries = glData.Where(g => g.PartyId == party.PartyId).ToList();
+                if (!entries.Any()) continue;
+
+                decimal current = 0, d31_60 = 0, d61_90 = 0, over90 = 0;
+
+                // Group by date so each day's net is aged together
+                var byDate = entries
+                    .GroupBy(e => e.Date)
+                    .Select(g => new
+                    {
+                        Date = g.Key,
+                        Net = isSupplier
+                                ? g.Sum(e => e.Credit) - g.Sum(e => e.Debit)
+                                : g.Sum(e => e.Debit) - g.Sum(e => e.Credit)
+                    });
+
+                foreach (var day in byDate)
+                {
+                    if (day.Net == 0) continue;
+                    int age = (int)(asOf - day.Date).TotalDays;
+                    if (age <= 30) current += day.Net;
+                    else if (age <= 60) d31_60 += day.Net;
+                    else if (age <= 90) d61_90 += day.Net;
+                    else over90 += day.Net;
+                }
+
+                // Only show parties with a positive outstanding balance
+                decimal total = current + d31_60 + d61_90 + over90;
+                if (total <= 0) continue;
+
+                rows.Add(new AgingRow
+                {
+                    PartyId = party.PartyId,
+                    PartyName = party.PartyName,
+                    PartyType = party.PartyType ?? "",
+                    Current = current > 0 ? current : 0,
+                    Days31_60 = d31_60 > 0 ? d31_60 : 0,
+                    Days61_90 = d61_90 > 0 ? d61_90 : 0,
+                    Over90 = over90 > 0 ? over90 : 0,
+                    Total = total
+                });
+            }
+
+            return new AgingReportResult
+            {
+                AsOf = asOf,
+                PartyType = partyType,
+                Rows = rows.OrderByDescending(r => r.Total).ToList()
+            };
+        }
+
+        // ── CASH FLOW STATEMENT ───────────────────────────────────────────────
+
+        public async Task<CashFlowResult> GetCashFlowAsync(DateTime from, DateTime to)
+        {
+            var cashBankAccounts = await _db.AccountHeads
+                .Where(a => a.AccountCode == "1101" || a.AccountCode == "1102")
+                .ToListAsync();
+
+            var cashBankIds = cashBankAccounts.Select(a => a.AccountHeadId).ToList();
+
+            // Opening cash balance
+            decimal openingCash = 0;
+            foreach (var acct in cashBankAccounts)
+            {
+                var glBefore = await _db.GeneralLedger
+                    .Where(g => !g.IsVoid && g.AccountHeadId == acct.AccountHeadId && g.VoucherDate < from)
+                    .SumAsync(g => (decimal?)(g.Debit - g.Credit)) ?? 0;
+
+                var openBal = acct.OpeningBalanceType == "Debit"
+                    ? acct.OpeningBalance : -acct.OpeningBalance;
+
+                openingCash += openBal + glBefore;
+            }
+
+            // Period entries on Cash / Bank
+            var entries = await _db.GeneralLedger
+                .Where(g => !g.IsVoid
+                         && cashBankIds.Contains(g.AccountHeadId)
+                         && g.VoucherDate >= from
+                         && g.VoucherDate <= to.Date.AddDays(1).AddTicks(-1))
+                .ToListAsync();
+
+            // Group by VoucherType → inflows (Debit) and outflows (Credit)
+            var vtypeGroups = entries
+                .GroupBy(e => e.VoucherType)
+                .Select(g => new
+                {
+                    VoucherType = g.Key,
+                    Inflow = g.Sum(e => e.Debit),
+                    Outflow = g.Sum(e => e.Credit)
+                })
+                .ToList();
+
+            static string GetCategory(string vType) => vType switch
+            {
+                "PV" or "RV" => "Operating Activities",
+                "CV" => "Financing Activities",
+                _ => "Other Adjustments"
+            };
+
+            static string GetDescription(string vType) => vType switch
+            {
+                "PV" => "Payment Vouchers (cash paid out)",
+                "RV" => "Receipt Vouchers (cash received)",
+                "CV" => "Contra Vouchers (bank ↔ cash transfers)",
+                "JV" => "Journal Vouchers (adjustments)",
+                _ => vType
+            };
+
+            var rows = vtypeGroups.Select(g => new CashFlowRow
+            {
+                Category = GetCategory(g.VoucherType),
+                VoucherType = g.VoucherType,
+                Description = GetDescription(g.VoucherType),
+                Inflow = g.Inflow,
+                Outflow = g.Outflow
+            }).OrderBy(r => r.Category).ThenBy(r => r.VoucherType).ToList();
+
+            decimal totalInflows = entries.Sum(e => e.Debit);
+            decimal totalOutflows = entries.Sum(e => e.Credit);
+            decimal closingCash = openingCash + totalInflows - totalOutflows;
+
+            return new CashFlowResult
+            {
+                From = from,
+                To = to,
+                OpeningCash = openingCash,
+                TotalInflows = totalInflows,
+                TotalOutflows = totalOutflows,
+                ClosingCash = closingCash,
+                Rows = rows
+            };
+        }
+
+        // ── OUTSTANDING REPORT ────────────────────────────────────────────────
+
+        public async Task<List<OutstandingRow>> GetOutstandingReportAsync(string partyType)
+        {
+            var partiesQuery = _db.Parties.Where(p => p.Status != "inactive");
+            if (!string.IsNullOrEmpty(partyType) && partyType != "all")
+                partiesQuery = partiesQuery.Where(p => p.PartyType == partyType || p.PartyType == "both");
+
+            var parties = await partiesQuery.OrderBy(p => p.PartyName).ToListAsync();
+            var partyIds = parties.Select(p => p.PartyId).ToList();
+
+            var glTotals = await _db.GeneralLedger
+                .Where(g => !g.IsVoid && g.PartyId != null && partyIds.Contains(g.PartyId!.Value))
+                .GroupBy(g => g.PartyId)
+                .Select(g => new
+                {
+                    PartyId = g.Key!.Value,
+                    TotalDebit = g.Sum(x => x.Debit),
+                    TotalCredit = g.Sum(x => x.Credit)
+                })
+                .ToListAsync();
+
+            var rows = new List<OutstandingRow>();
+
+            foreach (var party in parties)
+            {
+                var gl = glTotals.FirstOrDefault(g => g.PartyId == party.PartyId);
+                if (gl == null) continue;
+
+                bool isSupplier = party.PartyType is "supplier" or "both";
+                decimal balance = isSupplier
+                    ? gl.TotalCredit - gl.TotalDebit
+                    : gl.TotalDebit - gl.TotalCredit;
+
+                if (balance <= 0) continue;  // only show outstanding (positive) balances
+
+                rows.Add(new OutstandingRow
+                {
+                    PartyId = party.PartyId,
+                    PartyName = party.PartyName,
+                    PartyType = party.PartyType ?? "",
+                    TotalDebit = gl.TotalDebit,
+                    TotalCredit = gl.TotalCredit,
+                    Balance = balance,
+                    BalanceType = isSupplier ? "Payable" : "Receivable"
+                });
+            }
+
+            return rows.OrderByDescending(r => r.Balance).ToList();
+        }
     }
 }

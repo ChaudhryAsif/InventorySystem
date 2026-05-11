@@ -946,6 +946,12 @@ namespace InventorySystem.Data
                 new MenuItem { Id = 33, Name = "Purchase Report",  Icon = "📝", Controller = "Report", Action = "PurchaseReport", ParentId = 31, SortOrder = 2, RequiredPermission = "Report.View" },
                 new MenuItem { Id = 34, Name = "Sale Report",      Icon = "🧾", Controller = "Report", Action = "SaleReport",     ParentId = 31, SortOrder = 3, RequiredPermission = "Report.View" },
                 new MenuItem { Id = 35, Name = "Consume Report",   Icon = "🏭", Controller = "Report", Action = "ConsumeReport",  ParentId = 31, SortOrder = 4, RequiredPermission = "Report.View" },
+
+                // New Accounts sub-menu items
+                new MenuItem { Id = 36, Name = "Cash Book",          Icon = "💵", Controller = "Accounts", Action = "CashBook",          ParentId = 19, SortOrder = 12, RequiredPermission = "Accounts.View" },
+                new MenuItem { Id = 37, Name = "Cash Flow",          Icon = "💧", Controller = "Accounts", Action = "CashFlow",          ParentId = 19, SortOrder = 13, RequiredPermission = "Accounts.View" },
+                new MenuItem { Id = 38, Name = "Aging Report",       Icon = "📅", Controller = "Accounts", Action = "AgingReport",       ParentId = 19, SortOrder = 14, RequiredPermission = "Accounts.View" },
+                new MenuItem { Id = 39, Name = "Outstanding Report", Icon = "📋", Controller = "Accounts", Action = "OutstandingReport", ParentId = 19, SortOrder = 15, RequiredPermission = "Accounts.View" },
             };
             modelBuilder.Entity<MenuItem>().HasData(menuItems);
         }

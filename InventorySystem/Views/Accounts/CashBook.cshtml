@@ -1,0 +1,163 @@
+﻿@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Cash Book";
+}
+<link href="~/css/Accounts.css" rel="stylesheet" />
+
+<div class="ac-page">
+
+    <div class="page-header">
+        <div class="page-title">
+            <h2>💵 Cash Book</h2>
+            <p>Daily register of all Cash (1101) and Bank (1102) transactions</p>
+        </div>
+        <button class="btn btn-outline" onclick="window.print()">🖨️ Print</button>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label class="form-label">From Date</label>
+                <input type="date" class="form-control" id="fromDate">
+            </div>
+            <div class="form-group">
+                <label class="form-label">To Date</label>
+                <input type="date" class="form-control" id="toDate">
+            </div>
+            <div class="form-group" style="align-self:end">
+                <button class="btn btn-primary" onclick="loadCashBook()">📒 View Cash Book</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reportSection" style="display:none">
+
+        <!-- Summary Cards -->
+        <div class="summary-cards" style="margin-top:1.2rem">
+            <div class="summary-card blue">
+                <div class="summary-label">🏁 Opening Balance</div>
+                <div class="summary-value" id="openingBalance">0.00</div>
+            </div>
+            <div class="summary-card green">
+                <div class="summary-label">📥 Total Receipts (Dr)</div>
+                <div class="summary-value" id="totalReceipts">0.00</div>
+            </div>
+            <div class="summary-card red">
+                <div class="summary-label">📤 Total Payments (Cr)</div>
+                <div class="summary-value" id="totalPayments">0.00</div>
+            </div>
+            <div class="summary-card" id="closingCard">
+                <div class="summary-label">🏁 Closing Balance</div>
+                <div class="summary-value" id="closingBalance">0.00</div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="card" style="margin-top:1.2rem">
+            <div class="section-header">
+                <span>📒 Cash Book Entries</span>
+                <span id="periodLabel" style="font-family:monospace;font-size:0.85rem;opacity:0.85"></span>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Voucher No</th>
+                            <th>Type</th>
+                            <th>Account</th>
+                            <th>Party</th>
+                            <th>Narration</th>
+                            <th style="text-align:right">Receipts (Dr)</th>
+                            <th style="text-align:right">Payments (Cr)</th>
+                            <th style="text-align:right">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cbBody"></tbody>
+                    <tfoot>
+                        <tr class="report-total-row">
+                            <td colspan="6" style="text-align:right;font-weight:700">Grand Total</td>
+                            <td style="text-align:right;color:#155724;font-weight:700" id="footDr"></td>
+                            <td style="text-align:right;color:#721c24;font-weight:700" id="footCr"></td>
+                            <td style="text-align:right;font-weight:700" id="footBal"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const today = new Date().toISOString().split('T')[0];
+        const fom   = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+        document.getElementById('fromDate').value = fom;
+        document.getElementById('toDate').value   = today;
+
+        const fmt  = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 });
+        const vtBadge = t => ({
+            PV: '<span class="badge badge-danger">PV</span>',
+            RV: '<span class="badge badge-success">RV</span>',
+            JV: '<span class="badge badge-primary">JV</span>',
+            CV: '<span class="badge badge-purple">CV</span>',
+        }[t] || `<span class="badge badge-system">${t}</span>`);
+
+        async function loadCashBook() {
+            const from = document.getElementById('fromDate').value;
+            const to   = document.getElementById('toDate').value;
+            if (!from || !to) { alert('Please select both dates.'); return; }
+
+            const res  = await fetch(`/Accounts/GetCashBook?from=${from}&to=${to}`);
+            const json = await res.json();
+            if (!json.success) { alert('Failed to load cash book.'); return; }
+
+            const d = json.data;
+            document.getElementById('reportSection').style.display = '';
+            document.getElementById('periodLabel').textContent = `${from}  to  ${to}`;
+
+            document.getElementById('openingBalance').textContent = fmt(d.openingBalance);
+            document.getElementById('totalReceipts').textContent  = fmt(d.totalReceipts);
+            document.getElementById('totalPayments').textContent  = fmt(d.totalPayments);
+            document.getElementById('closingBalance').textContent = fmt(d.closingBalance);
+
+            const cc = document.getElementById('closingCard');
+            cc.className = 'summary-card ' + (d.closingBalance >= 0 ? 'green' : 'red');
+
+            document.getElementById('footDr').textContent  = fmt(d.totalReceipts);
+            document.getElementById('footCr').textContent  = fmt(d.totalPayments);
+            document.getElementById('footBal').textContent = fmt(d.closingBalance);
+
+            const tbody = document.getElementById('cbBody');
+            if (!d.rows.length) {
+                tbody.innerHTML = '<tr><td colspan="9" style="padding:2rem;text-align:center;color:var(--text-secondary)">No transactions found for this period.</td></tr>';
+                return;
+            }
+
+            // Opening balance row
+            let html = `<tr style="background:#fff9e6">
+                <td colspan="6" style="font-weight:700;color:#856404">Opening Balance</td>
+                <td></td><td></td>
+                <td style="text-align:right;font-weight:700;color:#856404">${fmt(d.openingBalance)}</td>
+            </tr>`;
+
+            html += d.rows.map(r => `
+                <tr>
+                    <td>${r.date?.substring(0,10) ?? ''}</td>
+                    <td><span class="acc-code">${r.voucherNo}</span></td>
+                    <td>${vtBadge(r.voucherType)}</td>
+                    <td style="font-size:0.83rem;color:#555">${r.accountName}</td>
+                    <td>${r.partyName || '—'}</td>
+                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.narration)}">${r.narration || '—'}</td>
+                    <td style="text-align:right;color:#155724;font-weight:600">${r.debit  > 0 ? fmt(r.debit)  : ''}</td>
+                    <td style="text-align:right;color:#721c24;font-weight:600">${r.credit > 0 ? fmt(r.credit) : ''}</td>
+                    <td style="text-align:right;font-weight:600" class="${r.balance >= 0 ? 'bal-positive' : 'bal-negative'}">${fmt(Math.abs(r.balance))} ${r.balance >= 0 ? 'Dr' : 'Cr'}</td>
+                </tr>`).join('');
+
+            tbody.innerHTML = html;
+        }
+
+        function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    </script>
+}

@@ -1,0 +1,408 @@
+@model InventorySystem.Core.Models.Voucher
+@{
+    Layout = null;
+
+    var typeColor = Model.VoucherType switch
+    {
+        "PV" => "#dc3545",
+        "RV" => "#28a745",
+        "JV" => "#2d5f7f",
+        "CV" => "#6f42c1",
+        _    => "#343a40"
+    };
+
+    var typeFull = Model.VoucherType switch
+    {
+        "PV" => "Payment Voucher",
+        "RV" => "Receipt Voucher",
+        "JV" => "Journal Voucher",
+        "CV" => "Contra Voucher",
+        _    => Model.VoucherType
+    };
+
+    decimal totalDebit  = Model.Details?.Sum(d => d.Debit)  ?? 0;
+    decimal totalCredit = Model.Details?.Sum(d => d.Credit) ?? 0;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@typeFull — @Model.VoucherNo</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 13px;
+            color: #212529;
+            background: #f5f5f5;
+        }
+
+        .print-wrapper {
+            max-width: 900px;
+            margin: 24px auto;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        /* ── Header bar ── */
+        .voucher-header {
+            background: @typeColor;
+            color: #fff;
+            padding: 20px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .voucher-header .company-name {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: .5px;
+        }
+
+        .voucher-header .voucher-meta {
+            text-align: right;
+        }
+
+        .voucher-header .voucher-type {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .voucher-header .voucher-no {
+            font-size: 13px;
+            opacity: .9;
+            margin-top: 2px;
+        }
+
+        /* ── Info grid ── */
+        .info-section {
+            padding: 18px 28px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px 24px;
+        }
+
+        .info-item label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #6c757d;
+            font-weight: 600;
+            letter-spacing: .4px;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .info-item span {
+            font-size: 13px;
+            font-weight: 500;
+            color: #212529;
+        }
+
+        .void-badge {
+            display: inline-block;
+            background: #dc3545;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 10px;
+            letter-spacing: .4px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        /* ── Narration ── */
+        .narration-section {
+            padding: 10px 28px 16px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .narration-section label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #6c757d;
+            font-weight: 600;
+            letter-spacing: .4px;
+        }
+
+        .narration-section p {
+            margin-top: 4px;
+            font-size: 13px;
+            color: #343a40;
+            font-style: italic;
+        }
+
+        /* ── Details table ── */
+        .details-section {
+            padding: 18px 28px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: @typeColor;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid @typeColor;
+        }
+
+        table.details-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        table.details-table thead tr {
+            background: @typeColor;
+            color: #fff;
+        }
+
+        table.details-table thead th {
+            padding: 8px 10px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: .3px;
+        }
+
+        table.details-table thead th.text-right { text-align: right; }
+
+        table.details-table tbody tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        table.details-table tbody td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 13px;
+            vertical-align: middle;
+        }
+
+        table.details-table tbody td.text-right { text-align: right; }
+
+        .total-row {
+            background: #f1f3f5 !important;
+            font-weight: 700;
+        }
+
+        .total-row td {
+            border-top: 2px solid @typeColor !important;
+            padding: 10px 10px !important;
+        }
+
+        /* ── Signature section ── */
+        .signature-section {
+            padding: 28px 28px 20px;
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .sig-box {
+            flex: 1;
+            text-align: center;
+        }
+
+        .sig-box .sig-line {
+            border-top: 1px solid #343a40;
+            margin-bottom: 6px;
+            padding-top: 40px;
+        }
+
+        .sig-box .sig-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #495057;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+        }
+
+        /* ── Screen-only controls ── */
+        .screen-controls {
+            padding: 14px 28px;
+            background: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .btn-print {
+            background: @typeColor;
+            color: #fff;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-print:hover { opacity: .88; }
+
+        .btn-close-win {
+            background: #6c757d;
+            color: #fff;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-close-win:hover { opacity: .88; }
+
+        /* ── Print media query ── */
+        @@media print {
+            body { background: #fff; }
+            .print-wrapper { margin: 0; border: none; border-radius: 0; }
+            .screen-controls { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="print-wrapper">
+
+    {{-- ── Header ── --}}
+    <div class="voucher-header">
+        <div class="company-name">Inventory System</div>
+        <div class="voucher-meta">
+            <div class="voucher-type">@typeFull</div>
+            <div class="voucher-no">Voucher #: @Model.VoucherNo</div>
+        </div>
+    </div>
+
+    {{-- ── Info grid ── --}}
+    <div class="info-section">
+        <div class="info-grid">
+            <div class="info-item">
+                <label>Date</label>
+                <span>@Model.VoucherDate.ToString("dd MMM yyyy")</span>
+            </div>
+            <div class="info-item">
+                <label>Voucher Type</label>
+                <span>@typeFull (@Model.VoucherType)</span>
+            </div>
+            <div class="info-item">
+                <label>Status</label>
+                <span>
+                    @Model.Status
+                    @if (Model.IsVoid)
+                    {
+                        <span class="void-badge">VOID</span>
+                    }
+                </span>
+            </div>
+            <div class="info-item">
+                <label>Party</label>
+                <span>@(Model.Party?.PartyName ?? "—")</span>
+            </div>
+            <div class="info-item">
+                <label>Payment Mode</label>
+                <span>@(string.IsNullOrWhiteSpace(Model.PaymentMode) ? "—" : Model.PaymentMode)</span>
+            </div>
+            <div class="info-item">
+                <label>Reference No</label>
+                <span>@(string.IsNullOrWhiteSpace(Model.ReferenceNo) ? "—" : Model.ReferenceNo)</span>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── Narration ── --}}
+    @if (!string.IsNullOrWhiteSpace(Model.Narration))
+    {
+        <div class="narration-section">
+            <label>Narration</label>
+            <p>@Model.Narration</p>
+        </div>
+    }
+
+    {{-- ── Details table ── --}}
+    <div class="details-section">
+        <div class="section-title">Transaction Details</div>
+        <table class="details-table">
+            <thead>
+                <tr>
+                    <th style="width:32px">#</th>
+                    <th>Account Head</th>
+                    <th>Party</th>
+                    <th>Narration</th>
+                    <th class="text-right" style="width:110px">Debit (Rs.)</th>
+                    <th class="text-right" style="width:110px">Credit (Rs.)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Details != null && Model.Details.Any())
+                {
+                    int row = 1;
+                    foreach (var d in Model.Details)
+                    {
+                        <tr>
+                            <td>@row</td>
+                            <td>@(d.AccountHead?.AccountName ?? "—")</td>
+                            <td>@(d.Party?.PartyName ?? "—")</td>
+                            <td>@(string.IsNullOrWhiteSpace(d.Narration) ? "—" : d.Narration)</td>
+                            <td class="text-right">@(d.Debit > 0 ? d.Debit.ToString("N2") : "—")</td>
+                            <td class="text-right">@(d.Credit > 0 ? d.Credit.ToString("N2") : "—")</td>
+                        </tr>
+                        row++;
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="6" style="text-align:center; color:#6c757d; padding:20px;">
+                            No detail lines found.
+                        </td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td colspan="4" style="text-align:right; font-weight:700;">TOTAL</td>
+                    <td class="text-right">@totalDebit.ToString("N2")</td>
+                    <td class="text-right">@totalCredit.ToString("N2")</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    {{-- ── Signatures ── --}}
+    <div class="signature-section">
+        <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-label">Prepared By</div>
+        </div>
+        <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-label">Checked By</div>
+        </div>
+        <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-label">Authorized By</div>
+        </div>
+    </div>
+
+    {{-- ── Screen controls (hidden on print) ── --}}
+    <div class="screen-controls">
+        <button class="btn-print" onclick="window.print()">🖨️ Print</button>
+        <button class="btn-close-win" onclick="window.close()">✖ Close</button>
+    </div>
+
+</div>
+
+</body>
+</html>

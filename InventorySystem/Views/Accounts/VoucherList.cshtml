@@ -150,6 +150,7 @@ async function loadVouchers() {
             <td><span class="badge ${v.status==='Void'?'badge-danger':'badge-success'}">${v.status}</span></td>
             <td>
                 <div class="action-buttons">
+                    <button class="btn btn-primary btn-sm" onclick="printVoucher(${v.voucherId})">🖨️ Print</button>
                     <button class="btn btn-danger btn-sm" onclick="voidVoucher(${v.voucherId}, '${v.voucherNo}')">🚫 Void</button>
                 </div>
             </td>
@@ -168,6 +169,10 @@ async function voidVoucher(id, no) {
     if (json.success) loadVouchers();
     else alert('❌ ' + json.message);
 }
+
+        function printVoucher(id) {
+            window.open('/Accounts/PrintVoucher?id=' + id, '_blank');
+        }
 
 function fmt(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 }); }
 
