@@ -1,0 +1,163 @@
+@{
+    ViewData["Title"] = "Bank Reconciliation";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<link rel="stylesheet" href="~/css/Accounts.css" />
+
+<div class="ac-page">
+    <div class="page-header">
+        <h2>🏦 Bank Reconciliation</h2>
+        <p>Match book entries with bank statement — tick cleared items</p>
+    </div>
+
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="filter-group">
+                <label>Bank Account</label>
+                <select id="bankAccount" class="form-control">
+                    <option value="">— Select Bank Account —</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>From Date</label>
+                <input type="date" id="from" class="form-control" />
+            </div>
+            <div class="filter-group">
+                <label>To Date</label>
+                <input type="date" id="to" class="form-control" />
+            </div>
+            <div class="filter-group" style="align-self:flex-end">
+                <button class="btn btn-primary" onclick="loadRecon()">🔍 Load</button>
+                <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="summaryCards" class="summary-cards" style="display:none">
+        <div class="summary-card">
+            <div class="card">
+                <div class="card-label">Book Balance</div>
+                <div class="card-value" id="bookBal">0.00</div>
+            </div>
+        </div>
+        <div class="summary-card">
+            <div class="card">
+                <div class="card-label">Cleared Balance</div>
+                <div class="card-value text-success" id="clearedBal">0.00</div>
+            </div>
+        </div>
+        <div class="summary-card">
+            <div class="card">
+                <div class="card-label">Uncleared Balance</div>
+                <div class="card-value text-danger" id="unclearedBal">0.00</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section-header">Ledger Entries</div>
+    <div style="overflow-x:auto">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th style="width:40px">✔</th>
+                    <th>Date</th>
+                    <th>Voucher No</th>
+                    <th>Type</th>
+                    <th>Narration</th>
+                    <th class="text-right">Debit (Rs.)</th>
+                    <th class="text-right">Credit (Rs.)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="reconBody">
+                <tr><td colspan="8" style="text-align:center;color:#6c757d;padding:30px">Select a bank account and date range to begin.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    // Populate bank accounts on load
+    (async () => {
+        const res  = await fetch('/Accounts/GetPostableAccounts');
+        const json = await res.json();
+        const sel  = document.getElementById('bankAccount');
+        json.data
+            .filter(a => a.accountType === 'Assets')
+            .forEach(a => {
+                const opt = document.createElement('option');
+                opt.value       = a.accountHeadId;
+                opt.textContent = `${a.accountCode} — ${a.accountName}`;
+                sel.appendChild(opt);
+            });
+    })();
+
+    const today = new Date().toISOString().split('T')[0];
+    const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    document.getElementById('from').value = firstOfMonth;
+    document.getElementById('to').value   = today;
+
+    async function loadRecon() {
+        const accountId = document.getElementById('bankAccount').value;
+        const from      = document.getElementById('from').value;
+        const to        = document.getElementById('to').value;
+        if (!accountId) { alert('Please select a bank account.'); return; }
+
+        const res  = await fetch(`/Accounts/GetBankRecon?accountHeadId=${accountId}&from=${from}&to=${to}`);
+        const json = await res.json();
+        if (!json.success) { alert('Failed to load reconciliation data.'); return; }
+
+        const d = json.data;
+        document.getElementById('summaryCards').style.display = '';
+        document.getElementById('bookBal').textContent      = fmt(d.bookBalance);
+        document.getElementById('clearedBal').textContent   = fmt(d.clearedBalance);
+        document.getElementById('unclearedBal').textContent = fmt(d.unclearedBalance);
+
+        if (!d.rows.length) {
+            document.getElementById('reconBody').innerHTML =
+                '<tr><td colspan="8" style="text-align:center;color:#6c757d;padding:30px">No entries found.</td></tr>';
+            return;
+        }
+
+        document.getElementById('reconBody').innerHTML = d.rows.map(r => `
+            <tr id="row-${r.glId}" class="${r.isCleared ? 'table-success' : ''}">
+                <td style="text-align:center">
+                    <input type="checkbox" ${r.isCleared ? 'checked' : ''}
+                        onchange="toggleCleared(${r.glId}, this.checked)" />
+                </td>
+                <td>${formatDate(r.date)}</td>
+                <td><span class="acc-code">${r.voucherNo}</span></td>
+                <td>${r.voucherType}</td>
+                <td style="color:#6c757d;font-style:italic">${r.narration || '—'}</td>
+                <td class="text-right">${r.debit  > 0 ? fmt(r.debit)  : '—'}</td>
+                <td class="text-right">${r.credit > 0 ? fmt(r.credit) : '—'}</td>
+                <td>
+                    <span class="badge ${r.isCleared ? 'badge-success' : 'badge-warning'}">
+                        ${r.isCleared ? '✅ Cleared' : '⏳ Uncleared'}
+                    </span>
+                </td>
+            </tr>`).join('');
+    }
+
+    async function toggleCleared(glId, cleared) {
+        const res  = await fetch('/Accounts/MarkCleared', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ glId, cleared })
+        });
+        const json = await res.json();
+        if (json.success) {
+            loadRecon(); // refresh balances
+        } else {
+            alert('❌ ' + json.message);
+        }
+    }
+
+    function formatDate(d) {
+        return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+    }
+
+    function fmt(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 }); }
+</script>
+}

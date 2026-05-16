@@ -674,5 +674,116 @@ namespace InventorySystem.Core.Services
 
             return rows.OrderByDescending(r => r.Balance).ToList();
         }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // DAY BOOK
+        // ═══════════════════════════════════════════════════════════════════════
+
+        public async Task<DayBookResult> GetDayBookAsync(DateTime from, DateTime to)
+        {
+            var toEnd = to.Date.AddDays(1).AddTicks(-1);
+
+            var rows = await _db.GeneralLedger
+                .Where(g => !g.IsVoid && g.VoucherDate >= from && g.VoucherDate <= toEnd)
+                .Include(g => g.AccountHead)
+                .Include(g => g.Party)
+                .OrderBy(g => g.VoucherDate)
+                .ThenBy(g => g.VoucherNo)
+                .ThenBy(g => g.GLId)
+                .Select(g => new DayBookRow
+                {
+                    Date = g.VoucherDate,
+                    VoucherNo = g.VoucherNo,
+                    VoucherType = g.VoucherType,
+                    AccountName = g.AccountHead != null ? g.AccountHead.AccountName : "",
+                    PartyName = g.Party != null ? g.Party.PartyName : null,
+                    Narration = g.Narration,
+                    Debit = g.Debit,
+                    Credit = g.Credit
+                })
+                .ToListAsync();
+
+            return new DayBookResult
+            {
+                Rows = rows,
+                TotalDebit = rows.Sum(r => r.Debit),
+                TotalCredit = rows.Sum(r => r.Credit)
+            };
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // BANK RECONCILIATION
+        // ═══════════════════════════════════════════════════════════════════════
+
+        public async Task<BankReconResult> GetBankReconAsync(int bankAccountHeadId, DateTime? from, DateTime? to)
+        {
+            var toEnd = to.HasValue ? to.Value.Date.AddDays(1).AddTicks(-1) : DateTime.MaxValue;
+            var fromDate = from ?? DateTime.MinValue;
+
+            var entries = await _db.GeneralLedger
+                .Where(g => g.AccountHeadId == bankAccountHeadId
+                         && !g.IsVoid
+                         && g.VoucherDate >= fromDate
+                         && g.VoucherDate <= toEnd)
+                .OrderBy(g => g.VoucherDate)
+                .ThenBy(g => g.GLId)
+                .ToListAsync();
+
+            var rows = entries.Select(g => new BankReconRow
+            {
+                GLId = g.GLId,
+                Date = g.VoucherDate,
+                VoucherNo = g.VoucherNo,
+                VoucherType = g.VoucherType,
+                Narration = g.Narration,
+                Debit = g.Debit,
+                Credit = g.Credit,
+                IsCleared = g.IsCleared
+            }).ToList();
+
+            decimal bookBalance = rows.Sum(r => r.Debit - r.Credit);
+            decimal clearedBalance = rows.Where(r => r.IsCleared).Sum(r => r.Debit - r.Credit);
+
+            return new BankReconResult
+            {
+                Rows = rows,
+                BookBalance = bookBalance,
+                ClearedBalance = clearedBalance,
+                UnclearedBalance = bookBalance - clearedBalance
+            };
+        }
+
+        public async Task<(bool success, string message)> MarkClearedAsync(long glId, bool cleared)
+        {
+            var entry = await _db.GeneralLedger.FindAsync(glId);
+            if (entry == null) return (false, "Ledger entry not found.");
+            entry.IsCleared = cleared;
+            await _db.SaveChangesAsync();
+            return (true, cleared ? "Marked as cleared." : "Marked as uncleared.");
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // OPENING BALANCES
+        // ═══════════════════════════════════════════════════════════════════════
+
+        public async Task<(bool success, string message)> SaveOpeningBalancesAsync(List<AccountHead> accounts)
+        {
+            try
+            {
+                foreach (var item in accounts)
+                {
+                    var existing = await _db.AccountHeads.FindAsync(item.AccountHeadId);
+                    if (existing == null) continue;
+                    existing.OpeningBalance = item.OpeningBalance;
+                    existing.OpeningBalanceType = item.OpeningBalanceType;
+                }
+                await _db.SaveChangesAsync();
+                return (true, "Opening balances saved successfully.");
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Error: {ex.Message}");
+            }
+        }
     }
 }

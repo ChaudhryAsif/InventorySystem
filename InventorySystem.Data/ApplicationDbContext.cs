@@ -952,6 +952,13 @@ namespace InventorySystem.Data
                 new MenuItem { Id = 37, Name = "Cash Flow",          Icon = "💧", Controller = "Accounts", Action = "CashFlow",          ParentId = 19, SortOrder = 13, RequiredPermission = "Accounts.View" },
                 new MenuItem { Id = 38, Name = "Aging Report",       Icon = "📅", Controller = "Accounts", Action = "AgingReport",       ParentId = 19, SortOrder = 14, RequiredPermission = "Accounts.View" },
                 new MenuItem { Id = 39, Name = "Outstanding Report", Icon = "📋", Controller = "Accounts", Action = "OutstandingReport", ParentId = 19, SortOrder = 15, RequiredPermission = "Accounts.View" },
+
+                // Day Book and Bank Reconciliation
+                new MenuItem { Id = 40, Name = "Day Book",            Icon = "📅", Controller = "Accounts", Action = "DayBook",           ParentId = 19, SortOrder = 16, RequiredPermission = "Accounts.View"   },
+                new MenuItem { Id = 41, Name = "Bank Reconciliation", Icon = "🏦", Controller = "Accounts", Action = "BankReconciliation", ParentId = 19, SortOrder = 17, RequiredPermission = "Accounts.View"   },
+                new MenuItem { Id = 42, Name = "Debit Note",          Icon = "📉", Controller = "Accounts", Action = "DebitNote",          ParentId = 19, SortOrder = 18, RequiredPermission = "Accounts.Create" },
+                new MenuItem { Id = 43, Name = "Credit Note",         Icon = "📈", Controller = "Accounts", Action = "CreditNote",         ParentId = 19, SortOrder = 19, RequiredPermission = "Accounts.Create" },
+                new MenuItem { Id = 44, Name = "Opening Balance",     Icon = "🔓", Controller = "Accounts", Action = "OpeningBalance",     ParentId = 19, SortOrder = 20, RequiredPermission = "Accounts.View"   },
             };
             modelBuilder.Entity<MenuItem>().HasData(menuItems);
         }

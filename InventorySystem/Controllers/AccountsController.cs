@@ -354,5 +354,67 @@ namespace InventorySystem.Controllers
             if (voucher == null) return NotFound("Voucher not found.");
             return View(voucher);
         }
+
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // DAY BOOK
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult DayBook() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetDayBook(DateTime? from, DateTime? to)
+        {
+            var result = await _accounts.GetDayBookAsync(
+                from ?? DateTime.Today,
+                to ?? DateTime.Today);
+            return Json(new { success = true, data = result });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // BANK RECONCILIATION
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult BankReconciliation() => View();
+
+        [HttpGet]
+        public async Task<IActionResult> GetBankRecon(int accountHeadId, DateTime? from, DateTime? to)
+        {
+            var result = await _accounts.GetBankReconAsync(accountHeadId, from, to);
+            return Json(new { success = true, data = result });
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> MarkCleared([FromBody] MarkClearedRequest req)
+        {
+            var result = await _accounts.MarkClearedAsync(req.GlId, req.Cleared);
+            return Json(new { result.success, result.message });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // DEBIT NOTE / CREDIT NOTE  (re-use Voucher view with DN / CN type)
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult DebitNote() => View("Voucher", "DN");
+        [HttpGet] public IActionResult CreditNote() => View("Voucher", "CN");
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // OPENING BALANCE
+        // ═══════════════════════════════════════════════════════════════════════
+
+        [HttpGet] public IActionResult OpeningBalance() => View();
+
+        [HttpPost]
+        public async Task<IActionResult> SaveOpeningBalances([FromBody] List<AccountHead> accounts)
+        {
+            var result = await _accounts.SaveOpeningBalancesAsync(accounts);
+            return Json(new { result.success, result.message });
+        }
+    }
+
+    public class MarkClearedRequest
+    {
+        public long GlId { get; set; }
+        public bool Cleared { get; set; }
     }
 }

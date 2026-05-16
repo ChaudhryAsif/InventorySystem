@@ -46,6 +46,9 @@ namespace InventorySystem.Core.Models
 
         public DateTime CreatedDate { get; set; } = DateTime.Now;
 
+        /// <summary>Bank Reconciliation: true when entry has been matched with bank statement.</summary>
+        public bool IsCleared { get; set; } = false;
+
         // Navigation
         [ForeignKey(nameof(AccountHeadId))]
         public AccountHead? AccountHead { get; set; }

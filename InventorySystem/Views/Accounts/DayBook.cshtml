@@ -1,0 +1,163 @@
+@{
+    ViewData["Title"] = "Day Book";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<link rel="stylesheet" href="~/css/Accounts.css" />
+
+<div class="ac-page">
+    <div class="page-header">
+        <h2>📅 Day Book</h2>
+        <p>Complete daily transaction log — all voucher entries for selected period</p>
+    </div>
+
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="filter-group">
+                <label>From Date</label>
+                <input type="date" id="from" class="form-control" />
+            </div>
+            <div class="filter-group">
+                <label>To Date</label>
+                <input type="date" id="to" class="form-control" />
+            </div>
+            <div class="filter-group" style="align-self:flex-end">
+                <button class="btn btn-primary" onclick="loadDayBook()">🔍 Load</button>
+                <button class="btn btn-secondary" onclick="exportPDF()">📄 PDF</button>
+                <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="summaryCards" class="summary-cards" style="display:none">
+        <div class="summary-card">
+            <div class="card">
+                <div class="card-label">Total Debit</div>
+                <div class="card-value text-danger" id="totalDebit">0.00</div>
+            </div>
+        </div>
+        <div class="summary-card">
+            <div class="card">
+                <div class="card-label">Total Credit</div>
+                <div class="card-value text-success" id="totalCredit">0.00</div>
+            </div>
+        </div>
+        <div class="summary-card">
+            <div class="card">
+                <div class="card-label">Entries</div>
+                <div class="card-value" id="totalEntries">0</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="reportArea">
+        <div class="section-header">Day Book Entries</div>
+        <div style="overflow-x:auto">
+            <table class="data-table" id="dayBookTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Voucher No</th>
+                        <th>Type</th>
+                        <th>Account</th>
+                        <th>Party</th>
+                        <th>Narration</th>
+                        <th class="text-right">Debit (Rs.)</th>
+                        <th class="text-right">Credit (Rs.)</th>
+                    </tr>
+                </thead>
+                <tbody id="dayBookBody">
+                    <tr><td colspan="8" style="text-align:center;color:#6c757d;padding:30px">Select a date range and click Load</td></tr>
+                </tbody>
+                <tfoot>
+                    <tr class="report-total-row">
+                        <td colspan="6"><strong>TOTAL</strong></td>
+                        <td class="text-right" id="footDebit">—</td>
+                        <td class="text-right" id="footCredit">—</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+    const typeColors = { PV:'#dc3545', RV:'#28a745', JV:'#2d5f7f', CV:'#6f42c1', DN:'#fd7e14', CN:'#20c997' };
+    const typeLabels = { PV:'Payment', RV:'Receipt', JV:'Journal', CV:'Contra', DN:'Debit Note', CN:'Credit Note' };
+
+    // Set today as default
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('from').value = today;
+    document.getElementById('to').value   = today;
+
+    async function loadDayBook() {
+        const from = document.getElementById('from').value;
+        const to   = document.getElementById('to').value;
+        if (!from || !to) { alert('Please select both dates.'); return; }
+
+        const res  = await fetch(`/Accounts/GetDayBook?from=${from}&to=${to}`);
+        const json = await res.json();
+        if (!json.success) { alert('Failed to load day book.'); return; }
+
+        const d = json.data;
+        const rows = d.rows;
+
+        document.getElementById('summaryCards').style.display = '';
+        document.getElementById('totalDebit').textContent   = fmt(d.totalDebit);
+        document.getElementById('totalCredit').textContent  = fmt(d.totalCredit);
+        document.getElementById('totalEntries').textContent = rows.length;
+        document.getElementById('footDebit').textContent    = fmt(d.totalDebit);
+        document.getElementById('footCredit').textContent   = fmt(d.totalCredit);
+
+        if (!rows.length) {
+            document.getElementById('dayBookBody').innerHTML =
+                '<tr><td colspan="8" style="text-align:center;color:#6c757d;padding:30px">No transactions found for selected period.</td></tr>';
+            return;
+        }
+
+        let currentDate = '', html = '';
+        rows.forEach(r => {
+            const dt = r.date.split('T')[0];
+            if (dt !== currentDate) {
+                currentDate = dt;
+                html += `<tr style="background:#e9ecef">
+                    <td colspan="8" style="font-weight:700;padding:6px 10px">
+                        📅 ${formatDate(dt)}
+                    </td></tr>`;
+            }
+            const color = typeColors[r.voucherType] || '#343a40';
+            html += `<tr>
+                <td>${formatDate(dt)}</td>
+                <td><span class="acc-code">${r.voucherNo}</span></td>
+                <td><span class="badge" style="background:${color};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${typeLabels[r.voucherType] || r.voucherType}</span></td>
+                <td>${r.accountName}</td>
+                <td>${r.partyName || '—'}</td>
+                <td style="color:#6c757d;font-style:italic">${r.narration || '—'}</td>
+                <td class="text-right">${r.debit > 0 ? fmt(r.debit) : '—'}</td>
+                <td class="text-right">${r.credit > 0 ? fmt(r.credit) : '—'}</td>
+            </tr>`;
+        });
+
+        document.getElementById('dayBookBody').innerHTML = html;
+    }
+
+    function formatDate(d) {
+        const dt = new Date(d);
+        return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+    }
+
+    function fmt(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits:2 }); }
+
+    function exportPDF() {
+        const from = document.getElementById('from').value;
+        const to   = document.getElementById('to').value;
+        html2pdf().set({
+            margin: 8,
+            filename: `DayBook_${from}_to_${to}.pdf`,
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+        }).from(document.getElementById('reportArea')).save();
+    }
+</script>
+}

@@ -33,6 +33,11 @@ namespace InventorySystem.Core.Services
 
         // Auto voucher number
         Task<string> GenerateVoucherNoAsync(string voucherType);
+
+        Task<DayBookResult> GetDayBookAsync(DateTime from, DateTime to);
+        Task<BankReconResult> GetBankReconAsync(int bankAccountHeadId, DateTime? from, DateTime? to);
+        Task<(bool success, string message)> MarkClearedAsync(long glId, bool cleared);
+        Task<(bool success, string message)> SaveOpeningBalancesAsync(List<AccountHead> accounts);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -204,5 +209,44 @@ namespace InventorySystem.Core.Services
         public decimal TotalCredit { get; set; }
         public decimal Balance { get; set; }
         public string BalanceType { get; set; } = string.Empty;  // Payable / Receivable
+    }
+
+    public class DayBookRow
+    {
+        public DateTime Date { get; set; }
+        public string VoucherNo { get; set; } = "";
+        public string VoucherType { get; set; } = "";
+        public string AccountName { get; set; } = "";
+        public string? PartyName { get; set; }
+        public string? Narration { get; set; }
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+    }
+
+    public class DayBookResult
+    {
+        public List<DayBookRow> Rows { get; set; } = [];
+        public decimal TotalDebit { get; set; }
+        public decimal TotalCredit { get; set; }
+    }
+
+    public class BankReconRow
+    {
+        public long GLId { get; set; }
+        public DateTime Date { get; set; }
+        public string VoucherNo { get; set; } = "";
+        public string VoucherType { get; set; } = "";
+        public string? Narration { get; set; }
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public bool IsCleared { get; set; }
+    }
+
+    public class BankReconResult
+    {
+        public List<BankReconRow> Rows { get; set; } = [];
+        public decimal BookBalance { get; set; }
+        public decimal ClearedBalance { get; set; }
+        public decimal UnclearedBalance { get; set; }
     }
 }
