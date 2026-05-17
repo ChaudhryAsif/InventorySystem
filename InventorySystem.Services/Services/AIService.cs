@@ -50,7 +50,7 @@ namespace InventorySystem.Core.Services
 
                 var payload = new
                 {
-                    model = string.IsNullOrWhiteSpace(model) ? "llama3-8b-8192" : model,
+                    model = string.IsNullOrWhiteSpace(model) ? "llama-3.1-8b-instant" : model,
                     messages,
                     max_tokens = 500,
                     temperature = 0.7

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using InventorySystem.Core.Models;
 using InventorySystem.Data;
@@ -20,6 +21,39 @@ namespace InventorySystem.Core.Services
             _ai = ai;
         }
 
+        // ── Build live stock catalog for AI context ──────────────────────────────
+        private async Task<string> BuildStockContextAsync()
+        {
+            var stockItems = await _db.Stock
+                .AsNoTracking()
+                .Include(s => s.Item)
+                .Where(s => s.Item != null && s.Item.IsActive == true && s.Quantity > 0)
+                .OrderBy(s => s.Item!.ItemName)
+                .ToListAsync();
+
+            if (!stockItems.Any())
+                return "No products currently in stock.";
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== CURRENT PRODUCT CATALOG & STOCK ===");
+            sb.AppendLine("(Use this data to answer availability questions accurately)");
+            sb.AppendLine();
+
+            foreach (var s in stockItems)
+            {
+                var item = s.Item!;
+                var name = item.ProductName ?? item.ItemName ?? "Unknown";
+                var price = item.SalePrice.HasValue ? $"PKR {item.SalePrice:N0}" : "Price on request";
+                var size = !string.IsNullOrWhiteSpace(item.Size) ? $" | Size: {item.Size}" : "";
+                var packing = !string.IsNullOrWhiteSpace(item.Packing) ? $" | Packing: {item.Packing}" : "";
+                sb.AppendLine($"• {name} — Available: {s.Quantity:N0} units | Price: {price}{size}{packing}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("=== END OF CATALOG ===");
+            return sb.ToString();
+        }
+
         public async Task ProcessInboundMessageAsync(
             string channelPhoneNumberId,
             string fromPhone,
@@ -32,7 +66,7 @@ namespace InventorySystem.Core.Services
                 .FirstOrDefaultAsync(c => c.PhoneNumberId == channelPhoneNumberId && c.IsActive);
             if (channel == null) return;
 
-            // 2. Always get or create ONE thread per phone number (never create duplicates)
+            // 2. Get or create ONE thread per phone number
             var thread = await _db.AgentThreads
                 .Include(t => t.Messages)
                 .FirstOrDefaultAsync(t =>
@@ -56,11 +90,9 @@ namespace InventorySystem.Core.Services
             }
             else
             {
-                // Re-open closed thread when customer writes again
                 if (thread.Status == "closed")
                     thread.Status = "active";
 
-                // Update customer name if changed
                 if (!string.IsNullOrWhiteSpace(customerName) && customerName != fromPhone)
                     thread.CustomerName = customerName;
             }
@@ -82,19 +114,23 @@ namespace InventorySystem.Core.Services
             thread.UnreadCount++;
             await _db.SaveChangesAsync();
 
-            // 4. If AI is paused, don't auto-reply — wait for human
+            // 4. If AI is paused, wait for human
             if (thread.IsAiPaused) return;
 
-            // 5. Build conversation history (last 10 messages for context)
+            // 5. Build conversation history (last 10 messages)
             var history = thread.Messages
                 .OrderBy(m => m.SentAt)
                 .TakeLast(10)
                 .Select(m => $"{(m.SenderType == "customer" ? "Customer" : "Agent")}: {m.MessageText}");
             var historyText = string.Join("\n", history);
 
-            // 6. Ask AI
+            // 6. Build enriched system prompt with live stock data
+            var stockContext = await BuildStockContextAsync();
+            var enrichedPrompt = AiSystemPrompt + "\n\n" + stockContext;
+
+            // 7. Ask AI
             var aiResult = await _ai.GetReplyAsync(
-                channel.AiSystemPrompt,
+                enrichedPrompt,
                 historyText,
                 messageText,
                 channel.AiApiKey,
@@ -105,7 +141,6 @@ namespace InventorySystem.Core.Services
                 bool wasAlreadyPaused = thread.IsAiPaused;
                 thread.IsAiPaused = true;
 
-                // ── 1. Send & save actual "Thank you" message FIRST (only once) ───
                 if (!wasAlreadyPaused)
                 {
                     var thankYouText = "Thank you for reaching out! A human agent will be with you shortly. 🙏";
@@ -130,7 +165,6 @@ namespace InventorySystem.Core.Services
                     };
                     _db.AgentMessages.Add(thankYouMsg);
 
-                    // ── 2. Save internal [NEEDS_HUMAN] flag AFTER "Thank you" ─────
                     var flagMsg = new AgentMessage
                     {
                         AgentThreadId = thread.Id,
@@ -138,7 +172,7 @@ namespace InventorySystem.Core.Services
                         SenderType = "ai",
                         MessageText = "[NEEDS_HUMAN]",
                         Status = "ai_paused",
-                        SentAt = DateTime.UtcNow.AddMilliseconds(50), // after Thank you
+                        SentAt = DateTime.UtcNow.AddMilliseconds(50),
                         IsRead = true,
                         AiModel = aiResult.ModelUsed
                     };
@@ -149,7 +183,7 @@ namespace InventorySystem.Core.Services
                 return;
             }
 
-            // 7. Send AI reply
+            // 8. Send AI reply
             var sendResult = await _whatsApp.SendTextMessageAsync(
                 channel.PhoneNumberId,
                 channel.AccessToken,
@@ -179,7 +213,6 @@ namespace InventorySystem.Core.Services
 
             if (thread?.WhatsAppChannel == null) return false;
 
-            // Auto-pause AI when human replies
             thread.IsAiPaused = true;
 
             var sendResult = await _whatsApp.SendTextMessageAsync(
@@ -215,5 +248,50 @@ namespace InventorySystem.Core.Services
             await _db.SaveChangesAsync();
             return true;
         }
+
+        private string AiSystemPrompt { get; set; } =
+        @"You are a friendly and professional sales assistant for a POS (Point of Sale) business on WhatsApp.
+
+        Your goal is to help customers place orders by following these steps IN ORDER:
+
+        STEP 1 — GREETING & NAME
+        - Greet the customer warmly.
+        - If they have NOT mentioned their name, politely ask: ""May I know your name please? 😊""
+
+        STEP 2 — LOCATION
+        - Once you have their name, ask for their city/location:
+          ""Thank you, [Name]! Which city are you ordering from?""
+
+        STEP 3 — PRODUCT INQUIRY
+        - Ask what they would like to purchase:
+          ""Great! What product are you looking for today?""
+        - If they mention a product, check it against the CURRENT PRODUCT CATALOG provided below.
+        - If found: confirm availability and price.
+        - If NOT found: say it's currently unavailable and suggest similar items from the catalog.
+
+        STEP 4 — QUANTITY
+        - Ask: ""How many units would you like to order?""
+        - Check if that quantity is available in stock from the catalog.
+        - If available: confirm the order details (product, quantity, price, location).
+        - If NOT enough stock: politely inform them of available quantity and ask if they want to proceed with what's available.
+
+        STEP 5 — ORDER SUMMARY
+        - Summarize the order:
+          ""✅ Order Summary:
+          - Name: [Name]
+          - Location: [City]
+          - Product: [Product]
+          - Quantity: [Qty]
+          - Total: PKR [Amount]
+  
+          Shall I confirm this order? Our team will contact you shortly for delivery details.""
+
+        IMPORTANT RULES:
+        - Always be polite, warm, and professional.
+        - Only answer questions about products, orders, pricing, and availability.
+        - If asked about anything unrelated to the business, politely redirect.
+        - If you cannot answer confidently (e.g., custom pricing, special requests, complaints), respond with exactly: HUMAN_NEEDED
+        - Never make up stock quantities or prices — only use the catalog data provided.
+        - Keep replies concise and use emojis occasionally to be friendly. 🛍️";
     }
 }

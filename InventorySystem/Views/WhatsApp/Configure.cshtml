@@ -129,8 +129,8 @@
                 </div>
                 <div class="form-group mt-3">
                     <label class="form-label">AI System Prompt</label>
-                    <textarea asp-for="AiSystemPrompt" class="form-control" rows="4"
-                              placeholder="You are a helpful customer support assistant..."></textarea>
+                        <textarea asp-for="AiSystemPrompt" class="form-control" rows="14" maxlength="2000"
+                            placeholder="Enter AI system prompt..."></textarea>
                     <small class="form-hint">
                         ⚡ When AI cannot answer, it should reply <code>HUMAN_NEEDED</code> — the system will flag that chat for a human agent.
                     </small>
