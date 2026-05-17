@@ -43,6 +43,13 @@ builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IMenuService, MenuService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
 
+// ── WhatsApp Chatbot Services ──────────────────────────────────────────────────
+builder.Services.AddHttpClient("MetaClient");
+builder.Services.AddHttpClient("GroqClient");
+builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
+builder.Services.AddScoped<IAIService, AIService>();
+builder.Services.AddScoped<IChatbotService, ChatbotService>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -55,6 +62,8 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapControllers();
 
 app.MapControllerRoute(
     name: "default",

@@ -71,6 +71,12 @@ namespace InventorySystem.Data
         public DbSet<Voucher> Vouchers => Set<Voucher>();
         public DbSet<VoucherDetail> VoucherDetails => Set<VoucherDetail>();
 
+        // ── WhatsApp Chatbot ───────────────────────────────────────────────────────────
+        public DbSet<WhatsAppChannel> WhatsAppChannels => Set<WhatsAppChannel>();
+        public DbSet<AgentThread> AgentThreads => Set<AgentThread>();
+        public DbSet<AgentMessage> AgentMessages => Set<AgentMessage>();
+
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             // ── Value Generation ────────────────────────────────────────────────────
@@ -821,6 +827,30 @@ namespace InventorySystem.Data
             modelBuilder.Entity<Voucher>()
                 .HasIndex(v => v.VoucherNo).IsUnique();
 
+            // ── WhatsApp Channel ──────────────────────────────────────────────────────────
+            modelBuilder.Entity<WhatsAppChannel>()
+                .HasIndex(w => w.PhoneNumberId).IsUnique();
+
+            // ── AgentThread ───────────────────────────────────────────────────────────────
+            modelBuilder.Entity<AgentThread>()
+                .HasIndex(t => new { t.CustomerPhone, t.WhatsAppChannelId });
+
+            modelBuilder.Entity<AgentThread>()
+                .HasOne(t => t.WhatsAppChannel)
+                .WithMany()
+                .HasForeignKey(t => t.WhatsAppChannelId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ── AgentMessage ──────────────────────────────────────────────────────────────
+            modelBuilder.Entity<AgentMessage>()
+                .HasOne(m => m.AgentThread)
+                .WithMany(t => t.Messages)
+                .HasForeignKey(m => m.AgentThreadId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<AgentMessage>()
+                .Property(m => m.AiConfidence).HasPrecision(5, 4);
+
             // ── Seed Chart of Accounts ────────────────────────────────────────────────
             SeedChartOfAccounts(modelBuilder);
 
@@ -872,6 +902,11 @@ namespace InventorySystem.Data
                 new Permission { Id = 26, Code = "Accounts.Create", Name = "Create Vouchers", Module = "Accounts", Action = "Create" },
                 new Permission { Id = 27, Code = "Accounts.Delete", Name = "Void Vouchers",   Module = "Accounts", Action = "Delete" },
                 new Permission { Id = 28, Code = "Report.View", Name = "View Reports", Module = "Report", Action = "View" },
+
+                // ── WhatsApp ──────────────────────────────────────────────────────────
+                new Permission { Id = 29, Code = "WhatsApp.View",         Name = "View WhatsApp Inbox",      Module = "WhatsApp",         Action = "View"     },
+                new Permission { Id = 30, Code = "WhatsApp.Config",       Name = "Configure WhatsApp",       Module = "WhatsApp",         Action = "Config"   },
+                new Permission { Id = 31, Code = "WhatsApp.Reply",        Name = "Reply to Customers",       Module = "WhatsApp",         Action = "Reply"    },
             };
             modelBuilder.Entity<Permission>().HasData(permissions);
         }
@@ -899,7 +934,12 @@ namespace InventorySystem.Data
                 new RolePermission { Id = 29, RoleId = 1, PermissionId = 25 },
                 new RolePermission { Id = 30, RoleId = 1, PermissionId = 26 },
                 new RolePermission { Id = 31, RoleId = 1, PermissionId = 27 },
-                new RolePermission { Id = 43, RoleId = 1, PermissionId = 28 }
+                new RolePermission { Id = 43, RoleId = 1, PermissionId = 28 },
+
+                // ── WhatsApp ──────────────────────────────────────────────────────────
+                new RolePermission { Id = 44, RoleId = 1, PermissionId = 29 },
+                new RolePermission { Id = 45, RoleId = 1, PermissionId = 30 },
+                new RolePermission { Id = 46, RoleId = 1, PermissionId = 31 }
             );
         }
 
@@ -959,6 +999,12 @@ namespace InventorySystem.Data
                 new MenuItem { Id = 42, Name = "Debit Note",          Icon = "📉", Controller = "Accounts", Action = "DebitNote",          ParentId = 19, SortOrder = 18, RequiredPermission = "Accounts.Create" },
                 new MenuItem { Id = 43, Name = "Credit Note",         Icon = "📈", Controller = "Accounts", Action = "CreditNote",         ParentId = 19, SortOrder = 19, RequiredPermission = "Accounts.Create" },
                 new MenuItem { Id = 44, Name = "Opening Balance",     Icon = "🔓", Controller = "Accounts", Action = "OpeningBalance",     ParentId = 19, SortOrder = 20, RequiredPermission = "Accounts.View"   },
+                
+                // ── WhatsApp ──────────────────────────────────────────────────────────
+                new MenuItem { Id = 50, Name = "WhatsApp",     Icon = "💬",                                                              SortOrder = 21, RequiredPermission = "WhatsApp.View"   },
+                new MenuItem { Id = 51, Name = "Configuration",Icon = "⚙️", Controller = "WhatsApp", Action = "Configure",   ParentId = 50, SortOrder = 1, RequiredPermission = "WhatsApp.Config" },
+                new MenuItem { Id = 52, Name = "Inbox",        Icon = "📥", Controller = "WhatsApp", Action = "Inbox",        ParentId = 50, SortOrder = 2, RequiredPermission = "WhatsApp.View"   },
+                new MenuItem { Id = 53, Name = "Test Message", Icon = "🧪", Controller = "WhatsApp", Action = "TestMessage",  ParentId = 50, SortOrder = 3, RequiredPermission = "WhatsApp.Config" },
             };
             modelBuilder.Entity<MenuItem>().HasData(menuItems);
         }

@@ -1,0 +1,168 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Test WhatsApp Message";
+    var channel = ViewBag.Channel as InventorySystem.Core.Models.WhatsAppChannel;
+}
+
+@* <div class="main-wrapper"> *@
+
+    <div class="page-header">
+        <div class="page-title">
+            <h2>🧪 Test WhatsApp Message</h2>
+            <p>Send a test message to verify your channel configuration</p>
+        </div>
+        <div class="header-actions">
+            <a asp-action="Configure" class="btn btn-secondary">⚙️ Configure</a>
+            <a asp-action="Inbox"     class="btn btn-primary">📥 Inbox</a>
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    { <div class="alert-box alert-success">✅ @TempData["Success"]</div> }
+    @if (TempData["Error"] != null)
+    { <div class="alert-box alert-danger">❌ @TempData["Error"]</div> }
+
+    <div class="two-col">
+        <div class="card">
+            <div class="card-section-header">📤 Send Test Message</div>
+            <div class="card-body">
+                @if (channel == null)
+                {
+                    <div class="alert-box alert-warning">
+                        ⚠️ No active WhatsApp channel found.
+                        <a asp-action="Configure">Configure one first →</a>
+                    </div>
+                }
+                else
+                {
+                    <form asp-action="TestMessage" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="form-group mb-3">
+                            <label class="form-label">Recipient Phone Number</label>
+                            <input type="text" name="toPhone" class="form-control"
+                                   placeholder="923001234567 (country code, no +)" required />
+                            <small class="form-hint">Example: 923001234567 (Pakistan) · 14155551234 (USA)</small>
+                        </div>
+                        <div class="form-group mb-4">
+                            <label class="form-label">Message Text</label>
+                            <textarea name="message" class="form-control" rows="4"
+                                      placeholder="Hello! This is a test message." required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success btn-block">📤 Send WhatsApp Message</button>
+                    </form>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-section-header">📊 Channel Status</div>
+            <div class="card-body">
+                @if (channel != null)
+                {
+                    <table class="info-table">
+                        <tr><td class="info-key">Display Number</td>
+                            <td><strong>@(channel.DisplayPhoneNumber.Length > 0 ? channel.DisplayPhoneNumber : "—")</strong></td></tr>
+                        <tr><td class="info-key">Phone Number ID</td>
+                            <td><code>@channel.PhoneNumberId</code></td></tr>
+                        <tr><td class="info-key">WABA ID</td>
+                            <td><code>@channel.WabaId</code></td></tr>
+                        <tr><td class="info-key">Channel Status</td>
+                            <td>
+                                @if (channel.IsActive)
+                                { <span class="pill pill-success">✅ Active</span> }
+                                else
+                                { <span class="pill pill-danger">❌ Inactive</span> }
+                            </td></tr>
+                        <tr><td class="info-key">Webhook</td>
+                            <td>
+                                @if (channel.IsWebhookRegistered)
+                                { <span class="pill pill-success">✅ Registered</span> }
+                                else
+                                { <span class="pill pill-warning">⚠️ Not Registered</span> }
+                            </td></tr>
+                        <tr><td class="info-key">AI Model</td>
+                            <td><code>@(string.IsNullOrEmpty(channel.AiModel) ? "—" : channel.AiModel)</code></td></tr>
+                        <tr><td class="info-key">AI Key</td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(channel.AiApiKey))
+                                { <span class="pill pill-success">✅ Configured</span> }
+                                else
+                                { <span class="pill pill-warning">⚠️ Not Set</span> }
+                            </td></tr>
+                    </table>
+                }
+                else
+                {
+                    <p class="text-muted">No channel configured.</p>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-section-header">📖 Quick Setup Guide</div>
+        <div class="card-body">
+            <ol class="setup-guide">
+                <li><strong>Create a Meta Developer App</strong> at <a href="https://developers.facebook.com" target="_blank">developers.facebook.com</a> → Add WhatsApp product.</li>
+                <li><strong>Get Phone Number ID &amp; WABA ID</strong> from WhatsApp → API Setup page.</li>
+                <li><strong>Generate a Permanent Access Token</strong> (System User token from Business Manager).</li>
+                <li><strong>Configure Webhook:</strong> Use the Webhook URL shown on the Configure page. Set Verify Token to match.</li>
+                <li><strong>Get Free AI Key:</strong> Sign up at <a href="https://console.groq.com" target="_blank">console.groq.com</a> → API Keys → Create Key.</li>
+                <li><strong>Test:</strong> Send a message from this page or have a customer WhatsApp your number.</li>
+            </ol>
+        </div>
+    </div>
+@* </div> *@
+
+<style>
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.75rem; }
+    .page-title h2 { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin: 0; }
+    .page-title p  { color: var(--text-secondary); font-size: 0.88rem; margin: 0.2rem 0 0; }
+    .header-actions { display: flex; gap: 0.6rem; }
+
+    .alert-box { padding: 0.8rem 1.1rem; border-radius: var(--radius-sm); margin-bottom: 1rem; font-size: 0.9rem; }
+    .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .alert-danger  { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @@media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
+
+    .card { background: var(--card-bg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); overflow: hidden; }
+    .card-section-header { background: #f4f6f9; font-weight: 600; font-size: 0.92rem; color: var(--text-primary); padding: 0.8rem 1.25rem; border-bottom: 1px solid var(--border-color); }
+    .card-body { padding: 1.25rem; }
+    .mt-4 { margin-top: 1.5rem; }
+    .mb-3 { margin-bottom: 1rem; }
+    .mb-4 { margin-bottom: 1.5rem; }
+
+    .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+    .form-label { font-size: 0.88rem; font-weight: 600; color: var(--text-primary); }
+    .form-control { padding: 0.55rem 0.85rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.9rem; color: var(--text-primary); background: #fff; width: 100%; }
+    .form-control:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(45,95,127,0.12); }
+    .form-hint { font-size: 0.77rem; color: var(--text-secondary); }
+
+    .btn { padding: 0.55rem 1.2rem; border: none; border-radius: var(--radius-sm); font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: all 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; }
+    .btn-primary  { background: var(--primary-color); color: #fff; }
+    .btn-primary:hover  { background: var(--primary-dark); }
+    .btn-secondary { background: #6c757d; color: #fff; }
+    .btn-secondary:hover { background: #5a6268; }
+    .btn-success  { background: var(--secondary-color); color: #fff; }
+    .btn-success:hover  { opacity: 0.9; }
+    .btn-block { width: 100%; justify-content: center; }
+
+    .info-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .info-table tr { border-bottom: 1px solid #f0f2f5; }
+    .info-table tr:last-child { border-bottom: none; }
+    .info-table td { padding: 0.6rem 0.4rem; vertical-align: middle; }
+    .info-key { color: var(--text-secondary); font-weight: 500; width: 45%; }
+
+    .pill { font-size: 0.75rem; padding: 0.22rem 0.65rem; border-radius: 20px; font-weight: 600; }
+    .pill-success { background: #d1e7dd; color: #0a3622; }
+    .pill-danger  { background: #f8d7da; color: #842029; }
+    .pill-warning { background: #fff3cd; color: #856404; }
+
+    .setup-guide { padding-left: 1.5rem; font-size: 0.9rem; line-height: 1.9; color: var(--text-primary); }
+    .setup-guide li { margin-bottom: 0.25rem; }
+    .setup-guide a { color: var(--primary-color); }
+    .text-muted { color: var(--text-secondary); font-size: 0.9rem; }
+</style>

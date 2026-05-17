@@ -1,0 +1,132 @@
+@{
+    ViewData["Title"] = "Opening Balance";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<link rel="stylesheet" href="~/css/Accounts.css" />
+
+<div class="ac-page">
+    <div class="page-header">
+        <h2>🔓 Opening Balance Entry</h2>
+        <p>Set opening balances for all postable accounts (use when migrating from another system)</p>
+    </div>
+
+    <div class="filter-section">
+        <div class="filter-grid">
+            <div class="filter-group">
+                <label>Filter by Account Type</label>
+                <select id="typeFilter" class="form-control" onchange="filterTable()">
+                    <option value="">All Types</option>
+                    <option>Assets</option>
+                    <option>Liabilities</option>
+                    <option>Equity</option>
+                    <option>Income</option>
+                    <option>Expenses</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Search Account</label>
+                <input type="text" id="searchBox" class="form-control" placeholder="Type account name..." oninput="filterTable()" />
+            </div>
+            <div class="filter-group" style="align-self:flex-end">
+                <button class="btn btn-success" onclick="saveAll()">💾 Save All</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="section-header">Postable Accounts</div>
+    <div style="overflow-x:auto">
+        <table class="data-table" id="obTable">
+            <thead>
+                <tr>
+                    <th>Account Code</th>
+                    <th>Account Name</th>
+                    <th>Type</th>
+                    <th class="text-right">Opening Balance</th>
+                    <th style="width:130px">Balance Type</th>
+                </tr>
+            </thead>
+            <tbody id="obBody">
+                <tr><td colspan="5" style="text-align:center;padding:30px;color:#6c757d">Loading accounts...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    let allAccounts = [];
+
+    (async () => {
+        const res  = await fetch('/Accounts/GetPostableAccounts');
+        const json = await res.json();
+        // Fetch full details including opening balances via chart of accounts
+        const res2  = await fetch('/Accounts/GetChartOfAccounts');
+        const json2 = await res2.json();
+        allAccounts = json2.data.filter(a => a.level === 3 && a.isActive);
+        renderTable(allAccounts);
+    })();
+
+    function renderTable(accounts) {
+        if (!accounts.length) {
+            document.getElementById('obBody').innerHTML =
+                '<tr><td colspan="5" style="text-align:center;padding:30px;color:#6c757d">No accounts found.</td></tr>';
+            return;
+        }
+        document.getElementById('obBody').innerHTML = accounts.map(a => `
+            <tr data-id="${a.accountHeadId}" data-type="${a.accountType}" data-name="${a.accountName.toLowerCase()}">
+                <td><span class="acc-code">${a.accountCode}</span></td>
+                <td>${a.accountName}</td>
+                <td>${a.accountType}</td>
+                <td class="text-right">
+                    <input type="number" class="form-control ob-amount"
+                        data-id="${a.accountHeadId}"
+                        value="${a.openingBalance || 0}"
+                        step="0.01" min="0"
+                        style="max-width:150px;text-align:right;display:inline-block" />
+                </td>
+                <td>
+                    <select class="form-control ob-type" data-id="${a.accountHeadId}" style="font-size:12px">
+                        <option value="Debit"  ${(a.openingBalanceType || 'Debit') === 'Debit'  ? 'selected' : ''}>Debit</option>
+                        <option value="Credit" ${(a.openingBalanceType || 'Debit') === 'Credit' ? 'selected' : ''}>Credit</option>
+                    </select>
+                </td>
+            </tr>`).join('');
+    }
+
+    function filterTable() {
+        const type   = document.getElementById('typeFilter').value.toLowerCase();
+        const search = document.getElementById('searchBox').value.toLowerCase();
+        const filtered = allAccounts.filter(a =>
+            (!type   || a.accountType.toLowerCase() === type) &&
+            (!search || a.accountName.toLowerCase().includes(search))
+        );
+        renderTable(filtered);
+    }
+
+    async function saveAll() {
+        const amounts = document.querySelectorAll('.ob-amount');
+        const types   = document.querySelectorAll('.ob-type');
+
+        const payload = [];
+        amounts.forEach(inp => {
+            const id      = parseInt(inp.dataset.id);
+            const typeEl  = document.querySelector(`.ob-type[data-id="${id}"]`);
+            payload.push({
+                accountHeadId:      id,
+                openingBalance:     parseFloat(inp.value) || 0,
+                openingBalanceType: typeEl ? typeEl.value : 'Debit'
+            });
+        });
+
+        if (!payload.length) { alert('No accounts to save.'); return; }
+
+        const res  = await fetch('/Accounts/SaveOpeningBalances', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(payload)
+        });
+        const json = await res.json();
+        alert(json.success ? '✅ ' + json.message : '❌ ' + json.message);
+    }
+</script>
+}

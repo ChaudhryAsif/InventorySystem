@@ -1,0 +1,243 @@
+@model InventorySystem.Core.Models.WhatsAppChannel
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "WhatsApp Configuration";
+}
+
+@* <div class="main-wrapper"> *@
+
+    <div class="page-header">
+        <div class="page-title">
+            <h2>💬 WhatsApp Configuration</h2>
+            <p>Configure your Meta WhatsApp Business API channel and AI settings</p>
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert-box alert-success">✅ @TempData["Success"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert-box alert-danger">❌ @TempData["Error"]</div>
+    }
+
+    <form asp-action="Configure" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+
+        <div class="card mb-4">
+            <div class="card-section-header">📱 Meta WhatsApp Business API</div>
+            <div class="card-body">
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Phone Number ID <span class="required">*</span></label>
+                        <input asp-for="PhoneNumberId" class="form-control" placeholder="e.g. 123456789012345" />
+                        <span asp-validation-for="PhoneNumberId" class="field-error"></span>
+                        <small class="form-hint">Found in Meta Developer Console → WhatsApp → API Setup</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">WABA ID <span class="required">*</span></label>
+                        <input asp-for="WabaId" class="form-control" placeholder="WhatsApp Business Account ID" />
+                        <span asp-validation-for="WabaId" class="field-error"></span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Display Phone Number</label>
+                        <input asp-for="DisplayPhoneNumber" class="form-control" placeholder="+92 300 1234567" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Meta App ID</label>
+                        <input asp-for="MetaAppId" class="form-control" placeholder="Meta App ID" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Meta App Secret</label>
+                        <input asp-for="MetaAppSecret" class="form-control" type="password" placeholder="••••••••••••" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Permanent Access Token <span class="required">*</span></label>
+                        <input asp-for="AccessToken" class="form-control" type="password" placeholder="EAAxxxxx..." />
+                        <span asp-validation-for="AccessToken" class="field-error"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-section-header">🔗 Webhook Configuration</div>
+            <div class="card-body">
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Webhook Verify Token <span class="required">*</span></label>
+                        <div class="input-group">
+                            <input asp-for="WebhookVerifyToken" class="form-control" id="verifyTokenInput"
+                                   placeholder="A random secret string you choose" />
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="generateToken()">⚡ Generate</button>
+                        </div>
+                        <span asp-validation-for="WebhookVerifyToken" class="field-error"></span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Your Webhook URL</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="webhookUrlDisplay" readonly
+                                   value="@($"{Context.Request.Scheme}://{Context.Request.Host}/WhatsApp/Webhook")" />
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="copyWebhookUrl()">📋 Copy</button>
+                        </div>
+                        <small class="form-hint">Paste this URL in Meta Developer Console → Webhooks</small>
+                    </div>
+                </div>
+
+                @if (Model.Id > 0)
+                {
+                    <div class="webhook-status-row">
+                        @if (Model.IsWebhookRegistered)
+                        {
+                            <span class="status-badge status-active">✅ Webhook Registered — @Model.WebhookRegisteredAt?.ToString("dd MMM yyyy hh:mm tt")</span>
+                        }
+                        else
+                        {
+                            <span class="status-badge status-warning">⚠️ Webhook Not Registered</span>
+                        }
+                        <button type="button" class="btn btn-primary btn-sm" id="btnRegisterWebhook">🔗 Register via API</button>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-section-header">🤖 AI Auto-Reply (Groq — Free)</div>
+            <div class="card-body">
+                <div class="info-banner">
+                    🆓 <strong>Free AI:</strong> Uses <a href="https://console.groq.com" target="_blank">Groq Cloud</a>
+                    (llama3-8b-8192). Get your free API key at
+                    <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> — no credit card needed.
+                </div>
+                <div class="form-grid-2 mt-3">
+                    <div class="form-group">
+                        <label class="form-label">Groq API Key</label>
+                        <input asp-for="AiApiKey" class="form-control" type="password" placeholder="gsk_xxxxxxxxxxxx" />
+                        <small class="form-hint">Leave empty to disable AI (all chats go to human agent)</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">AI Model</label>
+                        <select asp-for="AiModel" class="form-control">
+                            <option value="llama3-8b-8192">llama3-8b-8192 — Fast (Recommended)</option>
+                            <option value="llama3-70b-8192">llama3-70b-8192 — Smarter</option>
+                            <option value="mixtral-8x7b-32768">mixtral-8x7b-32768 — Long Context</option>
+                            <option value="gemma-7b-it">gemma-7b-it — Google</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group mt-3">
+                    <label class="form-label">AI System Prompt</label>
+                    <textarea asp-for="AiSystemPrompt" class="form-control" rows="4"
+                              placeholder="You are a helpful customer support assistant..."></textarea>
+                    <small class="form-hint">
+                        ⚡ When AI cannot answer, it should reply <code>HUMAN_NEEDED</code> — the system will flag that chat for a human agent.
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="save-row">
+                    <label class="toggle-label">
+                        <input asp-for="IsActive" type="checkbox" class="toggle-input" />
+                        <span class="toggle-track"></span>
+                        <span>Channel Active</span>
+                    </label>
+                    <button type="submit" class="btn btn-success">💾 Save Configuration</button>
+                </div>
+            </div>
+        </div>
+    </form>
+@* </div> *@
+
+<style>
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+    .page-title h2 { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin: 0; }
+    .page-title p  { color: var(--text-secondary); font-size: 0.88rem; margin: 0.2rem 0 0; }
+
+    .alert-box { padding: 0.8rem 1.1rem; border-radius: var(--radius-sm); margin-bottom: 1rem; font-size: 0.9rem; }
+    .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .alert-danger  { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+    .card { background: var(--card-bg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); overflow: hidden; }
+    .card-section-header { background: #f4f6f9; font-weight: 600; font-size: 0.92rem; color: var(--text-primary); padding: 0.8rem 1.25rem; border-bottom: 1px solid var(--border-color); }
+    .card-body { padding: 1.25rem; }
+    .mb-4 { margin-bottom: 1.5rem; }
+    .mt-3 { margin-top: 1rem; }
+
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    @@media (max-width: 768px) { .form-grid-2 { grid-template-columns: 1fr; } }
+
+    .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+    .form-label { font-size: 0.88rem; font-weight: 600; color: var(--text-primary); }
+    .form-control { padding: 0.55rem 0.85rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.9rem; color: var(--text-primary); background: #fff; width: 100%; }
+    .form-control:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(45,95,127,0.12); }
+    .form-hint { font-size: 0.77rem; color: var(--text-secondary); }
+    .field-error { font-size: 0.78rem; color: var(--danger-color); }
+    .required { color: var(--danger-color); }
+
+    .input-group { display: flex; gap: 0.5rem; }
+    .input-group .form-control { flex: 1; }
+
+    .btn { padding: 0.55rem 1.2rem; border: none; border-radius: var(--radius-sm); font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: all 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; }
+    .btn-sm { padding: 0.42rem 0.85rem; font-size: 0.82rem; }
+    .btn-primary  { background: var(--primary-color); color: #fff; }
+    .btn-primary:hover  { background: var(--primary-dark); }
+    .btn-secondary { background: #6c757d; color: #fff; }
+    .btn-secondary:hover { background: #5a6268; }
+    .btn-success  { background: var(--secondary-color); color: #fff; }
+    .btn-success:hover  { opacity: 0.9; }
+
+    .webhook-status-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
+    .status-badge { padding: 0.35rem 0.85rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
+    .status-active  { background: #d4edda; color: #155724; }
+    .status-warning { background: #fff3cd; color: #856404; }
+
+    .info-banner { background: #e8f4f8; border: 1px solid #c5dde8; border-radius: var(--radius-sm); padding: 0.8rem 1rem; font-size: 0.87rem; color: var(--text-primary); }
+    .info-banner a { color: var(--primary-color); }
+
+    .save-row { display: flex; align-items: center; justify-content: space-between; }
+    .toggle-label { display: flex; align-items: center; gap: 0.75rem; cursor: pointer; font-weight: 500; font-size: 0.9rem; }
+    .toggle-input { display: none; }
+    .toggle-track { width: 42px; height: 22px; background: #ccc; border-radius: 11px; position: relative; transition: 0.3s; flex-shrink: 0; }
+    .toggle-track::after { content: ''; position: absolute; width: 16px; height: 16px; background: #fff; border-radius: 50%; top: 3px; left: 3px; transition: 0.3s; }
+    .toggle-input:checked + .toggle-track { background: var(--secondary-color); }
+    .toggle-input:checked + .toggle-track::after { left: 23px; }
+</style>
+
+@section Scripts {
+    <script>
+        function generateToken() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let t = '';
+            for (let i = 0; i < 32; i++) t += chars[Math.floor(Math.random() * chars.length)];
+            document.getElementById('verifyTokenInput').value = t;
+        }
+        function copyWebhookUrl() {
+            navigator.clipboard.writeText(document.getElementById('webhookUrlDisplay').value)
+                .then(() => alert('Webhook URL copied!'));
+        }
+        @if (Model.Id > 0)
+        {
+            <text>
+            document.getElementById('btnRegisterWebhook')?.addEventListener('click', async function () {
+                const btn = this; btn.disabled = true; btn.textContent = '⏳ Registering...';
+                try {
+                    const res  = await fetch('/WhatsApp/RegisterWebhook', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `channelId=@Model.Id&webhookBaseUrl=${encodeURIComponent(window.location.origin)}`
+                    });
+                    const data = await res.json();
+                    alert(data.message);
+                    if (data.success) location.reload();
+                } catch(e) { alert('Error: ' + e.message); }
+                finally { btn.disabled = false; btn.textContent = '🔗 Register via API'; }
+            });
+            </text>
+        }
+    </script>
+}

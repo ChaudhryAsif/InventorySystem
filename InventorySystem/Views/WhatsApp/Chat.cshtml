@@ -1,0 +1,196 @@
+@model InventorySystem.Core.Models.AgentThread
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = $"Chat — {Model.CustomerName}";
+    var lastMsgId = Model.Messages.LastOrDefault()?.Id ?? 0;
+}
+
+    <!-- Chat Header -->
+    <div class="chat-header">
+        <a asp-action="Inbox" class="btn-back">← Back</a>
+        <div class="chat-avatar">@Model.CustomerName.Substring(0, 1).ToUpper()</div>
+        <div class="chat-header-info">
+            <div class="chat-customer-name">@Model.CustomerName</div>
+            <div class="chat-customer-phone">📞 @Model.CustomerPhone</div>
+        </div>
+        <div class="chat-header-actions ms-auto">
+            @{
+                var statusBadge = Model.Status switch {
+                    "human_needed" => ("🔴 Needs Human", "badge-danger"),
+                    "active"       => ("🟢 Active",      "badge-success"),
+                    "closed"       => ("⚫ Closed",       "badge-secondary"),
+                    _              => (Model.Status,     "badge-secondary")
+                };
+            }
+            <span class="badge @statusBadge.Item2">@statusBadge.Item1</span>
+
+            @if (Model.Status != "closed")
+            {
+                <form asp-action="CloseThread" method="post" style="display:inline;">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="threadId" value="@Model.Id" />
+                    <button type="submit" class="btn btn-sm btn-outline-secondary ms-2"
+                            onclick="return confirm('Mark this conversation as closed?')">
+                        ✔️ Close Chat
+                    </button>
+                </form>
+            }
+        </div>
+    </div>
+
+    @if (Model.Status == "human_needed")
+    {
+        <div class="human-alert">
+            🔴 <strong>Human Agent Required:</strong> AI could not handle this query. Please reply manually below.
+        </div>
+    }
+
+    <!-- Message Window -->
+    <div class="chat-window" id="chatWindow">
+        @foreach (var msg in Model.Messages)
+        {
+            var isInbound   = msg.Direction == "inbound";
+            var bubbleClass = isInbound ? "bubble-inbound" : "bubble-outbound";
+            var senderIcon  = msg.SenderType switch {
+                "ai"    => "🤖",
+                "human" => "👤",
+                _       => "👤"
+            };
+
+            <div class="chat-row @(isInbound ? "row-left" : "row-right")">
+                @if (isInbound)
+                {
+                    <div class="msg-avatar">@Model.CustomerName.Substring(0, 1).ToUpper()</div>
+                }
+                <div class="bubble @bubbleClass">
+                    <div class="bubble-text">@msg.MessageText</div>
+                    <div class="bubble-meta">
+                        @if (!isInbound)
+                        {
+                            <span class="sender-tag">@senderIcon @msg.SenderType.ToUpper()</span>
+                        }
+                        <span class="bubble-time">@msg.SentAt.ToString("hh:mm tt")</span>
+                        @if (msg.Status == "failed")
+                        {
+                            <span class="status-failed">⚠️ Failed</span>
+                        }
+                        else if (!isInbound)
+                        {
+                            <span class="status-sent">✓</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Reply Box -->
+    @if (Model.Status != "closed")
+    {
+        <div class="chat-reply-bar">
+            <form asp-action="HumanReply" method="post" class="reply-form" id="replyForm">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="threadId" value="@Model.Id" />
+                <textarea name="replyText" id="replyText" class="reply-input"
+                          placeholder="Type your reply... (Shift+Enter for new line, Enter to send)"
+                          rows="1" required></textarea>
+                <button type="submit" class="btn-send">
+                    ➤ Send
+                </button>
+            </form>
+        </div>
+    }
+    else
+    {
+        <div class="chat-closed-bar">⚫ This conversation is closed. <a asp-action="Inbox">Back to Inbox</a></div>
+    }
+
+<style>
+    .main-wrapper { display: flex; flex-direction: column; height: calc(100vh - 70px); }
+    .chat-header { display: flex; align-items: center; gap: 0.85rem; padding: 0.85rem 1.25rem; background: #fff; border-bottom: 1px solid #dee2e6; flex-shrink: 0; }
+    .btn-back { text-decoration: none; font-size: 0.88rem; color: #0d6efd; font-weight: 600; white-space: nowrap; }
+    .chat-avatar { width: 42px; height: 42px; border-radius: 50%; background: linear-gradient(135deg, #25D366, #128C7E); color: white; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 700; flex-shrink: 0; }
+    .chat-customer-name { font-weight: 700; font-size: 0.98rem; }
+    .chat-customer-phone { font-size: 0.78rem; color: #6c757d; }
+    .chat-header-actions { display: flex; align-items: center; gap: 0.5rem; }
+    .ms-auto { margin-left: auto; }
+    .ms-2 { margin-left: 0.5rem; }
+    .badge { padding: 0.35rem 0.75rem; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+    .badge-danger { background: #fde8e8; color: #c0392b; }
+    .badge-success { background: #e8f5e9; color: #1e7e34; }
+    .badge-secondary { background: #f0f0f0; color: #555; }
+    .human-alert { background: #fff3cd; border-left: 4px solid #ffc107; padding: 0.7rem 1.25rem; font-size: 0.87rem; flex-shrink: 0; }
+    .chat-window { flex: 1; overflow-y: auto; padding: 1.25rem; background: #ece5dd; display: flex; flex-direction: column; gap: 0.6rem; }
+    .chat-row { display: flex; align-items: flex-end; gap: 0.5rem; }
+    .row-left { justify-content: flex-start; }
+    .row-right { justify-content: flex-end; }
+    .msg-avatar { width: 30px; height: 30px; border-radius: 50%; background: #25D366; color: white; display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700; flex-shrink: 0; }
+    .bubble { max-width: 65%; padding: 0.6rem 0.9rem; border-radius: 12px; font-size: 0.9rem; line-height: 1.5; position: relative; }
+    .bubble-inbound { background: #fff; border-bottom-left-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+    .bubble-outbound { background: #dcf8c6; border-bottom-right-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+    .bubble-text { word-break: break-word; white-space: pre-wrap; }
+    .bubble-meta { display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end; margin-top: 0.25rem; }
+    .bubble-time { font-size: 0.68rem; color: #999; }
+    .sender-tag { font-size: 0.65rem; background: rgba(0,0,0,0.08); padding: 0.1rem 0.35rem; border-radius: 4px; color: #555; font-weight: 600; }
+    .status-sent { font-size: 0.72rem; color: #34b7f1; }
+    .status-failed { font-size: 0.72rem; color: #e74c3c; }
+    .chat-reply-bar { background: #f0f2f5; border-top: 1px solid #dee2e6; padding: 0.75rem 1.25rem; flex-shrink: 0; }
+    .reply-form { display: flex; align-items: flex-end; gap: 0.65rem; }
+    .reply-input { flex: 1; border: 1px solid #dee2e6; border-radius: 22px; padding: 0.65rem 1rem; font-size: 0.9rem; resize: none; outline: none; max-height: 120px; overflow-y: auto; background: #fff; }
+    .reply-input:focus { border-color: #25D366; }
+    .btn-send { background: #25D366; color: white; border: none; border-radius: 50%; width: 44px; height: 44px; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.2s; }
+    .btn-send:hover { background: #128C7E; }
+    .chat-closed-bar { text-align: center; padding: 1rem; background: #f8f9fa; color: #6c757d; font-size: 0.88rem; border-top: 1px solid #dee2e6; }
+</style>
+
+@section Scripts {
+    <script>
+        // Scroll to bottom on load
+        const chatWindow = document.getElementById('chatWindow');
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+
+        // Enter to send (Shift+Enter = new line)
+        document.getElementById('replyText')?.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                document.getElementById('replyForm').submit();
+            }
+        });
+
+        // Auto-poll for new messages every 5 seconds
+        let lastMsgId = @lastMsgId;
+        const threadId = @Model.Id;
+
+        setInterval(async () => {
+            try {
+                const res = await fetch(`/WhatsApp/GetNewMessages?threadId=${threadId}&afterMessageId=${lastMsgId}`);
+                const msgs = await res.json();
+                if (msgs.length === 0) return;
+
+                msgs.forEach(msg => {
+                    const isInbound = msg.direction === 'inbound';
+                    const row = document.createElement('div');
+                    row.className = `chat-row ${isInbound ? 'row-left' : 'row-right'}`;
+
+                    const senderIcon = msg.senderType === 'ai' ? '🤖' :
+                                       msg.senderType === 'human' ? '👤' : '👤';
+
+                    row.innerHTML = `
+                        ${isInbound ? `<div class="msg-avatar">${'@Model.CustomerName.Substring(0,1).ToUpper()'}</div>` : ''}
+                        <div class="bubble ${isInbound ? 'bubble-inbound' : 'bubble-outbound'}">
+                            <div class="bubble-text">${msg.messageText}</div>
+                            <div class="bubble-meta">
+                                ${!isInbound ? `<span class="sender-tag">${senderIcon} ${msg.senderType.toUpperCase()}</span>` : ''}
+                                <span class="bubble-time">${msg.sentAt}</span>
+                            </div>
+                        </div>`;
+
+                    chatWindow.appendChild(row);
+                    lastMsgId = Math.max(lastMsgId, msg.id);
+                });
+
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            } catch (e) { /* ignore */ }
+        }, 5000);
+    </script>
+}
