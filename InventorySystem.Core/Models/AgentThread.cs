@@ -17,13 +17,14 @@ namespace InventorySystem.Core.Models
         public int WhatsAppChannelId { get; set; }
         public WhatsAppChannel? WhatsAppChannel { get; set; }
 
-        // ── Simple status: active | closed ───────────────────────────────────
         [MaxLength(20)]
         public string Status { get; set; } = "active";
 
-        // ── AI Pause Toggle ───────────────────────────────────────────────────
-        /// <summary>When true, AI will NOT auto-reply. Human must reply manually.</summary>
         public bool IsAiPaused { get; set; } = false;
+
+        // ── Auto-order tracking ───────────────────────────────────────────────
+        /// <summary>SaleId of the last auto-created order from this thread.</summary>
+        public int? ConfirmedSaleId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime LastMessageAt { get; set; } = DateTime.UtcNow;

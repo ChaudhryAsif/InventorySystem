@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Linq;
-using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using InventorySystem.Core.Models;
 using InventorySystem.Data;
@@ -14,6 +14,27 @@ namespace InventorySystem.Core.Services
         private readonly IWhatsAppService _whatsApp;
         private readonly IAIService _ai;
 
+        private const string BaseSystemPrompt =
+            @"You are a friendly sales assistant for a POS business on WhatsApp.
+
+Your ONLY job is to collect this information from the customer (ask only what is MISSING):
+1. Customer Name  
+2. City / Location
+3. Product they want to buy
+4. Quantity
+
+RULES:
+- Greet warmly on first message.
+- If customer already gave name and/or city, do NOT ask again — use what they gave.
+- Ask only for MISSING info, one at a time.
+- When customer mentions a product name, reply with ONLY: ASK_PRODUCT_CHECK:[product name]
+  Example: customer says 'CMP' → reply: ASK_PRODUCT_CHECK:CMP
+- When customer gives a number as quantity, reply with ONLY: ASK_QTY_CHECK:[number]
+  Example: customer says '50' or '50 units' → reply: ASK_QTY_CHECK:50
+- Do NOT reply ASK_QTY_CHECK for 'yes', 'no', or city confirmations.
+- For complaints or anything outside orders: reply exactly: HUMAN_NEEDED
+- Keep replies short and friendly. Use emojis occasionally. 🛍️";
+
         public ChatbotService(ApplicationDbContext db, IWhatsAppService whatsApp, IAIService ai)
         {
             _db = db;
@@ -21,57 +42,169 @@ namespace InventorySystem.Core.Services
             _ai = ai;
         }
 
-        // ── Build live stock catalog for AI context ──────────────────────────────
-        private async Task<string> BuildStockContextAsync()
+        // ── DB: verify product, return human-readable reply ───────────────────
+        private async Task<string> CheckProductInDbAsync(string productName)
         {
-            var stockItems = await _db.Stock
-                .AsNoTracking()
-                .Include(s => s.Item)
-                .Where(s => s.Item != null && s.Item.IsActive == true && s.Quantity > 0)
-                .OrderBy(s => s.Item!.ItemName)
-                .ToListAsync();
+            var allItems = await _db.Items.AsNoTracking()
+                .Where(i => i.IsActive == true).ToListAsync();
 
-            if (!stockItems.Any())
-                return "No products currently in stock.";
+            var matched = allItems.FirstOrDefault(i =>
+                (i.ProductName != null && i.ProductName.ToLower().Contains(productName.ToLower())) ||
+                (i.ItemName != null && i.ItemName.ToLower().Contains(productName.ToLower())));
 
-            var sb = new StringBuilder();
-            sb.AppendLine("=== CURRENT PRODUCT CATALOG & STOCK ===");
-            sb.AppendLine("(Use this data to answer availability questions accurately)");
-            sb.AppendLine();
-
-            foreach (var s in stockItems)
+            if (matched == null)
             {
-                var item = s.Item!;
-                var name = item.ProductName ?? item.ItemName ?? "Unknown";
-                var price = item.SalePrice.HasValue ? $"PKR {item.SalePrice:N0}" : "Price on request";
-                var size = !string.IsNullOrWhiteSpace(item.Size) ? $" | Size: {item.Size}" : "";
-                var packing = !string.IsNullOrWhiteSpace(item.Packing) ? $" | Packing: {item.Packing}" : "";
-                sb.AppendLine($"• {name} — Available: {s.Quantity:N0} units | Price: {price}{size}{packing}");
+                var names = allItems
+                    .Select(i => $"• {i.ProductName ?? i.ItemName}")
+                    .Where(n => n != "• ")
+                    .ToList();
+                return $"Sorry, we don't carry *{productName}*. 😔\n\n" +
+                       (names.Any()
+                           ? "Here's what we currently have:\n" + string.Join("\n", names) +
+                             "\n\nWould you like to order any of these? 🛍️"
+                           : "We currently have no products in stock.");
             }
 
-            sb.AppendLine();
-            sb.AppendLine("=== END OF CATALOG ===");
-            return sb.ToString();
+            var stock = await _db.Stock.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.ItemId == matched.ItemID);
+
+            var displayName = matched.ProductName ?? matched.ItemName;
+            var qty = stock?.Quantity ?? 0;
+
+            if (qty <= 0)
+                return $"Sorry, *{displayName}* is currently *out of stock*. 😔\n" +
+                       "Let me know if you need something else.";
+
+            var price = matched.SalePrice.HasValue ? $"PKR {matched.SalePrice:N0} per unit" : "price on request";
+            var size = !string.IsNullOrWhiteSpace(matched.Size) ? $"\n📐 Size: {matched.Size}" : "";
+            var packing = !string.IsNullOrWhiteSpace(matched.Packing) ? $"\n📦 Packing: {matched.Packing}" : "";
+
+            return $"Great news! ✅ *{displayName}* is available!\n" +
+                   $"📦 Stock: *{qty:N0} units*\n" +
+                   $"💰 Price: *{price}*{size}{packing}\n\n" +
+                   $"How many units would you like to order? 🛍️";
+        }
+
+        // ── DB: verify quantity, return order summary or error ────────────────
+        private async Task<string> CheckQuantityInDbAsync(
+            string productName, decimal requestedQty, AgentThread thread)
+        {
+            var item = await _db.Items.AsNoTracking()
+                .FirstOrDefaultAsync(i =>
+                    i.IsActive == true &&
+                    (i.ProductName != null && i.ProductName.ToLower().Contains(productName.ToLower()) ||
+                     i.ItemName != null && i.ItemName.ToLower().Contains(productName.ToLower())));
+
+            if (item == null)
+                return "Sorry, I couldn't find that product. Could you confirm the product name?";
+
+            var stock = await _db.Stock.AsNoTracking().FirstOrDefaultAsync(s => s.ItemId == item.ItemID);
+            var available = stock?.Quantity ?? 0;
+            var displayName = item.ProductName ?? item.ItemName;
+            var price = item.SalePrice ?? 0;
+
+            if (requestedQty > available)
+                return $"Sorry, we only have *{available:N0} units* of *{displayName}* available. 😔\n" +
+                       $"Would you like to proceed with {available:N0} units instead?";
+
+            var total = price * requestedQty;
+            return $"✅ *Order Summary:*\n" +
+                   $"👤 Name: {thread.CustomerName}\n" +
+                   $"📦 Product: {displayName}\n" +
+                   $"🔢 Quantity: {requestedQty:N0} units\n" +
+                   $"💰 Price: PKR {price:N0} per unit\n" +
+                   $"💵 Total: PKR {total:N0}\n\n" +
+                   $"Reply *YES* to confirm your order or *NO* to cancel.";
+        }
+
+        // ── Create SaleInvoice in DB ──────────────────────────────────────────
+        private async Task<int?> CreateOrderAsync(OrderExtractResult order, AgentThread thread)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(order.ProductName) || order.Quantity <= 0) return null;
+
+                var item = await _db.Items.AsNoTracking()
+                    .FirstOrDefaultAsync(i =>
+                        i.IsActive == true &&
+                        (i.ProductName != null && i.ProductName.ToLower().Contains(order.ProductName.ToLower()) ||
+                         i.ItemName != null && i.ItemName.ToLower().Contains(order.ProductName.ToLower())));
+                if (item == null) return null;
+
+                var stock = await _db.Stock.FirstOrDefaultAsync(s => s.ItemId == item.ItemID);
+                if (stock == null || stock.Quantity < order.Quantity) return null;
+
+                var unitPrice = order.UnitPrice > 0 ? order.UnitPrice : item.SalePrice ?? 0;
+                var total = unitPrice * order.Quantity;
+
+                var party = await _db.Parties.FirstOrDefaultAsync(p =>
+                    p.Mobile == thread.CustomerPhone || p.Phone == thread.CustomerPhone);
+
+                if (party == null)
+                {
+                    party = new Party
+                    {
+                        PartyCode = $"WA-{thread.CustomerPhone[^6..]}",
+                        PartyName = string.IsNullOrWhiteSpace(order.CustomerName)
+                                    ? thread.CustomerName : order.CustomerName,
+                        PartyType = "customer",
+                        Mobile = thread.CustomerPhone,
+                        City = order.City,
+                        Status = "active"
+                    };
+                    _db.Parties.Add(party);
+                    await _db.SaveChangesAsync();
+                }
+
+                var invoice = new SaleInvoice
+                {
+                    SaleDate = DateTime.Now,
+                    CustomerID = party.PartyId.ToString(),
+                    BranchID = 1,
+                    PaymentMode = 1,
+                    TotalAmount = total,
+                    NetAmount = total,
+                    Remarks = $"WhatsApp Order — {order.City} — Auto by AI",
+                    UserNo = 1
+                };
+                _db.SaleInvoice.Add(invoice);
+                await _db.SaveChangesAsync();
+
+                _db.SaleInvoiceBody.Add(new SaleInvoiceBody
+                {
+                    SaleId = invoice.SaleId,
+                    ItemId = item.ItemID,
+                    Descr = item.ProductName ?? item.ItemName,
+                    Quantity = order.Quantity,
+                    SalePrice = unitPrice,
+                    DiscPer = 0,
+                    DiscAmt = 0,
+                    Total = total
+                });
+
+                stock.Quantity -= order.Quantity;
+                stock.LastUpdated = DateTime.Now;
+                thread.ConfirmedSaleId = invoice.SaleId;
+                await _db.SaveChangesAsync();
+                return invoice.SaleId;
+            }
+            catch { return null; }
         }
 
         public async Task ProcessInboundMessageAsync(
-            string channelPhoneNumberId,
-            string fromPhone,
-            string customerName,
-            string messageText,
-            string whatsappMessageId)
+            string channelPhoneNumberId, string fromPhone,
+            string customerName, string messageText, string whatsappMessageId)
         {
             // 1. Find channel
             var channel = await _db.WhatsAppChannels
                 .FirstOrDefaultAsync(c => c.PhoneNumberId == channelPhoneNumberId && c.IsActive);
             if (channel == null) return;
 
-            // 2. Get or create ONE thread per phone number
+            // 2. Get or create thread
             var thread = await _db.AgentThreads
                 .Include(t => t.Messages)
                 .FirstOrDefaultAsync(t =>
-                    t.CustomerPhone == fromPhone &&
-                    t.WhatsAppChannelId == channel.Id);
+                    t.CustomerPhone == fromPhone && t.WhatsAppChannelId == channel.Id);
 
             if (thread == null)
             {
@@ -90,15 +223,13 @@ namespace InventorySystem.Core.Services
             }
             else
             {
-                if (thread.Status == "closed")
-                    thread.Status = "active";
-
+                if (thread.Status == "closed") thread.Status = "active";
                 if (!string.IsNullOrWhiteSpace(customerName) && customerName != fromPhone)
                     thread.CustomerName = customerName;
             }
 
-            // 3. Save inbound message
-            var inboundMsg = new AgentMessage
+            // 3. Save inbound
+            _db.AgentMessages.Add(new AgentMessage
             {
                 AgentThreadId = thread.Id,
                 Direction = "inbound",
@@ -108,64 +239,150 @@ namespace InventorySystem.Core.Services
                 WhatsAppMessageId = whatsappMessageId,
                 SentAt = DateTime.UtcNow,
                 IsRead = false
-            };
-            _db.AgentMessages.Add(inboundMsg);
+            });
             thread.LastMessageAt = DateTime.UtcNow;
             thread.UnreadCount++;
             await _db.SaveChangesAsync();
 
-            // 4. If AI is paused, wait for human
             if (thread.IsAiPaused) return;
 
-            // 5. Build conversation history (last 10 messages)
+            // ── INTERCEPT 1: YES/NO — ONLY if last AI message was Order Summary ─
+            var msgTrimmed = messageText.Trim().ToLower();
+            var isYes = msgTrimmed is "yes" or "confirm" or "ok" or "okay" or "ji" or "haan" or "y" or "proceed";
+            var isNo = msgTrimmed is "no" or "cancel" or "nahi" or "nope" or "n";
+
+            if (isYes || isNo)
+            {
+                // ✅ KEY FIX: Only intercept if the VERY LAST outbound AI message is an Order Summary
+                var lastAiMsg = thread.Messages
+                    .Where(m => m.SenderType == "ai" && m.Status != "ai_paused")
+                    .OrderByDescending(m => m.SentAt)
+                    .FirstOrDefault();
+
+                bool lastMsgWasSummary = lastAiMsg != null &&
+                    lastAiMsg.MessageText.Contains("Order Summary", StringComparison.OrdinalIgnoreCase);
+
+                if (lastMsgWasSummary)
+                {
+                    if (isNo)
+                    {
+                        await SendAndSaveAsync(thread, channel, fromPhone,
+                            "No problem! 😊 Would you like to order a different product or quantity?",
+                            "ai", null);
+                        return;
+                    }
+
+                    // YES → extract and create order
+                    var fullHistory = thread.Messages
+                        .Where(m => m.Status != "ai_paused")
+                        .OrderBy(m => m.SentAt)
+                        .Select(m => $"{(m.SenderType == "customer" ? "Customer" : "Agent")}: {m.MessageText}");
+
+                    var extracted = await _ai.ExtractOrderAsync(
+                        string.Join("\n", fullHistory), channel.AiApiKey, channel.AiModel);
+
+                    if (extracted != null && extracted.Quantity > 0)
+                    {
+                        var saleId = await CreateOrderAsync(extracted, thread);
+
+                        var confirmMsg = saleId.HasValue
+                            ? $"🎉 *Order Confirmed!*\n" +
+                              $"📋 Invoice: *INV-{saleId.Value:D5}*\n" +
+                              $"📦 Product: {extracted.ProductName}\n" +
+                              $"🔢 Quantity: {extracted.Quantity:N0} units\n" +
+                              $"💰 Total: PKR {extracted.TotalAmount:N0}\n" +
+                              $"📍 City: {extracted.City}\n\n" +
+                              $"Our team will contact you shortly for delivery. Thank you! 🙏"
+                            : "Thank you! ✅ Our team will review and contact you shortly. 🙏";
+
+                        if (!saleId.HasValue)
+                        {
+                            thread.IsAiPaused = true;
+                            _db.AgentMessages.Add(new AgentMessage
+                            {
+                                AgentThreadId = thread.Id,
+                                Direction = "outbound",
+                                SenderType = "ai",
+                                MessageText = "[NEEDS_HUMAN] Order auto-create failed.",
+                                Status = "ai_paused",
+                                SentAt = DateTime.UtcNow.AddMilliseconds(50),
+                                IsRead = true
+                            });
+                        }
+
+                        await SendAndSaveAsync(thread, channel, fromPhone, confirmMsg, "ai", null);
+                        await _db.SaveChangesAsync();
+                    }
+                    else
+                    {
+                        // Extraction failed — ask AI to handle
+                        await SendAndSaveAsync(thread, channel, fromPhone,
+                            "Sorry, I had trouble processing your order. Could you please tell me the product and quantity again?",
+                            "ai", null);
+                    }
+                    return;
+                }
+                // else: "yes/no" is NOT an order confirmation → fall through to AI
+            }
+
+            // ── INTERCEPT 2: Quantity number — only if last AI msg was availability ─
+            var lastAvailMsg = thread.Messages
+                .Where(m => m.SenderType == "ai" && m.Status != "ai_paused" &&
+                            m.MessageText.Contains("is available", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(m => m.SentAt)
+                .FirstOrDefault();
+
+            // Check if last AI message was the availability message (not something after it)
+            var lastAiMsgForQty = thread.Messages
+                .Where(m => m.SenderType == "ai" && m.Status != "ai_paused")
+                .OrderByDescending(m => m.SentAt)
+                .FirstOrDefault();
+
+            bool lastMsgWasAvailability = lastAvailMsg != null &&
+                lastAiMsgForQty?.Id == lastAvailMsg.Id;
+
+            if (lastMsgWasAvailability)
+            {
+                var qtyMatch = Regex.Match(messageText, @"\b(\d+)\b");
+                if (qtyMatch.Success && decimal.TryParse(qtyMatch.Groups[1].Value, out var qty) && qty > 0)
+                {
+                    var productName = ExtractProductNameFromAvailMsg(lastAvailMsg!.MessageText);
+                    if (!string.IsNullOrWhiteSpace(productName))
+                    {
+                        var qtyReply = await CheckQuantityInDbAsync(productName, qty, thread);
+                        await SendAndSaveAsync(thread, channel, fromPhone, qtyReply, "ai", null);
+                        return;
+                    }
+                }
+            }
+
+            // 4. Conversation history for AI
             var history = thread.Messages
+                .Where(m => m.Status != "ai_paused")
                 .OrderBy(m => m.SentAt)
-                .TakeLast(10)
+                .TakeLast(12)
                 .Select(m => $"{(m.SenderType == "customer" ? "Customer" : "Agent")}: {m.MessageText}");
             var historyText = string.Join("\n", history);
 
-            // 6. Build enriched system prompt with live stock data
-            var stockContext = await BuildStockContextAsync();
-            var enrichedPrompt = AiSystemPrompt + "\n\n" + stockContext;
+            var systemPrompt = string.IsNullOrWhiteSpace(channel.AiSystemPrompt)
+                ? BaseSystemPrompt : channel.AiSystemPrompt;
 
-            // 7. Ask AI
+            // 5. Ask AI
             var aiResult = await _ai.GetReplyAsync(
-                enrichedPrompt,
-                historyText,
-                messageText,
-                channel.AiApiKey,
-                channel.AiModel);
+                systemPrompt, historyText, messageText, channel.AiApiKey, channel.AiModel);
 
             if (aiResult.NeedsHuman || string.IsNullOrWhiteSpace(aiResult.Reply))
             {
                 bool wasAlreadyPaused = thread.IsAiPaused;
                 thread.IsAiPaused = true;
+                await _db.SaveChangesAsync();
 
                 if (!wasAlreadyPaused)
                 {
-                    var thankYouText = "Thank you for reaching out! A human agent will be with you shortly. 🙏";
-
-                    var sendResult1 = await _whatsApp.SendTextMessageAsync(
-                        channel.PhoneNumberId,
-                        channel.AccessToken,
-                        fromPhone,
-                        thankYouText);
-
-                    var thankYouMsg = new AgentMessage
-                    {
-                        AgentThreadId = thread.Id,
-                        Direction = "outbound",
-                        SenderType = "ai",
-                        MessageText = thankYouText,
-                        Status = sendResult1.Success ? "sent" : "failed",
-                        WhatsAppMessageId = sendResult1.MessageId,
-                        SentAt = DateTime.UtcNow,
-                        IsRead = true,
-                        AiModel = aiResult.ModelUsed
-                    };
-                    _db.AgentMessages.Add(thankYouMsg);
-
-                    var flagMsg = new AgentMessage
+                    await SendAndSaveAsync(thread, channel, fromPhone,
+                        "Thank you for reaching out! A human agent will be with you shortly. 🙏",
+                        "ai", aiResult.ModelUsed);
+                    _db.AgentMessages.Add(new AgentMessage
                     {
                         AgentThreadId = thread.Id,
                         Direction = "outbound",
@@ -175,33 +392,81 @@ namespace InventorySystem.Core.Services
                         SentAt = DateTime.UtcNow.AddMilliseconds(50),
                         IsRead = true,
                         AiModel = aiResult.ModelUsed
-                    };
-                    _db.AgentMessages.Add(flagMsg);
+                    });
+                    await _db.SaveChangesAsync();
                 }
-
-                await _db.SaveChangesAsync();
                 return;
             }
 
-            // 8. Send AI reply
-            var sendResult = await _whatsApp.SendTextMessageAsync(
-                channel.PhoneNumberId,
-                channel.AccessToken,
-                fromPhone,
-                aiResult.Reply);
+            var aiReply = aiResult.Reply.Trim();
 
-            var aiMessage = new AgentMessage
+            // ── INTERCEPT 3: AI signals product check ─────────────────────────
+            var productMatch = Regex.Match(aiReply,
+                @"ASK_PRODUCT_CHECK[:\-]\s*(.+)", RegexOptions.IgnoreCase);
+            if (productMatch.Success)
+            {
+                var productName = productMatch.Groups[1].Value.Trim();
+                var dbReply = await CheckProductInDbAsync(productName);
+                await SendAndSaveAsync(thread, channel, fromPhone, dbReply, "ai", aiResult.ModelUsed);
+                return;
+            }
+
+            // ── INTERCEPT 4: AI signals quantity check ────────────────────────
+            var qtySignalMatch = Regex.Match(aiReply,
+                @"ASK_QTY_CHECK[:\-]\s*(\d+[\.,]?\d*)", RegexOptions.IgnoreCase);
+            if (qtySignalMatch.Success &&
+                decimal.TryParse(qtySignalMatch.Groups[1].Value.Replace(",", ""), out var signalQty))
+            {
+                var availMsg = thread.Messages
+                    .Where(m => m.SenderType == "ai" &&
+                                m.MessageText.Contains("is available", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(m => m.SentAt)
+                    .FirstOrDefault();
+
+                var productForQty = ExtractProductNameFromAvailMsg(availMsg?.MessageText ?? "");
+                if (!string.IsNullOrWhiteSpace(productForQty))
+                {
+                    var qtyReply = await CheckQuantityInDbAsync(productForQty, signalQty, thread);
+                    await SendAndSaveAsync(thread, channel, fromPhone, qtyReply, "ai", aiResult.ModelUsed);
+                    return;
+                }
+            }
+
+            // 6. Normal AI reply (greeting, asking name/city etc.)
+            if (!aiReply.Contains("ASK_PRODUCT_CHECK", StringComparison.OrdinalIgnoreCase) &&
+                !aiReply.Contains("ASK_QTY_CHECK", StringComparison.OrdinalIgnoreCase))
+            {
+                await SendAndSaveAsync(thread, channel, fromPhone, aiReply, "ai", aiResult.ModelUsed);
+            }
+        }
+
+        private static string ExtractProductNameFromAvailMsg(string msg)
+        {
+            // Matches: *ProductName* is available
+            var m = Regex.Match(msg, @"\*(.+?)\*\s+is available", RegexOptions.IgnoreCase);
+            if (m.Success) return m.Groups[1].Value.Trim();
+            m = Regex.Match(msg, @"(.+?)\s+is available", RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups[1].Value.Trim() : string.Empty;
+        }
+
+        private async Task SendAndSaveAsync(AgentThread thread, WhatsAppChannel channel,
+            string toPhone, string text, string senderType, string? aiModel = null)
+        {
+            var result = await _whatsApp.SendTextMessageAsync(
+                channel.PhoneNumberId, channel.AccessToken, toPhone, text);
+            _db.AgentMessages.Add(new AgentMessage
             {
                 AgentThreadId = thread.Id,
                 Direction = "outbound",
-                SenderType = "ai",
-                MessageText = aiResult.Reply,
-                Status = sendResult.Success ? "sent" : "failed",
-                WhatsAppMessageId = sendResult.MessageId,
+                SenderType = senderType,
+                MessageText = text,
+                Status = result.Success ? "sent" : "failed",
+                WhatsAppMessageId = result.MessageId,
                 SentAt = DateTime.UtcNow,
-                AiModel = aiResult.ModelUsed
-            };
-            _db.AgentMessages.Add(aiMessage);
+                IsRead = true,
+                AiModel = aiModel
+            });
+            thread.LastMessageAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
 
@@ -210,18 +475,15 @@ namespace InventorySystem.Core.Services
             var thread = await _db.AgentThreads
                 .Include(t => t.WhatsAppChannel)
                 .FirstOrDefaultAsync(t => t.Id == threadId);
-
             if (thread?.WhatsAppChannel == null) return false;
 
             thread.IsAiPaused = true;
-
             var sendResult = await _whatsApp.SendTextMessageAsync(
                 thread.WhatsAppChannel.PhoneNumberId,
                 thread.WhatsAppChannel.AccessToken,
-                thread.CustomerPhone,
-                replyText);
+                thread.CustomerPhone, replyText);
 
-            var msg = new AgentMessage
+            _db.AgentMessages.Add(new AgentMessage
             {
                 AgentThreadId = thread.Id,
                 Direction = "outbound",
@@ -231,8 +493,7 @@ namespace InventorySystem.Core.Services
                 WhatsAppMessageId = sendResult.MessageId,
                 SentAt = DateTime.UtcNow,
                 IsRead = true
-            };
-            _db.AgentMessages.Add(msg);
+            });
             thread.LastMessageAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
             return sendResult.Success;
@@ -242,56 +503,10 @@ namespace InventorySystem.Core.Services
         {
             var thread = await _db.AgentThreads.FindAsync(threadId);
             if (thread == null) return false;
-
             thread.Status = "closed";
             thread.ResolvedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
             return true;
         }
-
-        private string AiSystemPrompt { get; set; } =
-        @"You are a friendly and professional sales assistant for a POS (Point of Sale) business on WhatsApp.
-
-        Your goal is to help customers place orders by following these steps IN ORDER:
-
-        STEP 1 — GREETING & NAME
-        - Greet the customer warmly.
-        - If they have NOT mentioned their name, politely ask: ""May I know your name please? 😊""
-
-        STEP 2 — LOCATION
-        - Once you have their name, ask for their city/location:
-          ""Thank you, [Name]! Which city are you ordering from?""
-
-        STEP 3 — PRODUCT INQUIRY
-        - Ask what they would like to purchase:
-          ""Great! What product are you looking for today?""
-        - If they mention a product, check it against the CURRENT PRODUCT CATALOG provided below.
-        - If found: confirm availability and price.
-        - If NOT found: say it's currently unavailable and suggest similar items from the catalog.
-
-        STEP 4 — QUANTITY
-        - Ask: ""How many units would you like to order?""
-        - Check if that quantity is available in stock from the catalog.
-        - If available: confirm the order details (product, quantity, price, location).
-        - If NOT enough stock: politely inform them of available quantity and ask if they want to proceed with what's available.
-
-        STEP 5 — ORDER SUMMARY
-        - Summarize the order:
-          ""✅ Order Summary:
-          - Name: [Name]
-          - Location: [City]
-          - Product: [Product]
-          - Quantity: [Qty]
-          - Total: PKR [Amount]
-  
-          Shall I confirm this order? Our team will contact you shortly for delivery details.""
-
-        IMPORTANT RULES:
-        - Always be polite, warm, and professional.
-        - Only answer questions about products, orders, pricing, and availability.
-        - If asked about anything unrelated to the business, politely redirect.
-        - If you cannot answer confidently (e.g., custom pricing, special requests, complaints), respond with exactly: HUMAN_NEEDED
-        - Never make up stock quantities or prices — only use the catalog data provided.
-        - Keep replies concise and use emojis occasionally to be friendly. 🛍️";
     }
 }

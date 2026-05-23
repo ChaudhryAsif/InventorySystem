@@ -8,11 +8,6 @@ using System.Threading.Tasks;
 
 namespace InventorySystem.Core.Services
 {
-    /// <summary>
-    /// Uses Groq Cloud API (free tier) — compatible with OpenAI SDK format.
-    /// Get your free API key at https://console.groq.com
-    /// Default model: llama3-8b-8192 (fast + free)
-    /// </summary>
     public class AIService : IAIService
     {
         private readonly IHttpClientFactory _httpClientFactory;
@@ -23,11 +18,8 @@ namespace InventorySystem.Core.Services
         }
 
         public async Task<AiReplyResult> GetReplyAsync(
-            string systemPrompt,
-            string conversationHistory,
-            string userMessage,
-            string apiKey,
-            string model)
+            string systemPrompt, string conversationHistory,
+            string userMessage, string apiKey, string model)
         {
             try
             {
@@ -42,7 +34,6 @@ namespace InventorySystem.Core.Services
                     new { role = "system", content = systemPrompt }
                 };
 
-                // Include conversation history (last 10 exchanges)
                 if (!string.IsNullOrWhiteSpace(conversationHistory))
                     messages.Add(new { role = "user", content = $"[Conversation so far]\n{conversationHistory}" });
 
@@ -52,7 +43,7 @@ namespace InventorySystem.Core.Services
                 {
                     model = string.IsNullOrWhiteSpace(model) ? "llama-3.1-8b-instant" : model,
                     messages,
-                    max_tokens = 500,
+                    max_tokens = 600,
                     temperature = 0.7
                 };
 
@@ -80,6 +71,69 @@ namespace InventorySystem.Core.Services
             catch (Exception ex)
             {
                 return new AiReplyResult { NeedsHuman = true, Error = ex.Message };
+            }
+        }
+
+        public async Task<OrderExtractResult?> ExtractOrderAsync(
+            string conversationHistory, string apiKey, string model)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(apiKey)) return null;
+
+                var client = _httpClientFactory.CreateClient("GroqClient");
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+                var extractPrompt =
+                    "You are a data extraction assistant. " +
+                    "From the WhatsApp conversation below, extract the confirmed order details. " +
+                    "Return ONLY a valid JSON object — no explanation, no markdown, no code block. " +
+                    "Use exactly this format:\n" +
+                    "{\"customerName\":\"...\",\"city\":\"...\",\"productName\":\"...\",\"quantity\":0,\"unitPrice\":0,\"totalAmount\":0}\n" +
+                    "If a field is unknown use null for strings and 0 for numbers.";
+
+                var messages = new List<object>
+                {
+                    new { role = "system", content = extractPrompt },
+                    new { role = "user",   content = conversationHistory }
+                };
+
+                var payload = new
+                {
+                    model = string.IsNullOrWhiteSpace(model) ? "llama-3.1-8b-instant" : model,
+                    messages,
+                    max_tokens = 200,
+                    temperature = 0.0  // deterministic for JSON extraction
+                };
+
+                var json = JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", content);
+                if (!response.IsSuccessStatusCode) return null;
+
+                var responseBody = await response.Content.ReadAsStringAsync();
+                var doc = JsonDocument.Parse(responseBody);
+                var raw = doc.RootElement
+                    .GetProperty("choices")[0]
+                    .GetProperty("message")
+                    .GetProperty("content")
+                    .GetString() ?? "";
+
+                // Strip any accidental markdown fences
+                raw = raw.Trim();
+                if (raw.StartsWith("```")) raw = raw.Split('\n', 2)[1];
+                if (raw.EndsWith("```")) raw = raw[..^3];
+                raw = raw.Trim();
+
+                var order = JsonSerializer.Deserialize<OrderExtractResult>(raw,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                return order;
+            }
+            catch
+            {
+                return null;
             }
         }
     }
