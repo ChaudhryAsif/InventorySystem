@@ -54,6 +54,13 @@ builder.Services.AddScoped<ISpeechService, SpeechService>();
 
 var app = builder.Build();
 
+// ── Seed SuperAdmin role & user at startup ────────────────────────────────────
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await DbSeeder.SeedSuperAdminAsync(db);
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");

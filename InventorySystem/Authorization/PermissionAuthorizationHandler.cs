@@ -4,13 +4,9 @@ using System.Security.Claims;
 
 namespace InventorySystem.Authorization
 {
-    /// <summary>
-    /// Custom authorization handler for permission-based policies
-    /// </summary>
     public class PermissionRequirement : IAuthorizationRequirement
     {
-        public string PermissionCode { get; set; }
-
+        public string PermissionCode { get; }
         public PermissionRequirement(string permissionCode)
         {
             PermissionCode = permissionCode;
@@ -30,6 +26,14 @@ namespace InventorySystem.Authorization
             AuthorizationHandlerContext context,
             PermissionRequirement requirement)
         {
+            // ── SuperAdmin bypass: skip all permission checks ──
+            var roleClaim = context.User.FindFirst(ClaimTypes.Role)?.Value;
+            if (roleClaim == "SuperAdmin")
+            {
+                context.Succeed(requirement);
+                return;
+            }
+
             var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier);
 
             if (!int.TryParse(userIdClaim?.Value, out int userId))

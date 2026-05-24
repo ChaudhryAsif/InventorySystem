@@ -4,12 +4,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InventorySystem.Core.Services
 {
-    /// <summary>
-    /// Service for retrieving menu items based on user permissions
-    /// </summary>
     public interface IMenuService
     {
         Task<List<MenuItem>> GetMenuForUserAsync(int userId);
+        Task<List<MenuItem>> GetMenuForUserAsync(int userId, bool isSuperAdmin);
         Task<List<MenuItem>> GetMenuForRoleAsync(int roleId);
         Task<List<MenuItem>> GetMainMenuItemsAsync();
     }
@@ -26,10 +24,11 @@ namespace InventorySystem.Core.Services
         }
 
         /// <summary>
-        /// Get menu items accessible by user
+        /// Get menus for user — SuperAdmin resolved automatically via PermissionService.
         /// </summary>
         public async Task<List<MenuItem>> GetMenuForUserAsync(int userId)
         {
+            // PermissionService returns ALL codes for SuperAdmin automatically
             var userPermissions = await _permissionService.GetUserPermissionsAsync(userId);
 
             var menuItems = await _context.MenuItems
@@ -41,8 +40,24 @@ namespace InventorySystem.Core.Services
         }
 
         /// <summary>
-        /// Get menu items accessible by role
+        /// Get menus for user with explicit SuperAdmin flag.
+        /// SuperAdmin sees every active menu item without any permission filtering.
         /// </summary>
+        public async Task<List<MenuItem>> GetMenuForUserAsync(int userId, bool isSuperAdmin)
+        {
+            if (isSuperAdmin)
+            {
+                var allItems = await _context.MenuItems
+                    .Where(m => m.IsActive)
+                    .OrderBy(m => m.SortOrder)
+                    .ToListAsync();
+
+                return BuildMenuHierarchy(allItems);
+            }
+
+            return await GetMenuForUserAsync(userId);
+        }
+
         public async Task<List<MenuItem>> GetMenuForRoleAsync(int roleId)
         {
             var rolePermissions = await _permissionService.GetRolePermissionsAsync(roleId);
@@ -55,9 +70,6 @@ namespace InventorySystem.Core.Services
             return BuildMenuHierarchy(menuItems);
         }
 
-        /// <summary>
-        /// Get all active main menu items
-        /// </summary>
         public async Task<List<MenuItem>> GetMainMenuItemsAsync()
         {
             return await _context.MenuItems
@@ -66,19 +78,17 @@ namespace InventorySystem.Core.Services
                 .ToListAsync();
         }
 
-        /// <summary>
-        /// Build menu hierarchy from flat list
-        /// </summary>
         private List<MenuItem> BuildMenuHierarchy(List<MenuItem> items)
         {
             var hierarchy = new List<MenuItem>();
-
             var mainItems = items.Where(i => i.ParentId == null).OrderBy(i => i.SortOrder).ToList();
 
             foreach (var mainItem in mainItems)
             {
-                var children = items.Where(i => i.ParentId == mainItem.Id).OrderBy(i => i.SortOrder).ToList();
-                mainItem.Children = children;
+                mainItem.Children = items
+                    .Where(i => i.ParentId == mainItem.Id)
+                    .OrderBy(i => i.SortOrder)
+                    .ToList();
                 hierarchy.Add(mainItem);
             }
 

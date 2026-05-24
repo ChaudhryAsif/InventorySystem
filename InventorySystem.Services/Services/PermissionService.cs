@@ -5,14 +5,12 @@ using System.Security.Claims;
 
 namespace InventorySystem.Core.Services
 {
-    /// <summary>
-    /// Service for checking and managing user permissions
-    /// </summary>
     public interface IPermissionService
     {
         Task<bool> HasPermissionAsync(int userId, string permissionCode);
         Task<bool> HasPermissionAsync(ClaimsPrincipal user, string permissionCode);
         Task<List<string>> GetUserPermissionsAsync(int userId);
+        Task<List<string>> GetAllPermissionCodesAsync();
         Task<List<string>> GetRolePermissionsAsync(int roleId);
         Task<Permission?> GetPermissionByCodeAsync(string code);
         Task AssignPermissionToRoleAsync(int roleId, int permissionId);
@@ -29,7 +27,8 @@ namespace InventorySystem.Core.Services
         }
 
         /// <summary>
-        /// Check if user has specific permission by userId
+        /// Check if user has a specific permission.
+        /// SuperAdmin role always returns true.
         /// </summary>
         public async Task<bool> HasPermissionAsync(int userId, string permissionCode)
         {
@@ -42,7 +41,11 @@ namespace InventorySystem.Core.Services
 
             if (user == null) return false;
 
-            // Check if user's any role has this permission
+            // ── SuperAdmin gets full access ──
+            bool isSuperAdmin = user.UserRoles?.Any(ur =>
+                ur.Role?.Name == "SuperAdmin" && ur.Role.IsActive) == true;
+            if (isSuperAdmin) return true;
+
             return user.UserRoles?.Any(ur =>
                 ur.Role?.IsActive == true &&
                 ur.Role.RolePermissions?.Any(rp =>
@@ -51,10 +54,15 @@ namespace InventorySystem.Core.Services
         }
 
         /// <summary>
-        /// Check if user has specific permission by ClaimsPrincipal
+        /// Check if user has a specific permission via ClaimsPrincipal.
+        /// SuperAdmin claim always returns true.
         /// </summary>
         public async Task<bool> HasPermissionAsync(ClaimsPrincipal user, string permissionCode)
         {
+            // ── SuperAdmin bypass via claim ──
+            if (user.FindFirst(ClaimTypes.Role)?.Value == "SuperAdmin")
+                return true;
+
             var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdClaim?.Value, out int userId))
                 return false;
@@ -63,11 +71,25 @@ namespace InventorySystem.Core.Services
         }
 
         /// <summary>
-        /// Get all permissions for a user
+        /// Get all permissions for a user.
+        /// SuperAdmin receives ALL permission codes in the system.
         /// </summary>
         public async Task<List<string>> GetUserPermissionsAsync(int userId)
         {
-            var permissions = await _context.AppUsers
+            var user = await _context.AppUsers
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
+
+            if (user == null) return new List<string>();
+
+            // ── SuperAdmin gets every permission code ──
+            bool isSuperAdmin = user.UserRoles?.Any(ur =>
+                ur.Role?.Name == "SuperAdmin" && ur.Role.IsActive) == true;
+            if (isSuperAdmin)
+                return await GetAllPermissionCodesAsync();
+
+            return await _context.AppUsers
                 .Where(u => u.Id == userId && u.IsActive)
                 .SelectMany(u => u.UserRoles!)
                 .Where(ur => ur.Role!.IsActive)
@@ -76,38 +98,37 @@ namespace InventorySystem.Core.Services
                 .Select(rp => rp.Permission!.Code)
                 .Distinct()
                 .ToListAsync();
-
-            return permissions;
         }
 
         /// <summary>
-        /// Get all permissions for a role
+        /// Returns all active permission codes in the system.
         /// </summary>
+        public async Task<List<string>> GetAllPermissionCodesAsync()
+        {
+            return await _context.Permissions
+                .Where(p => p.IsActive)
+                .Select(p => p.Code)
+                .Distinct()
+                .ToListAsync();
+        }
+
         public async Task<List<string>> GetRolePermissionsAsync(int roleId)
         {
-            var permissions = await _context.Roles
+            return await _context.Roles
                 .Where(r => r.Id == roleId && r.IsActive)
                 .SelectMany(r => r.RolePermissions!)
                 .Where(rp => rp.Permission!.IsActive)
                 .Select(rp => rp.Permission!.Code)
                 .Distinct()
                 .ToListAsync();
-
-            return permissions;
         }
 
-        /// <summary>
-        /// Get permission by code
-        /// </summary>
         public async Task<Permission?> GetPermissionByCodeAsync(string code)
         {
             return await _context.Permissions
                 .FirstOrDefaultAsync(p => p.Code == code && p.IsActive);
         }
 
-        /// <summary>
-        /// Assign permission to role
-        /// </summary>
         public async Task AssignPermissionToRoleAsync(int roleId, int permissionId)
         {
             var exists = await _context.RolePermissions
@@ -118,25 +139,20 @@ namespace InventorySystem.Core.Services
                 _context.RolePermissions.Add(new RolePermission
                 {
                     RoleId = roleId,
-                    PermissionId = permissionId,
-                    CreatedAt = DateTime.UtcNow
+                    PermissionId = permissionId
                 });
-
                 await _context.SaveChangesAsync();
             }
         }
 
-        /// <summary>
-        /// Remove permission from role
-        /// </summary>
         public async Task RemovePermissionFromRoleAsync(int roleId, int permissionId)
         {
-            var rolePermission = await _context.RolePermissions
-                .FirstOrDefaultAsync(rp => rp.RoleId == roleId && rp.PermissionId == permissionId);
+            var rp = await _context.RolePermissions
+                .FirstOrDefaultAsync(r => r.RoleId == roleId && r.PermissionId == permissionId);
 
-            if (rolePermission != null)
+            if (rp != null)
             {
-                _context.RolePermissions.Remove(rolePermission);
+                _context.RolePermissions.Remove(rp);
                 await _context.SaveChangesAsync();
             }
         }

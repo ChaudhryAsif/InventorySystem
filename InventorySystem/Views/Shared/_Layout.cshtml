@@ -125,6 +125,19 @@
             font-weight: 600;
             margin-left: 0.5rem;
         }
+
+        /* SuperAdmin badge */
+        .super-admin-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #6f42c1, #e83e8c);
+        color: white;
+        padding: 0.25rem 0.55rem;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        margin-left: 0.5rem;
+        letter-spacing: 0.03em;
+        }
     </style>
 </head>
 <body>
@@ -143,6 +156,7 @@
             {
                 var fullName = User.FindFirst("FullName")?.Value ?? User.Identity.Name ?? "User";
                 var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+                var isSuperAdmin = role == "SuperAdmin";
                 var initials = string.Concat(fullName.Split(' ').Take(2).Select(w => w[0])).ToUpper();
 
                 <div class="header-user">
@@ -150,9 +164,9 @@
                     <div>
                         <div class="header-user-name">
                             @fullName
-                            @if (role == "Admin")
+                            @if (isSuperAdmin)
                             {
-                                <span class="admin-badge">ADMIN</span>
+                                <span class="super-admin-badge">⭐ SUPER ADMIN</span>
                             }
                         </div>
                         <div class="header-user-role">@role</div>
@@ -172,24 +186,23 @@
             @if (User.Identity?.IsAuthenticated == true)
             {
                 var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
-                
-                // Get menu items for this user
-                var menuItems = await MenuService.GetMenuForUserAsync(userId);
+                var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+                var isSuperAdmin = role == "SuperAdmin";
+
+                // SuperAdmin gets ALL menus; others get only permitted menus
+                var menuItems = await MenuService.GetMenuForUserAsync(userId, isSuperAdmin);
 
                 @foreach (var item in menuItems)
                 {
                     if (item.Children != null && item.Children.Count > 0)
                     {
-                        // Parent menu item with submenu
                         var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
-                        var currentAction     = ViewContext.RouteData.Values["action"]?.ToString();
                         var isOpen = item.Children.Any(c => c.Controller == currentController);
                         var menuIdSafe = System.Text.RegularExpressions.Regex.Replace(item.Name, @"[^\w]", "");
 
-
                         <li class="sidebar-item @(isOpen ? "open" : "")" id="@menuIdSafe">
                             <a href="#" class="sidebar-link"
-                               onclick="event.preventDefault(); document.getElementById('@menuIdSafe').classList.toggle('open')">
+                                   onclick="event.preventDefault(); document.getElementById('@menuIdSafe').classList.toggle('open')">
                                 <span class="sidebar-icon">@item.Icon</span>
                                 <span class="sidebar-text">@item.Name</span>
                                 <span class="sidebar-arrow">▼</span>
@@ -198,11 +211,10 @@
                                 @foreach (var subitem in item.Children)
                                 {
                                     var isSubActive = ViewContext.RouteData.Values["controller"]?.ToString() == subitem.Controller &&
-                                                    ViewContext.RouteData.Values["action"]?.ToString() == subitem.Action;
-
+                                                      ViewContext.RouteData.Values["action"]?.ToString() == subitem.Action;
                                     <li>
                                         <a asp-controller="@subitem.Controller" asp-action="@subitem.Action"
-                                           class="sidebar-sublink @(isSubActive ? "active" : "")">
+                                               class="sidebar-sublink @(isSubActive ? "active" : "")">
                                             @subitem.Icon @subitem.Name
                                         </a>
                                     </li>
@@ -212,12 +224,10 @@
                     }
                     else
                     {
-                        // Simple menu item without submenu
                         var isActive = ViewContext.RouteData.Values["controller"]?.ToString() == item.Controller;
-
                         <li class="sidebar-item">
                             <a asp-controller="@item.Controller" asp-action="@item.Action"
-                               class="sidebar-link @(isActive ? "active" : "")">
+                                   class="sidebar-link @(isActive ? "active" : "")">
                                 <span class="sidebar-icon">@item.Icon</span>
                                 <span class="sidebar-text">@item.Name</span>
                             </a>
@@ -225,19 +235,18 @@
                     }
                 }
 
-                <!-- Admin Panel - Only for Admin -->
-                @if (User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value == "Admin")
+                <!-- Admin Panel link — visible to SuperAdmin only -->
+                @if (isSuperAdmin)
                 {
                     <li class="sidebar-item" style="border-top: 1px solid #e0e0e0; margin-top: 1rem; padding-top: 1rem;">
                         <a asp-controller="Admin" asp-action="Dashboard"
-                           class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Admin" ? "active" : "")">
+                               class="sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Admin" ? "active" : "")">
                             <span class="sidebar-icon">⚙️</span>
                             <span class="sidebar-text">Admin Panel</span>
                         </a>
                     </li>
                 }
 
-                <!-- Logout -->
                 <li class="sidebar-item" style="margin-top: auto; border-top: 1px solid #e0e0e0; padding-top: 1rem;">
                     <form asp-controller="Auth" asp-action="Logout" method="post" style="width: 100%; margin: 0;">
                         @Html.AntiForgeryToken()
