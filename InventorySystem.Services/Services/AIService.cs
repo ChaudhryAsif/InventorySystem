@@ -17,9 +17,7 @@ namespace InventorySystem.Core.Services
             _httpClientFactory = httpClientFactory;
         }
 
-        public async Task<AiReplyResult> GetReplyAsync(
-            string systemPrompt, string conversationHistory,
-            string userMessage, string apiKey, string model)
+        public async Task<AiReplyResult> GetReplyAsync(string systemPrompt, string conversationHistory, string userMessage, string apiKey, string model)
         {
             try
             {
@@ -74,8 +72,7 @@ namespace InventorySystem.Core.Services
             }
         }
 
-        public async Task<OrderExtractResult?> ExtractOrderAsync(
-            string conversationHistory, string apiKey, string model)
+        public async Task<OrderExtractResult?> ExtractOrderAsync(string conversationHistory, string apiKey, string model)
         {
             try
             {

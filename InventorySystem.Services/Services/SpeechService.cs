@@ -1,14 +1,25 @@
 ﻿using InventorySystem.Services.Services;
 using Microsoft.Extensions.Configuration;
 using System.Net.Http.Headers;
-using System.Text.Json;
 
 namespace InventorySystem.Core.Services
 {
+    // Speech-to-text via Groq (Whisper Large v3 Turbo) and text-to-speech via the
+    // unofficial Google Translate TTS endpoint. The TTS endpoint is free but has a
+    // ~200 char limit per request, so longer replies are split into sentence chunks
+    // and concatenated client-side.
     public class SpeechService : ISpeechService
     {
         private readonly string _groqApiKey;
         private readonly IHttpClientFactory _httpClientFactory;
+
+        // Google Translate TTS hard-caps each call at ~200 chars. Leave a little headroom.
+        private const int TtsChunkSize = 190;
+
+        // Spoofing a desktop Chrome UA is required — the endpoint returns 403 for default .NET UAs.
+        private const string BrowserUserAgent =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
         public SpeechService(IConfiguration config, IHttpClientFactory httpClientFactory)
         {
@@ -17,36 +28,28 @@ namespace InventorySystem.Core.Services
             _httpClientFactory = httpClientFactory;
         }
 
+        // Transcribe a WhatsApp voice note (OGG/Opus) to text using Groq Whisper.
+        // Returns empty string on any failure — caller decides how to handle that.
         public async Task<string> SpeechToTextAsync(Stream audioStream)
         {
             try
             {
-                // 1. Read the audio bytes from the stream
                 using var ms = new MemoryStream();
                 await audioStream.CopyToAsync(ms);
                 var audioBytes = ms.ToArray();
+                if (audioBytes.Length == 0) return "";
 
-                if (audioBytes.Length == 0)
-                    return "";
-
-                // 2. Build multipart form data for Groq Whisper
                 using var form = new MultipartFormDataContent();
 
                 var audioContent = new ByteArrayContent(audioBytes);
                 audioContent.Headers.ContentType = new MediaTypeHeaderValue("audio/ogg");
                 form.Add(audioContent, "file", "voice.ogg");
 
-                // Use Whisper Large v3 Turbo — fastest and most accurate
+                // whisper-large-v3-turbo: best speed/accuracy tradeoff Groq currently offers.
                 form.Add(new StringContent("whisper-large-v3-turbo"), "model");
-
-                // Optional: set language (remove if you want auto-detect)
-                //form.Add(new StringContent("en"), "language"); // "ur" for Urdu
-                //form.Add(new StringContent("ur"), "language"); // "ur" for Urdu
-
-                // Response format: just plain text
+                form.Add(new StringContent("en"), "language");
                 form.Add(new StringContent("text"), "response_format");
 
-                // 3. Send to Groq
                 var client = _httpClientFactory.CreateClient();
                 client.DefaultRequestHeaders.Authorization =
                     new AuthenticationHeaderValue("Bearer", _groqApiKey);
@@ -61,7 +64,6 @@ namespace InventorySystem.Core.Services
                     return "";
                 }
 
-                // 4. Return the transcribed text
                 var transcribedText = await response.Content.ReadAsStringAsync();
                 return transcribedText.Trim();
             }
@@ -72,74 +74,53 @@ namespace InventorySystem.Core.Services
             }
         }
 
-        // Text-to-Speech — we'll skip for now (reply with text)
-        //public async Task<byte[]?> TextToSpeechAsync(string text)
-        //{
-        //    await Task.CompletedTask;
-        //    return null;
-        //}
-
+        // Convert outbound text to MP3 audio bytes using Google Translate's TTS.
+        // Longer text is split into chunks and the resulting MP3 streams are concatenated.
+        // MP3 happens to be one of the few codecs where naive byte concatenation plays back
+        // correctly in most clients including WhatsApp — works for our purposes.
         public async Task<byte[]?> TextToSpeechAsync(string text)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(text))
-                    return null;
+                if (string.IsNullOrWhiteSpace(text)) return null;
 
-                // ✅ Auto-detect language: Urdu if Arabic/Urdu script detected, else English
-                var language = ContainsUrduScript(text) ? "ur" : "en";
+                Console.WriteLine($"Google TTS [en]: {text[..Math.Min(80, text.Length)]}...");
 
-                Console.WriteLine($"🎤 Google TTS [{language}]: {text.Substring(0, Math.Min(80, text.Length))}...");
-
-                var chunks = SplitIntoChunks(text, 190);
+                var chunks = SplitIntoChunks(text, TtsChunkSize);
                 var allAudio = new List<byte>();
 
                 var client = _httpClientFactory.CreateClient();
-                client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
 
                 foreach (var chunk in chunks)
                 {
                     var encodedText = Uri.EscapeDataString(chunk);
-                    var url = $"https://translate.google.com/translate_tts?ie=UTF-8&q={encodedText}&tl={language}&client=tw-ob";
+                    var url = $"https://translate.google.com/translate_tts" +
+                              $"?ie=UTF-8&q={encodedText}&tl=en&client=tw-ob";
 
                     var response = await client.GetAsync(url);
                     if (!response.IsSuccessStatusCode)
                     {
-                        var error = await response.Content.ReadAsStringAsync();
-                        Console.WriteLine($"❌ Google TTS error: {response.StatusCode}");
+                        Console.WriteLine($"Google TTS error: {response.StatusCode}");
                         return null;
                     }
 
-                    var chunkAudio = await response.Content.ReadAsByteArrayAsync();
-                    allAudio.AddRange(chunkAudio);
+                    allAudio.AddRange(await response.Content.ReadAsByteArrayAsync());
                 }
 
                 var audioBytes = allAudio.ToArray();
-                Console.WriteLine($"✅ Google TTS success: {audioBytes.Length} bytes");
+                Console.WriteLine($"Google TTS success: {audioBytes.Length} bytes");
                 return audioBytes.Length > 0 ? audioBytes : null;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Google TTS exception: {ex.Message}");
+                Console.WriteLine($"Google TTS exception: {ex.Message}");
                 return null;
             }
         }
 
-        // Helper: Check if text contains Urdu/Arabic script characters
-        private static bool ContainsUrduScript(string text)
-        {
-            foreach (var c in text)
-            {
-                // Arabic/Urdu Unicode block: 0x0600 to 0x06FF
-                if (c >= 0x0600 && c <= 0x06FF)
-                    return true;
-            }
-            return false;
-        }
-
-        // Helper: Split long text into smaller chunks at natural breakpoints
+        // Split text into chunks no longer than maxLength, breaking at sentence boundaries
+        // where possible so the resulting audio doesn't cut mid-word.
         private static List<string> SplitIntoChunks(string text, int maxLength)
         {
             var chunks = new List<string>();
