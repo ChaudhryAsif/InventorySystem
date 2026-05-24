@@ -41,11 +41,7 @@
                 <thead>
                     <tr>
                         <th style="width: 40px;"></th>
-                      @*   <th>Item ID</th> *@
-                        <th>Category</th>@* 
-                        <th>Item Name</th>
-                        <th>Size</th>
-                        <th>Sale Price</th> *@
+                        <th>Category</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody">
@@ -56,7 +52,6 @@
 
         <div class="btn-group">
             <button type="button" class="btn btn-primary" onclick="loadItems()">🔄 Refresh</button>
-@*             <button type="button" class="btn btn-success">💾 Save</button> *@
         </div>
     </div>
 </main>
@@ -85,27 +80,51 @@
         const categoryId = document.getElementById("categoryFilter").value || "";
         const search = document.getElementById("searchInput").value.toLowerCase();
         const tbody = document.getElementById("tableBody");
-        tbody.innerHTML = "<tr><td colspan='7'>Loading...</td></tr>";
+        tbody.innerHTML = "<tr><td colspan='2'>Loading...</td></tr>";
 
         try {
             const response = await fetch(`/ItemRateList/GetItems?categoryId=${categoryId}`);
             const data = await response.json();
 
-                const filtered = data.filter(item =>
-                                (item.itemName?.toLowerCase() || "").includes(search) ||
-                                (item.categoryName?.toLowerCase() || "").includes(search)
-                              );
+            // ── Filter by search term ─────────────────────────────────────────
+            const filtered = data.filter(item =>
+                (item.itemName?.toLowerCase() || "").includes(search) ||
+                (item.categoryName?.toLowerCase() || "").includes(search)
+            );
 
+            // ── Group items by categoryName ───────────────────────────────────
+            const grouped = {};
+            filtered.forEach(item => {
+                const cat = item.categoryName || "Uncategorized";
+                if (!grouped[cat]) grouped[cat] = [];
+                grouped[cat].push(item);
+            });
 
             tbody.innerHTML = "";
-            filtered.forEach(item => {
+
+            if (Object.keys(grouped).length === 0) {
+                tbody.innerHTML = "<tr><td colspan='2'>No items found.</td></tr>";
+                return;
+            }
+
+            // ── One category row per group, all items inside one nested table ─
+            Object.entries(grouped).forEach(([categoryName, items]) => {
+                const itemRows = items.map(item => `
+                    <tr>
+                        <td>${item.itemID}</td>
+                        <td>${item.itemName || ""}</td>
+                        <td>${item.size || "-"}</td>
+                        <td>${item.salePrice?.toFixed(2)}</td>
+                    </tr>
+                `).join("");
+
                 const row = `
-                    <tr onclick="toggleExpand(this)">
+                    <tr onclick="toggleExpand(this)" style="cursor:pointer;">
                         <td><span class="expand-icon">▶</span></td>
-                        <td>${item.categoryName}</td>
+                        <td>${categoryName}</td>
                     </tr>
                     <tr class="nested-row" style="display:none;">
-                        <td colspan="11" style="padding:1rem;background:#f8f9fa;">
+                        <td colspan="2" style="padding:1rem;background:#f8f9fa;">
                             <table class="nested-table">
                                 <thead>
                                     <tr>
@@ -116,12 +135,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr>
-                                        <td>${item.itemID}</td>
-                                        <td>${item.itemName || ""}</td>
-                                        <td>${item.size || "-"}</td>
-                                        <td>${item.salePrice?.toFixed(2)}</td>
-                                    </tr>
+                                    ${itemRows}
                                 </tbody>
                             </table>
                         </td>
@@ -129,9 +143,10 @@
                 `;
                 tbody.insertAdjacentHTML("beforeend", row);
             });
+
         } catch (error) {
             console.error("Error loading items:", error);
-            tbody.innerHTML = "<tr><td colspan='11'>Error loading data.</td></tr>";
+            tbody.innerHTML = "<tr><td colspan='2'>Error loading data.</td></tr>";
         }
     }
 
