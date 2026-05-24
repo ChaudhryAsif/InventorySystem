@@ -1,38 +1,43 @@
-﻿@{
+﻿@model InventorySystem.Models.DashboardViewModel
+@{
     Layout = "_Layout";
+    ViewData["Title"] = "Dashboard";
 }
 
 <link href="~/css/dashboard.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<!-- Main Content -->
 <main class="main-content">
     <div class="page-header">
-        <h2>Dashboard</h2>
+        <h2>📊 Dashboard</h2>
         <div class="breadcrumb">
-            <span>Home</span>
-            <span>›</span>
-            <span>Dashboard</span>
+            <span>Home</span><span>›</span><span>Dashboard</span>
         </div>
     </div>
 
-    <!-- Statistics Cards -->
+    <!-- ── STAT CARDS ──────────────────────────────────────────────────── -->
     <div class="stats-grid">
+
         <div class="stat-card success">
             <div class="stat-header">
                 <span class="stat-label">Total Sales Today</span>
                 <span class="stat-icon">💵</span>
             </div>
-            <div class="stat-value">$24,580</div>
-            <div class="stat-change positive">↑ 12% from yesterday</div>
+            <div class="stat-value">@Model.TodaySales.ToString("N0")</div>
+            <div class="stat-change @(Model.SalesChangePercent >= 0 ? "positive" : "negative")">
+                @(Model.SalesChangePercent >= 0 ? "↑" : "↓") @Math.Abs(Model.SalesChangePercent)% from yesterday
+            </div>
         </div>
 
         <div class="stat-card info">
             <div class="stat-header">
-                <span class="stat-label">Total Purchases</span>
+                <span class="stat-label">Total Purchases Today</span>
                 <span class="stat-icon">📦</span>
             </div>
-            <div class="stat-value">$18,240</div>
-            <div class="stat-change positive">↑ 8% from last week</div>
+            <div class="stat-value">@Model.TodayPurchases.ToString("N0")</div>
+            <div class="stat-change @(Model.PurchaseChangePercent >= 0 ? "positive" : "negative")">
+                @(Model.PurchaseChangePercent >= 0 ? "↑" : "↓") @Math.Abs(Model.PurchaseChangePercent)% from last week
+            </div>
         </div>
 
         <div class="stat-card warning">
@@ -40,107 +45,98 @@
                 <span class="stat-label">Inventory Items</span>
                 <span class="stat-icon">🏷️</span>
             </div>
-            <div class="stat-value">1,248</div>
-            <div class="stat-change">45 items low stock</div>
+            <div class="stat-value">@Model.TotalItems.ToString("N0")</div>
+            <div class="stat-change">⚠️ @Model.LowStockCount items low stock</div>
         </div>
 
         <div class="stat-card danger">
             <div class="stat-header">
-                <span class="stat-label">Pending Orders</span>
+                <span class="stat-label">Pending / Active Orders</span>
                 <span class="stat-icon">⏳</span>
             </div>
-            <div class="stat-value">32</div>
-            <div class="stat-change negative">↑ 5 from yesterday</div>
+            <div class="stat-value">@Model.PendingOrders</div>
+            <div class="stat-change negative">@Model.YesterdayPendingOrders new yesterday</div>
         </div>
+
     </div>
 
-    <!-- Quick Actions -->
+    <!-- ── QUICK ACTIONS ───────────────────────────────────────────────── -->
     <div class="card">
-        <div class="card-header">
-            <h3 class="card-title">Quick Actions</h3>
-        </div>
+        <div class="card-header"><h3 class="card-title">Quick Actions</h3></div>
         <div class="quick-actions">
-            <a href="#" class="quick-action-btn">
+            <a href="/Sale/Index" class="quick-action-btn">
                 <div class="quick-action-icon">🛒</div>
                 <div class="quick-action-label">New Sale</div>
             </a>
-            <a href="#" class="quick-action-btn">
+            <a href="/Purchase/Index" class="quick-action-btn">
                 <div class="quick-action-icon">📥</div>
                 <div class="quick-action-label">New Purchase</div>
             </a>
-            <a href="#" class="quick-action-btn">
+            <a href="/Item/Index" class="quick-action-btn">
                 <div class="quick-action-icon">➕</div>
                 <div class="quick-action-label">Add Item</div>
             </a>
-            <a href="#" class="quick-action-btn">
+            <a href="/Parties/Index" class="quick-action-btn">
                 <div class="quick-action-icon">👥</div>
-                <div class="quick-action-label">Customers</div>
+                <div class="quick-action-label">Parties</div>
             </a>
-            <a href="#" class="quick-action-btn">
+            <a href="/Report/StockReport" class="quick-action-btn">
                 <div class="quick-action-icon">📊</div>
                 <div class="quick-action-label">Reports</div>
             </a>
-            <a href="#" class="quick-action-btn">
-                <div class="quick-action-icon">⚙️</div>
-                <div class="quick-action-label">Settings</div>
+            <a href="/StockAdjustment/Create" class="quick-action-btn">
+                <div class="quick-action-icon">📦</div>
+                <div class="quick-action-label">Stock Adjust</div>
+            </a>
+            <a href="/Production/Create" class="quick-action-btn">
+                <div class="quick-action-icon">🏭</div>
+                <div class="quick-action-label">New Order</div>
+            </a>
+            <a href="/Accounts/PaymentVoucher" class="quick-action-btn">
+                <div class="quick-action-icon">💳</div>
+                <div class="quick-action-label">Payment</div>
             </a>
         </div>
     </div>
 
-    <!-- Dashboard Grid -->
+    <!-- ── CHARTS ROW ──────────────────────────────────────────────────── -->
     <div class="dashboard-grid">
-        <!-- Sales Chart -->
+
         <div class="chart-card">
             <div class="card-header">
-                <h3 class="card-title">Sales Overview</h3>
+                <h3 class="card-title">📈 Sales & Purchases (Last 7 Days)</h3>
             </div>
-            <div class="chart-placeholder">
-                📈 Sales Chart (Integrate Chart.js or similar)
-            </div>
+            <canvas id="salesChart" height="120"></canvas>
         </div>
 
         <!-- Recent Activity -->
         <div class="chart-card">
             <div class="card-header">
-                <h3 class="card-title">Recent Activity</h3>
+                <h3 class="card-title">🕐 Recent Activity</h3>
             </div>
             <ul class="activity-list">
-                <li class="activity-item">
-                    <div class="activity-icon">🛒</div>
-                    <div class="activity-content">
-                        <div class="activity-title">New sale invoice #1245 created</div>
-                        <div class="activity-time">5 minutes ago</div>
-                    </div>
-                </li>
-                <li class="activity-item">
-                    <div class="activity-icon">📦</div>
-                    <div class="activity-content">
-                        <div class="activity-title">Purchase order #3421 received</div>
-                        <div class="activity-time">1 hour ago</div>
-                    </div>
-                </li>
-                <li class="activity-item">
-                    <div class="activity-icon">⚠️</div>
-                    <div class="activity-content">
-                        <div class="activity-title">Low stock alert: Item #245</div>
-                        <div class="activity-time">2 hours ago</div>
-                    </div>
-                </li>
-                <li class="activity-item">
-                    <div class="activity-icon">✅</div>
-                    <div class="activity-content">
-                        <div class="activity-title">Payment received from Customer #892</div>
-                        <div class="activity-time">3 hours ago</div>
-                    </div>
-                </li>
+                @if (!Model.RecentActivities.Any())
+                {
+                    <li class="activity-item"><div class="activity-content"><div class="activity-title">No recent activity</div></div></li>
+                }
+                @foreach (var a in Model.RecentActivities)
+                {
+                    <li class="activity-item">
+                        <div class="activity-icon">@a.Icon</div>
+                        <div class="activity-content">
+                            <div class="activity-title">@a.Title</div>
+                            <div class="activity-time">@a.Time</div>
+                        </div>
+                    </li>
+                }
             </ul>
         </div>
     </div>
 
-    <!-- Top Selling Items -->
+    <!-- ── TOP SELLING ITEMS ───────────────────────────────────────────── -->
     <div class="card">
         <div class="card-header">
-            <h3 class="card-title">Top Selling Items</h3>
+            <h3 class="card-title">🏆 Top Selling Items — This Month</h3>
         </div>
         <div class="table-responsive">
             <table class="data-table">
@@ -149,38 +145,169 @@
                         <th>Item ID</th>
                         <th>Item Name</th>
                         <th>Category</th>
-                        <th>Quantity Sold</th>
+                        <th>Qty Sold</th>
                         <th>Revenue</th>
                         <th>Stock</th>
+                        <th>Stock Status</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td>1</td>
-                        <td>Test Product</td>
-                        <td>Test Category</td>
-                        <td>245</td>
-                        <td>$4,580.00</td>
-                        <td>156</td>
-                    </tr>
-                    <tr>
-                        <td>2</td>
-                        <td>Sample Item</td>
-                        <td>Electronics</td>
-                        <td>189</td>
-                        <td>$3,290.00</td>
-                        <td>89</td>
-                    </tr>
-                    <tr>
-                        <td>3</td>
-                        <td>Demo Product</td>
-                        <td>Accessories</td>
-                        <td>167</td>
-                        <td>$2,840.00</td>
-                        <td>234</td>
-                    </tr>
+                    @if (!Model.TopSellingItems.Any())
+                    {
+                        <tr><td colspan="7" style="text-align:center">No sales data this month</td></tr>
+                    }
+                    @foreach (var item in Model.TopSellingItems)
+                    {
+                        <tr>
+                            <td>@item.ItemId</td>
+                            <td>@item.ItemName</td>
+                            <td>@item.Category</td>
+                            <td>@item.QuantitySold.ToString("N0")</td>
+                            <td>@item.Revenue.ToString("N2")</td>
+                            <td>@item.CurrentStock.ToString("N0")</td>
+                            <td>
+                                @if (item.CurrentStock <= 10)
+                                {
+                                    <span style="color:red;font-weight:600">⚠️ Low</span>
+                                }
+                                else
+                                {
+                                    <span style="color:green;font-weight:600">✅ OK</span>
+                                }
+                            </td>
+                        </tr>
+                    }
                 </tbody>
             </table>
         </div>
     </div>
+
+    <!-- ── BOTTOM GRID: Low Stock + Top Customers + Top Suppliers ─────── -->
+    <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+
+        <!-- Low Stock Alerts -->
+        <div class="chart-card">
+            <div class="card-header">
+                <h3 class="card-title">⚠️ Low Stock Alerts</h3>
+            </div>
+            <table class="data-table">
+                <thead><tr><th>Item</th><th>Category</th><th>Stock</th></tr></thead>
+                <tbody>
+                    @if (!Model.LowStockAlerts.Any())
+                    {
+                        <tr><td colspan="3" style="text-align:center">✅ All items have sufficient stock</td></tr>
+                    }
+                    @foreach (var s in Model.LowStockAlerts)
+                    {
+                        <tr>
+                            <td>@s.ItemName</td>
+                            <td>@s.Category</td>
+                            <td style="color:red;font-weight:600">@s.CurrentStock.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Top Customers -->
+        <div class="chart-card">
+            <div class="card-header">
+                <h3 class="card-title">👑 Top Customers — This Month</h3>
+            </div>
+            <table class="data-table">
+                <thead><tr><th>Customer</th><th>Invoices</th><th>Total</th></tr></thead>
+                <tbody>
+                    @if (!Model.TopCustomers.Any())
+                    {
+                        <tr><td colspan="3" style="text-align:center">No customer data</td></tr>
+                    }
+                    @foreach (var c in Model.TopCustomers)
+                    {
+                        <tr>
+                            <td>@c.PartyName</td>
+                            <td>@c.TotalInvoices</td>
+                            <td>@c.TotalAmount.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Top Suppliers -->
+        <div class="chart-card">
+            <div class="card-header">
+                <h3 class="card-title">🏢 Top Suppliers — This Month</h3>
+            </div>
+            <table class="data-table">
+                <thead><tr><th>Supplier</th><th>Invoices</th><th>Total</th></tr></thead>
+                <tbody>
+                    @if (!Model.TopSuppliers.Any())
+                    {
+                        <tr><td colspan="3" style="text-align:center">No supplier data</td></tr>
+                    }
+                    @foreach (var s in Model.TopSuppliers)
+                    {
+                        <tr>
+                            <td>@s.PartyName</td>
+                            <td>@s.TotalInvoices</td>
+                            <td>@s.TotalAmount.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+    </div>
 </main>
+
+<!-- ── CHART.JS SCRIPT ─────────────────────────────────────────────────── -->
+<script>
+    const labels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ChartLabels));
+    const salesData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ChartSalesData));
+    const purchaseData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ChartPurchaseData));
+
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Sales',
+                    data: salesData,
+                    backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                    borderColor: 'rgba(34, 197, 94, 1)',
+                    borderWidth: 2,
+                    borderRadius: 6,
+                },
+                {
+                    label: 'Purchases',
+                    data: purchaseData,
+                    backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    borderWidth: 2,
+                    borderRadius: 6,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ctx.dataset.label + ': ' + Number(ctx.raw).toLocaleString()
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: val => Number(val).toLocaleString()
+                    }
+                }
+            }
+        }
+    });
+</script>
