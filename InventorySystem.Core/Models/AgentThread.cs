@@ -31,6 +31,8 @@ namespace InventorySystem.Core.Models
         public DateTime? ResolvedAt { get; set; }
         public int UnreadCount { get; set; } = 0;
 
+        public bool LastInboundWasVoice { get; set; } = false;
+
         public ICollection<AgentMessage> Messages { get; set; } = new List<AgentMessage>();
     }
 }

@@ -6,6 +6,10 @@ namespace InventorySystem.Core.Services
     {
         Task<WhatsAppSendResult> SendTextMessageAsync(string phoneNumberId, string accessToken, string toPhone, string message);
         Task<bool> RegisterWebhookAsync(string phoneNumberId, string accessToken, string webhookUrl, string verifyToken);
+
+        Task<Stream?> DownloadMediaAsync(string mediaId, string accessToken);
+        Task<string?> UploadMediaAsync(string phoneNumberId, string accessToken, byte[] audioBytes, string mimeType);
+        Task<WhatsAppSendResult> SendAudioMessageAsync(string phoneNumberId, string accessToken, string toPhone, string mediaId);
     }
 
     public class WhatsAppSendResult

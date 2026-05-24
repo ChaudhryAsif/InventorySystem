@@ -1,6 +1,7 @@
-using InventorySystem.Data;
-using InventorySystem.Core.Services;
 using InventorySystem.Authorization;
+using InventorySystem.Core.Services;
+using InventorySystem.Data;
+using InventorySystem.Services.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -49,6 +50,7 @@ builder.Services.AddHttpClient("GroqClient");
 builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
 builder.Services.AddScoped<IAIService, AIService>();
 builder.Services.AddScoped<IChatbotService, ChatbotService>();
+builder.Services.AddScoped<ISpeechService, SpeechService>();
 
 var app = builder.Build();
 

@@ -139,18 +139,32 @@ namespace InventorySystem.Controllers
                         foreach (var message in messages.EnumerateArray())
                         {
                             var type = message.GetProperty("type").GetString();
-                            if (type != "text") continue;
+                            if (type == "text")
+                            {
+                                var fromPhone = message.GetProperty("from").GetString() ?? "";
+                                var msgId = message.GetProperty("id").GetString() ?? "";
+                                var msgText = message.GetProperty("text").GetProperty("body").GetString() ?? "";
+                                var profileName = value.TryGetProperty("contacts", out var contacts) &&
+                                                  contacts.GetArrayLength() > 0
+                                    ? contacts[0].GetProperty("profile").GetProperty("name").GetString() ?? fromPhone
+                                    : fromPhone;
 
-                            var fromPhone = message.GetProperty("from").GetString() ?? "";
-                            var msgId = message.GetProperty("id").GetString() ?? "";
-                            var msgText = message.GetProperty("text").GetProperty("body").GetString() ?? "";
-                            var profileName = value.TryGetProperty("contacts", out var contacts) &&
-                                              contacts.GetArrayLength() > 0
-                                ? contacts[0].GetProperty("profile").GetProperty("name").GetString() ?? fromPhone
-                                : fromPhone;
+                                await _chatbot.ProcessInboundMessageAsync(
+                                    phoneNumberId, fromPhone, profileName, msgText, msgId);
+                            }
+                            else if (type == "audio" || type == "voice")
+                            {
+                                var fromPhone = message.GetProperty("from").GetString() ?? "";
+                                var msgId = message.GetProperty("id").GetString() ?? "";
+                                var audioId = message.GetProperty(type).GetProperty("id").GetString() ?? "";
+                                var profileName = value.TryGetProperty("contacts", out var contacts) &&
+                                                  contacts.GetArrayLength() > 0
+                                    ? contacts[0].GetProperty("profile").GetProperty("name").GetString() ?? fromPhone
+                                    : fromPhone;
 
-                            await _chatbot.ProcessInboundMessageAsync(
-                                phoneNumberId, fromPhone, profileName, msgText, msgId);
+                                await _chatbot.ProcessVoiceMessageAsync(
+                                    phoneNumberId, fromPhone, profileName, audioId, msgId);
+                            }
                         }
                     }
                 }
