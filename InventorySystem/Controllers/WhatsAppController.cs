@@ -316,6 +316,44 @@ namespace InventorySystem.Controllers
             return RedirectToAction(nameof(TestMessage));
         }
 
+        // ── PLAYGROUND (Test our LLM) ─────────────────────────────────────────
+
+        public async Task<IActionResult> Playground()
+        {
+            var channel = await _db.WhatsAppChannels.FirstOrDefaultAsync(c => c.IsActive)
+                       ?? await _db.WhatsAppChannels.FirstOrDefaultAsync();
+            ViewBag.Channel = channel;
+            return View();
+        }
+
+        public class PlaygroundRequest
+        {
+            public System.Collections.Generic.List<PlaygroundTurn> History { get; set; } = new();
+            public string Message { get; set; } = "";
+            public string SystemPrompt { get; set; } = "";
+            public string Model { get; set; } = "";
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> PlaygroundReply([FromBody] PlaygroundRequest req)
+        {
+            if (req == null || string.IsNullOrWhiteSpace(req.Message))
+                return Json(new { reply = "Please type a message." });
+
+            var channel = await _db.WhatsAppChannels.FirstOrDefaultAsync(c => c.IsActive)
+                       ?? await _db.WhatsAppChannels.FirstOrDefaultAsync();
+            if (channel == null)
+                return Json(new { reply = "⚠️ No WhatsApp channel configured. Please configure one first." });
+
+            var model = string.IsNullOrWhiteSpace(req.Model) ? channel.AiModel : req.Model;
+            var systemPrompt = string.IsNullOrWhiteSpace(req.SystemPrompt) ? channel.AiSystemPrompt : req.SystemPrompt;
+
+            var reply = await _chatbot.SimulatePlaygroundReplyAsync(
+                req.History ?? new(), req.Message, systemPrompt, model, channel.AiApiKey, "Playground User");
+
+            return Json(new { reply });
+        }
+
         [HttpPost]
         public async Task<IActionResult> ToggleAI(int threadId, string status = "all")
         {

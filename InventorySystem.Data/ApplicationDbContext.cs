@@ -1005,6 +1005,7 @@ namespace InventorySystem.Data
                 new MenuItem { Id = 51, Name = "Configuration",Icon = "⚙️", Controller = "WhatsApp", Action = "Configure",   ParentId = 50, SortOrder = 1, RequiredPermission = "WhatsApp.Config" },
                 new MenuItem { Id = 52, Name = "Inbox",        Icon = "📥", Controller = "WhatsApp", Action = "Inbox",        ParentId = 50, SortOrder = 2, RequiredPermission = "WhatsApp.View"   },
                 new MenuItem { Id = 53, Name = "Test Message", Icon = "🧪", Controller = "WhatsApp", Action = "TestMessage",  ParentId = 50, SortOrder = 3, RequiredPermission = "WhatsApp.Config" },
+                new MenuItem { Id = 54, Name = "AI Playground", Icon = "🤖", Controller = "WhatsApp", Action = "Playground",   ParentId = 50, SortOrder = 4, RequiredPermission = "WhatsApp.Config" },
             };
             modelBuilder.Entity<MenuItem>().HasData(menuItems);
         }

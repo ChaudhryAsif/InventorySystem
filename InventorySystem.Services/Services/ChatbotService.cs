@@ -42,7 +42,7 @@ namespace InventorySystem.Core.Services
         // System prompt for the AI. Kept deliberately short — the heavy lifting (stock check,
         // pricing, order creation) happens in C# code, the AI only handles the dialogue flow.
         private const string BaseSystemPrompt =
-@"You are a friendly sales assistant for a POS business on WhatsApp.
+@"You are a friendly sales assistant for an online store on WhatsApp.
 Reply in English only.
 
 Your ONLY job is to collect this info step by step (ask only what is MISSING):
@@ -52,7 +52,8 @@ Your ONLY job is to collect this info step by step (ask only what is MISSING):
 4. Quantity
 
 RULES:
-- Greet warmly on first message.
+- Greet warmly on first message, e.g. ""Hi! 😊 How can I help you find what you need today?""
+- Never mention internal systems or use the word ""POS"" with the customer.
 - Never ask for info already provided.
 - Ask only ONE missing thing at a time.
 - When customer mentions a product name, reply with ONLY: ASK_PRODUCT_CHECK:[product name]
@@ -144,6 +145,176 @@ RULES:
             await ProcessInboundMessageAsync(
                 channelPhoneNumberId, fromPhone, customerName,
                 transcribedText, whatsappMessageId, wasVoiceInput: true);
+        }
+
+        // ── PLAYGROUND SIMULATION ────────────────────────────────────────────
+        // Mirrors ProcessInboundMessageAsync exactly (same three-stage pipeline, same prompt,
+        // same DB lookups) but runs against an in-memory thread and RETURNS the reply text
+        // instead of sending it. Nothing is persisted: no thread, no message rows, no sale.
+        // Product/stock lookups are real (read-only); the YES path shows a *simulated* invoice.
+        public async Task<string> SimulatePlaygroundReplyAsync(
+            List<PlaygroundTurn> history, string userMessage,
+            string systemPrompt, string model, string apiKey, string customerName)
+        {
+            if (string.IsNullOrWhiteSpace(userMessage))
+                return "Please type a message.";
+
+            var thread = BuildInMemoryThread(history, userMessage, customerName);
+            var effectivePrompt = string.IsNullOrWhiteSpace(systemPrompt) ? BaseSystemPrompt : systemPrompt;
+
+            // Stage 1: customer confirming/cancelling an order summary.
+            var yesNo = await SimulateYesNoAsync(thread, userMessage, apiKey, model);
+            if (yesNo != null) return yesNo;
+
+            // Stage 2: customer replying to an availability message with a quantity.
+            var qty = await SimulateQuantityReplyAsync(thread, userMessage);
+            if (qty != null) return qty;
+
+            // Stage 3: let the AI drive (+ sentinel-triggered DB lookups).
+            return await SimulateAiReplyAsync(thread, userMessage, effectivePrompt, model, apiKey);
+        }
+
+        // Reconstruct a transient thread from the posted transcript. Mirrors the production
+        // ordering where the current inbound is appended before the stage handlers run.
+        private static AgentThread BuildInMemoryThread(
+            List<PlaygroundTurn> history, string currentMessage, string customerName)
+        {
+            var thread = new AgentThread
+            {
+                Id = 0,
+                CustomerName = string.IsNullOrWhiteSpace(customerName) ? "Playground User" : customerName,
+                CustomerPhone = "playground",
+                Messages = new List<AgentMessage>()
+            };
+
+            var stamp = DateTime.UtcNow.AddMinutes(-((history?.Count ?? 0) + 1));
+
+            if (history != null)
+            {
+                foreach (var turn in history)
+                {
+                    var isCustomer = string.Equals(turn.Sender, "customer", StringComparison.OrdinalIgnoreCase);
+                    thread.Messages.Add(new AgentMessage
+                    {
+                        SenderType = isCustomer ? "customer" : "ai",
+                        Direction = isCustomer ? "inbound" : "outbound",
+                        MessageText = turn.Text ?? "",
+                        Status = "sent",
+                        SentAt = stamp,
+                        IsRead = true
+                    });
+                    stamp = stamp.AddSeconds(30);
+                }
+            }
+
+            thread.Messages.Add(new AgentMessage
+            {
+                SenderType = "customer",
+                Direction = "inbound",
+                MessageText = currentMessage,
+                Status = "received",
+                SentAt = stamp,
+                IsRead = false
+            });
+
+            return thread;
+        }
+
+        // Mirror of TryHandleYesNoAsync — returns the reply, or null if this stage doesn't apply.
+        // The YES branch extracts the order (read-only) but simulates the confirmation; it never
+        // writes an invoice or decrements stock.
+        private async Task<string?> SimulateYesNoAsync(
+            AgentThread thread, string messageText, string apiKey, string model)
+        {
+            var trimmed = messageText.Trim();
+            var isYes = YesWords.Contains(trimmed);
+            var isNo = NoWords.Contains(trimmed);
+            if (!isYes && !isNo) return null;
+
+            var lastAiMsg = GetLastAiMessage(thread);
+            var lastWasSummary = lastAiMsg?.MessageText
+                .Contains(OrderSummaryMarker, StringComparison.OrdinalIgnoreCase) == true;
+            if (!lastWasSummary) return null;
+
+            if (isNo)
+                return "No problem! Would you like to order a different product or quantity?";
+
+            var history = BuildConversationHistory(thread);
+            var extracted = await _ai.ExtractOrderAsync(history, apiKey, model);
+
+            if (extracted == null || extracted.Quantity <= 0)
+                return "Sorry, I had trouble processing your order. Could you please tell me the product and quantity again?";
+
+            return
+                $"🎉 *Order Confirmed!*\n" +
+                $"📋 Invoice: *INV-XXXXX*  _(simulation — no invoice created)_\n" +
+                $"📦 Product: {extracted.ProductName}\n" +
+                $"🔢 Quantity: {extracted.Quantity:N0} units\n" +
+                $"💰 Total: PKR {extracted.TotalAmount:N0}\n" +
+                $"📍 City: {extracted.City}\n\n" +
+                $"Our team will contact you shortly for delivery. Thank you! 🙏";
+        }
+
+        // Mirror of TryHandleQuantityReplyAsync — returns the reply, or null if it doesn't apply.
+        private async Task<string?> SimulateQuantityReplyAsync(AgentThread thread, string messageText)
+        {
+            var lastAiMsg = GetLastAiMessage(thread);
+            var lastWasAvailability = lastAiMsg?.MessageText
+                .Contains(AvailabilityMarker, StringComparison.OrdinalIgnoreCase) == true;
+            if (!lastWasAvailability) return null;
+
+            var qtyMatch = Regex.Match(messageText, @"\b(\d+)\b");
+            if (!qtyMatch.Success ||
+                !decimal.TryParse(qtyMatch.Groups[1].Value, out var qty) ||
+                qty <= 0)
+            {
+                return null;
+            }
+
+            var productName = ExtractProductNameFromAvailMsg(lastAiMsg!.MessageText);
+            if (string.IsNullOrWhiteSpace(productName)) return null;
+
+            return await CheckQuantityInDbAsync(productName, qty, thread);
+        }
+
+        // Mirror of HandleAiReplyAsync — same sentinel handling and DB lookups, returns the text.
+        private async Task<string> SimulateAiReplyAsync(
+            AgentThread thread, string messageText, string systemPrompt, string model, string apiKey)
+        {
+            var historyText = BuildConversationHistory(thread, takeLast: 12);
+            var aiResult = await _ai.GetReplyAsync(systemPrompt, historyText, messageText, apiKey, model);
+
+            if (aiResult.NeedsHuman || string.IsNullOrWhiteSpace(aiResult.Reply))
+            {
+                if (!string.IsNullOrWhiteSpace(aiResult.Error))
+                    return $"⚠️ {aiResult.Error}";
+
+                return "Thank you for reaching out! A human agent will be with you shortly. 🙏\n\n" +
+                       "_(HUMAN_NEEDED — the AI would pause this chat for a human in production.)_";
+            }
+
+            var aiReply = aiResult.Reply.Trim();
+
+            var productMatch = Regex.Match(aiReply, $@"{ProductCheckSignal}[:\-]\s*(.+)", RegexOptions.IgnoreCase);
+            if (productMatch.Success)
+                return await CheckProductInDbAsync(productMatch.Groups[1].Value.Trim());
+
+            var qtySignalMatch = Regex.Match(aiReply, $@"{QtyCheckSignal}[:\-]\s*(\d+[\.,]?\d*)", RegexOptions.IgnoreCase);
+            if (qtySignalMatch.Success &&
+                decimal.TryParse(qtySignalMatch.Groups[1].Value.Replace(",", ""), out var signalQty))
+            {
+                var lastAvailMsg = thread.Messages
+                    .Where(m => m.SenderType == "ai" &&
+                                m.MessageText.Contains(AvailabilityMarker, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(m => m.SentAt)
+                    .FirstOrDefault();
+
+                var productForQty = ExtractProductNameFromAvailMsg(lastAvailMsg?.MessageText ?? "");
+                if (!string.IsNullOrWhiteSpace(productForQty))
+                    return await CheckQuantityInDbAsync(productForQty, signalQty, thread);
+            }
+
+            return aiReply;
         }
 
         // Human agent replying from the inbox UI. Pauses the AI so it won't talk over them.

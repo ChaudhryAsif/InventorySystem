@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace InventorySystem.Core.Services
 {
@@ -11,5 +12,19 @@ namespace InventorySystem.Core.Services
         Task ProcessVoiceMessageAsync(
     string channelPhoneNumberId, string fromPhone,
     string customerName, string audioId, string whatsappMessageId);
+
+        // Runs the full agent pipeline (AI + live product/stock lookups + order flow) against an
+        // in-memory transcript and returns the reply text. No WhatsApp message is sent, no inbox
+        // thread is touched, and no sale is created — for testing the LLM/agent from the UI.
+        Task<string> SimulatePlaygroundReplyAsync(
+            List<PlaygroundTurn> history, string userMessage,
+            string systemPrompt, string model, string apiKey, string customerName);
+    }
+
+    // A single prior turn in the playground transcript (kept client-side, never persisted).
+    public class PlaygroundTurn
+    {
+        public string Sender { get; set; } = "customer"; // "customer" | "ai"
+        public string Text { get; set; } = "";
     }
 }

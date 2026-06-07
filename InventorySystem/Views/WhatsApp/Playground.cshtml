@@ -1,0 +1,268 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "AI Playground";
+    var channel = ViewBag.Channel as InventorySystem.Core.Models.WhatsAppChannel;
+    var currentModel = channel?.AiModel ?? "llama3-8b-8192";
+    var currentPrompt = channel?.AiSystemPrompt ?? "";
+}
+
+<div class="page-header">
+    <div class="page-title">
+        <h2>🤖 AI Playground</h2>
+        <p>Chat with your AI sales agent live. Product &amp; stock lookups are real, but nothing is sent and no order is created.</p>
+    </div>
+    <div class="header-actions">
+        <a asp-action="Configure" class="btn btn-secondary">⚙️ Configure</a>
+        <a asp-action="TestMessage" class="btn btn-secondary">🧪 Test Message</a>
+        <a asp-action="Inbox" class="btn btn-primary">📥 Inbox</a>
+    </div>
+</div>
+
+@if (channel == null)
+{
+    <div class="alert-box alert-warning">
+        ⚠️ No WhatsApp channel configured. <a asp-action="Configure">Configure one first →</a>
+    </div>
+}
+else if (string.IsNullOrWhiteSpace(channel.AiApiKey))
+{
+    <div class="alert-box alert-warning">
+        ⚠️ No AI key set on the active channel. Replies will fail until you add one on the
+        <a asp-action="Configure">Configure</a> page.
+    </div>
+}
+
+<div class="pg-grid">
+    <!-- ── Chat playground ── -->
+    <div class="card pg-chat-card">
+        <div class="card-section-header pg-chat-head">
+            <span>💬 Playground</span>
+            <button type="button" id="resetBtn" class="btn-reset" title="Clear this session">↺ Reset</button>
+        </div>
+
+        <div id="chatWindow" class="pg-chat-window">
+            <div class="pg-empty" id="emptyHint">
+                👋 Start a conversation to test how the agent responds.
+            </div>
+        </div>
+
+        <div class="pg-input-bar">
+            <textarea id="msgInput" class="pg-input" rows="1"
+                      placeholder="Message the agent…  (Enter to send, Shift+Enter for new line)"></textarea>
+            <button type="button" id="sendBtn" class="pg-send" title="Send">➤</button>
+        </div>
+    </div>
+
+    <!-- ── Settings / guardrails ── -->
+    <div class="pg-side">
+        <div class="card">
+            <div class="card-section-header">🎛️ Agent Settings</div>
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label class="form-label">AI Model</label>
+                    <select id="modelSelect" class="form-control">
+                        <option value="llama3-8b-8192">llama3-8b-8192 — Fast (Recommended)</option>
+                        <option value="llama3-70b-8192">llama3-70b-8192 — Smarter</option>
+                        <option value="mixtral-8x7b-32768">mixtral-8x7b-32768 — Long Context</option>
+                        <option value="gemma-7b-it">gemma-7b-it — Google</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">System Prompt</label>
+                    <textarea id="sysPrompt" class="form-control" rows="9"
+                              placeholder="Leave blank to use the built-in default prompt.">@currentPrompt</textarea>
+                    <small class="form-hint">Edits here only affect this test session — they are not saved to the live channel.</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-section-header">🛡️ Notes</div>
+            <div class="card-body pg-notes">
+                <p>• Messages here <strong>do not</strong> affect live inbox threads.</p>
+                <p>• Product availability &amp; stock are looked up from your real catalog.</p>
+                <p>• Order confirmations are <strong>simulated</strong> — no invoice is created and stock is not changed.</p>
+                <p>• Use this to validate tone, prompt wording, and the order journey.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem; }
+    .page-title h2 { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin: 0; }
+    .page-title p  { color: var(--text-secondary); font-size: 0.85rem; margin: 0.2rem 0 0; max-width: 640px; }
+    .header-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+
+    .alert-box { padding: 0.8rem 1.1rem; border-radius: var(--radius-sm); margin-bottom: 1rem; font-size: 0.9rem; }
+    .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+    .alert-warning a { color: #856404; font-weight: 600; }
+
+    .pg-grid { display: grid; grid-template-columns: 1fr 360px; gap: 1.25rem; align-items: start; }
+    @@media (max-width: 900px) { .pg-grid { grid-template-columns: 1fr; } }
+
+    .card { background: var(--card-bg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); overflow: hidden; }
+    .card-section-header { background: #f4f6f9; font-weight: 600; font-size: 0.92rem; color: var(--text-primary); padding: 0.75rem 1.1rem; border-bottom: 1px solid var(--border-color); }
+    .card-body { padding: 1.1rem; }
+    .mt-3 { margin-top: 1rem; }
+    .mb-3 { margin-bottom: 1rem; }
+
+    .btn { padding: 0.5rem 1rem; border: none; border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; }
+    .btn-primary  { background: var(--primary-color); color: #fff; }
+    .btn-secondary { background: #6c757d; color: #fff; }
+
+    /* Chat panel */
+    .pg-chat-card { display: flex; flex-direction: column; height: 70vh; min-height: 480px; }
+    .pg-chat-head { display: flex; align-items: center; justify-content: space-between; }
+    .btn-reset { background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.3rem 0.7rem; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; }
+    .btn-reset:hover { background: #f1f3f5; color: var(--text-primary); }
+
+    .pg-chat-window { flex: 1; overflow-y: auto; padding: 1.1rem; background: #eef1f4; display: flex; flex-direction: column; gap: 0.6rem; }
+    .pg-empty { margin: auto; color: var(--text-secondary); font-size: 0.9rem; text-align: center; }
+
+    .pg-row { display: flex; }
+    .pg-row.out { justify-content: flex-end; }
+    .pg-row.in  { justify-content: flex-start; }
+    .pg-bubble { max-width: 76%; padding: 0.6rem 0.85rem; border-radius: 14px; font-size: 0.88rem; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; box-shadow: 0 1px 1px rgba(0,0,0,0.06); }
+    .pg-bubble.out { background: var(--primary-color); color: #fff; border-bottom-right-radius: 4px; }
+    .pg-bubble.in  { background: #fff; color: var(--text-primary); border-bottom-left-radius: 4px; }
+    .pg-bubble.in .pg-agent-tag { display: block; font-size: 0.68rem; font-weight: 700; color: var(--primary-color); margin-bottom: 0.2rem; letter-spacing: 0.02em; }
+
+    .pg-typing { display: inline-flex; gap: 4px; align-items: center; }
+    .pg-typing span { width: 7px; height: 7px; border-radius: 50%; background: #9aa3ad; animation: pgblink 1.2s infinite both; }
+    .pg-typing span:nth-child(2) { animation-delay: 0.2s; }
+    .pg-typing span:nth-child(3) { animation-delay: 0.4s; }
+    @@keyframes pgblink { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
+
+    .pg-input-bar { display: flex; gap: 0.6rem; padding: 0.75rem; border-top: 1px solid var(--border-color); background: #fff; align-items: flex-end; }
+    .pg-input { flex: 1; resize: none; max-height: 140px; padding: 0.6rem 0.85rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.9rem; font-family: inherit; line-height: 1.4; }
+    .pg-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(45,95,127,0.12); }
+    .pg-send { width: 42px; height: 42px; flex: none; border: none; border-radius: 50%; background: var(--secondary-color, #28a745); color: #fff; font-size: 1.05rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .pg-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Side panel */
+    .pg-side { display: flex; flex-direction: column; gap: 1rem; }
+    .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+    .form-label { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+    .form-control { padding: 0.5rem 0.8rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.88rem; color: var(--text-primary); background: #fff; width: 100%; font-family: inherit; }
+    .form-control:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(45,95,127,0.12); }
+    .form-hint { font-size: 0.74rem; color: var(--text-secondary); }
+    .pg-notes p { font-size: 0.82rem; color: var(--text-secondary); margin: 0 0 0.5rem; line-height: 1.5; }
+    .pg-notes p:last-child { margin-bottom: 0; }
+</style>
+
+<script>
+    (function () {
+        const chatWindow = document.getElementById('chatWindow');
+        const emptyHint  = document.getElementById('emptyHint');
+        const input      = document.getElementById('msgInput');
+        const sendBtn    = document.getElementById('sendBtn');
+        const resetBtn   = document.getElementById('resetBtn');
+        const modelSel   = document.getElementById('modelSelect');
+        const sysPrompt  = document.getElementById('sysPrompt');
+        const replyUrl   = '@Url.Action("PlaygroundReply", "WhatsApp")';
+
+        // Pre-select the channel's saved model.
+        const savedModel = '@currentModel';
+        if (savedModel) modelSel.value = savedModel;
+
+        let history = [];   // { sender: 'customer' | 'ai', text }
+        let busy = false;
+
+        function escapeHtml(s) {
+            return s.replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        // Render WhatsApp-style *bold* / _italic_ and newlines safely.
+        function format(text) {
+            let h = escapeHtml(text);
+            h = h.replace(/\*(.+?)\*/g, '<strong>$1</strong>');
+            h = h.replace(/_(.+?)_/g, '<em>$1</em>');
+            return h.replace(/\n/g, '<br>');
+        }
+
+        function appendBubble(sender, text) {
+            if (emptyHint) emptyHint.style.display = 'none';
+            const row = document.createElement('div');
+            row.className = 'pg-row ' + (sender === 'customer' ? 'out' : 'in');
+            const tag = sender === 'ai' ? '<span class="pg-agent-tag">🤖 AI Agent</span>' : '';
+            row.innerHTML = '<div class="pg-bubble ' + (sender === 'customer' ? 'out' : 'in') + '">'
+                          + tag + format(text) + '</div>';
+            chatWindow.appendChild(row);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+            return row;
+        }
+
+        function appendTyping() {
+            const row = document.createElement('div');
+            row.className = 'pg-row in';
+            row.innerHTML = '<div class="pg-bubble in"><span class="pg-typing"><span></span><span></span><span></span></span></div>';
+            chatWindow.appendChild(row);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+            return row;
+        }
+
+        async function send() {
+            const text = input.value.trim();
+            if (!text || busy) return;
+
+            appendBubble('customer', text);
+            input.value = '';
+            input.style.height = 'auto';
+            busy = true;
+            sendBtn.disabled = true;
+            const typing = appendTyping();
+
+            try {
+                const res = await fetch(replyUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        history: history,
+                        message: text,
+                        systemPrompt: sysPrompt.value,
+                        model: modelSel.value
+                    })
+                });
+                const data = await res.json();
+                typing.remove();
+                const reply = (data && data.reply) ? data.reply : '⚠️ No response.';
+                appendBubble('ai', reply);
+                history.push({ sender: 'customer', text: text });
+                history.push({ sender: 'ai', text: reply });
+            } catch (e) {
+                typing.remove();
+                appendBubble('ai', '⚠️ Could not reach the server. Please try again.');
+            } finally {
+                busy = false;
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        sendBtn.addEventListener('click', send);
+
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+            }
+        });
+
+        // Auto-grow textarea.
+        input.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 140) + 'px';
+        });
+
+        resetBtn.addEventListener('click', function () {
+            history = [];
+            chatWindow.innerHTML = '';
+            chatWindow.appendChild(emptyHint);
+            emptyHint.style.display = '';
+            input.focus();
+        });
+    })();
+</script>
