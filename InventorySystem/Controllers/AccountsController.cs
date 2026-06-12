@@ -121,9 +121,9 @@ namespace InventorySystem.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetNextVoucherNo(string type)
+        public async Task<IActionResult> GetNextVoucherNo(string type, DateTime? date = null)
         {
-            var no = await _accounts.GenerateVoucherNoAsync(type);
+            var no = await _accounts.GenerateVoucherNoAsync(type, date ?? DateTime.Today);
             return Json(new { success = true, voucherNo = no });
         }
 

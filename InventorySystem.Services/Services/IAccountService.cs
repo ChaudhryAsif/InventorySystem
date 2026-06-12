@@ -33,6 +33,7 @@ namespace InventorySystem.Core.Services
 
         // Auto voucher number
         Task<string> GenerateVoucherNoAsync(string voucherType);
+        Task<string> GenerateVoucherNoAsync(string voucherType, DateTime voucherDate);
 
         Task<DayBookResult> GetDayBookAsync(DateTime from, DateTime to);
         Task<BankReconResult> GetBankReconAsync(int bankAccountHeadId, DateTime? from, DateTime? to);

@@ -120,58 +120,110 @@ namespace InventorySystem.Core.Services
             if (!voucher.Details.Any())
                 return (false, "Voucher must have at least one line.", null);
 
-            using var tx = await _db.Database.BeginTransactionAsync();
-            try
-            {
-                if (voucher.VoucherId == 0)
-                {
-                    voucher.VoucherNo   = await GenerateVoucherNoAsync(voucher.VoucherType);
-                    voucher.CreatedDate = DateTime.Now;
-                    voucher.TotalAmount = totalDebit;
-                    _db.Vouchers.Add(voucher);
-                    await _db.SaveChangesAsync();
-                }
-                else
-                {
-                    // Void old GL entries, re-post
-                    var oldGL = await _db.GeneralLedger
-                        .Where(g => g.VoucherId == voucher.VoucherId && !g.IsVoid)
-                        .ToListAsync();
-                    oldGL.ForEach(g => g.IsVoid = true);
-                    voucher.TotalAmount = totalDebit;
-                    _db.Vouchers.Update(voucher);
-                    await _db.SaveChangesAsync();
-                }
+            bool isNew = voucher.VoucherId == 0;
+            const int maxAttempts = 3;
 
-                // Post to General Ledger
-                foreach (var detail in voucher.Details)
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                using var tx = await _db.Database.BeginTransactionAsync();
+                try
                 {
-                    _db.GeneralLedger.Add(new GeneralLedger
+                    Voucher saved;
+                    if (isNew)
                     {
-                        VoucherNo      = voucher.VoucherNo,
-                        VoucherType    = voucher.VoucherType,
-                        VoucherDate    = voucher.VoucherDate,
-                        AccountHeadId  = detail.AccountHeadId,
-                        PartyId        = detail.PartyId,
-                        Debit          = detail.Debit,
-                        Credit         = detail.Credit,
-                        Narration      = detail.Narration ?? voucher.Narration,
-                        VoucherId      = voucher.VoucherId,
-                        BranchId       = voucher.BranchId,
-                        CreatedBy      = voucher.CreatedBy,
-                        CreatedDate    = DateTime.Now
-                    });
-                }
-                await _db.SaveChangesAsync();
-                await tx.CommitAsync();
+                        voucher.VoucherNo   = await GenerateVoucherNoAsync(voucher.VoucherType, voucher.VoucherDate);
+                        voucher.CreatedDate = DateTime.Now;
+                        voucher.TotalAmount = totalDebit;
+                        _db.Vouchers.Add(voucher);
+                        await _db.SaveChangesAsync();
+                        saved = voucher;
+                    }
+                    else
+                    {
+                        var existing = await _db.Vouchers
+                            .Include(v => v.Details)
+                            .FirstOrDefaultAsync(v => v.VoucherId == voucher.VoucherId);
+                        if (existing == null) return (false, "Voucher not found.", null);
+                        if (existing.IsVoid)  return (false, "Cannot edit a void voucher.", null);
 
-                return (true, $"Voucher {voucher.VoucherNo} saved.", voucher.VoucherId);
+                        // Void old GL entries, re-post below
+                        var oldGL = await _db.GeneralLedger
+                            .Where(g => g.VoucherId == voucher.VoucherId && !g.IsVoid)
+                            .ToListAsync();
+                        oldGL.ForEach(g => g.IsVoid = true);
+
+                        // VoucherNo, VoucherType and CreatedDate stay server-side;
+                        // only editable fields are merged from the client model.
+                        existing.VoucherDate = voucher.VoucherDate;
+                        existing.PartyId     = voucher.PartyId;
+                        existing.PaymentMode = voucher.PaymentMode;
+                        existing.ReferenceNo = voucher.ReferenceNo;
+                        existing.Narration   = voucher.Narration;
+                        existing.BranchId    = voucher.BranchId;
+                        existing.CreatedBy   = voucher.CreatedBy ?? existing.CreatedBy;
+                        existing.TotalAmount = totalDebit;
+
+                        // Replace all lines so rows removed in the editor don't
+                        // linger as orphaned VoucherDetail records.
+                        _db.VoucherDetails.RemoveRange(existing.Details);
+                        existing.Details = voucher.Details.Select(d => new VoucherDetail
+                        {
+                            AccountHeadId = d.AccountHeadId,
+                            PartyId       = d.PartyId,
+                            Debit         = d.Debit,
+                            Credit        = d.Credit,
+                            Narration     = d.Narration
+                        }).ToList();
+
+                        await _db.SaveChangesAsync();
+                        saved = existing;
+                    }
+
+                    // Post to General Ledger
+                    foreach (var detail in saved.Details)
+                    {
+                        _db.GeneralLedger.Add(new GeneralLedger
+                        {
+                            VoucherNo      = saved.VoucherNo,
+                            VoucherType    = saved.VoucherType,
+                            VoucherDate    = saved.VoucherDate,
+                            AccountHeadId  = detail.AccountHeadId,
+                            PartyId        = detail.PartyId,
+                            Debit          = detail.Debit,
+                            Credit         = detail.Credit,
+                            Narration      = detail.Narration ?? saved.Narration,
+                            VoucherId      = saved.VoucherId,
+                            BranchId       = saved.BranchId,
+                            CreatedBy      = saved.CreatedBy,
+                            CreatedDate    = DateTime.Now
+                        });
+                    }
+                    await _db.SaveChangesAsync();
+                    await tx.CommitAsync();
+
+                    return (true, $"Voucher {saved.VoucherNo} saved.", saved.VoucherId);
+                }
+                catch (DbUpdateException) when (isNew && attempt < maxAttempts)
+                {
+                    // Most likely a duplicate VoucherNo from a concurrent save
+                    // (unique index on Vouchers.VoucherNo) — regenerate and retry.
+                    await tx.RollbackAsync();
+                    _db.ChangeTracker.Clear();
+                    voucher.VoucherId = 0;
+                    foreach (var d in voucher.Details)
+                    {
+                        d.VoucherDetailId = 0;
+                        d.VoucherId = 0;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    await tx.RollbackAsync();
+                    return (false, $"Error: {ex.Message}", null);
+                }
             }
-            catch (Exception ex)
-            {
-                await tx.RollbackAsync();
-                return (false, $"Error: {ex.Message}", null);
-            }
+
+            return (false, "Could not generate a unique voucher number. Please try again.", null);
         }
 
         public async Task<(bool success, string message)> VoidVoucherAsync(int voucherId)
@@ -315,7 +367,10 @@ namespace InventorySystem.Core.Services
         {
             var trialBalance = await GetTrialBalanceAsync(asOf);
 
-            var netProfit = (await GetProfitLossAsync(new DateTime(asOf.Year, 1, 1), asOf)).NetProfit;
+            // Cumulative profit since inception: there is no year-end closing
+            // process, so prior-year results must roll into equity here or the
+            // balance sheet stops balancing after the first year.
+            var netProfit = (await GetProfitLossAsync(DateTime.MinValue, asOf)).NetProfit;
 
             var assets = trialBalance.Rows
                 .Where(r => r.AccountType == "Assets")
@@ -371,7 +426,10 @@ namespace InventorySystem.Core.Services
 
         // ── VOUCHER NUMBER GENERATOR ──────────────────────────────────────────
 
-        public async Task<string> GenerateVoucherNoAsync(string voucherType)
+        public Task<string> GenerateVoucherNoAsync(string voucherType)
+            => GenerateVoucherNoAsync(voucherType, DateTime.Today);
+
+        public async Task<string> GenerateVoucherNoAsync(string voucherType, DateTime voucherDate)
         {
             var prefix = voucherType switch
             {
@@ -379,15 +437,26 @@ namespace InventorySystem.Core.Services
                 "RV" => "RV",
                 "JV" => "JV",
                 "CV" => "CV",
+                "DN" => "DN",
+                "CN" => "CN",
                 _    => "VCH"
             };
 
-            var year  = DateTime.Now.Year;
-            var count = await _db.Vouchers
-                .CountAsync(v => v.VoucherType == voucherType
-                              && v.VoucherDate.Year == year);
+            // Number within the voucher's own year, using the highest existing
+            // sequence for this prefix (count-based numbering collides after
+            // deletes and across types sharing a prefix).
+            var pattern = $"{prefix}-{voucherDate.Year}-";
+            var existingNos = await _db.Vouchers
+                .Where(v => v.VoucherNo.StartsWith(pattern))
+                .Select(v => v.VoucherNo)
+                .ToListAsync();
 
-            return $"{prefix}-{year}-{(count + 1):D4}";
+            var maxSeq = existingNos
+                .Select(no => int.TryParse(no.Substring(pattern.Length), out var n) ? n : 0)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            return $"{pattern}{(maxSeq + 1):D4}";
         }
 
         // ── CASH BOOK ─────────────────────────────────────────────────────────
