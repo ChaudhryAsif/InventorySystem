@@ -17,12 +17,73 @@ let allCustomers  = [];
 let selectedItem  = null;
 let allItems      = [];
 let currentRow    = null;
+let editId        = null;   // set when editing an existing invoice (?id=)
 
 // ── Init ────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', function () {
-    addNewRow();
-    loadNextInvoiceNumber();
+    const id = new URLSearchParams(window.location.search).get('id');
+    if (id) {
+        editId = parseInt(id);
+        loadInvoiceForEdit(editId);
+    } else {
+        addNewRow();
+        loadNextInvoiceNumber();
+    }
 });
+
+// ── Load an existing invoice into the form (edit mode) ───────────────────────
+async function loadInvoiceForEdit(id) {
+    try {
+        const res = await fetch('/Sale/GetSaleById?id=' + id);
+        if (!res.ok) { alert('Invoice not found.'); window.location.href = '/Sale/List'; return; }
+        const inv = await res.json();
+
+        const header = document.querySelector('.page-header h2');
+        if (header) header.textContent = '✏️ Edit Sale Invoice #' + inv.saleId;
+
+        document.getElementById('invoiceNo').value   = inv.saleId;
+        document.getElementById('refNo').value        = inv.refNo || '';
+        if (inv.saleDate) document.getElementById('invoiceDate').value = inv.saleDate;
+        document.getElementById('paymentMode').value  = (inv.paymentMode ?? 0).toString();
+
+        document.getElementById('hftxtCustomerId').value = inv.customerID || '';
+        document.getElementById('customerAccount').value = inv.customerName || '';
+        document.getElementById('customerDetails').value = '';
+        document.getElementById('remarks').value         = inv.remarks || '';
+
+        document.getElementById('gstPercent').value  = inv.gstPer || 0;
+        document.getElementById('freight').value     = inv.freightExp || 0;
+        document.getElementById('otherExp').value    = inv.otherExp || 0;
+        const total = parseFloat(inv.totalAmount) || 0;
+        const discPct = total > 0 ? ((parseFloat(inv.discount) || 0) / total) * 100 : 0;
+        document.getElementById('discPercent').value = discPct.toFixed(2);
+
+        // Rebuild item rows
+        document.getElementById('itemsBody').innerHTML = '';
+        rowCounter = 0;
+        (inv.items || []).forEach(it => {
+            addNewRow();
+            const row = document.querySelector('#itemsBody tr:last-child');
+            const avail = parseFloat(it.availStock) || 0;
+            row.cells[1].querySelector('input').value = it.itemId;
+            row.cells[2].querySelector('input').value = it.descr || '';
+            row.cells[3].querySelector('input').value = avail;
+            const qtyInput = row.cells[4].querySelector('input');
+            qtyInput.value = it.quantity;
+            qtyInput.max   = avail;
+            row.cells[5].querySelector('input').value = parseFloat(it.salePrice || 0).toFixed(2);
+            row.cells[6].querySelector('input').value = it.discPer || 0;
+            calculateRowTotal(row);
+        });
+        if ((inv.items || []).length === 0) addNewRow();
+
+        calculateTotals();
+    } catch (e) {
+        console.error(e);
+        alert('Error loading invoice for edit.');
+        window.location.href = '/Sale/List';
+    }
+}
 
 // ── Row management ──────────────────────────────────────────────────────────
 document.getElementById('addRowBtn').addEventListener('click', addNewRow);
@@ -154,6 +215,9 @@ function loadNextInvoiceNumber() {
 
 // ── Reset form ──────────────────────────────────────────────────────────────
 function resetForm() {
+    editId = null;
+    const header = document.querySelector('.page-header h2');
+    if (header) header.textContent = '🛒 Sale Invoice';
     document.getElementById('refNo').value           = '';
     document.getElementById('invoiceDate').value     = new Date().toISOString().split('T')[0];
     document.getElementById('customerAccount').value = '';
@@ -239,6 +303,7 @@ document.getElementById('saleForm').addEventListener('submit', function (e) {
     });
 
     const payload = {
+        SaleId:      editId,
         SaleDate:    document.getElementById('invoiceDate').value,
         CustomerID:  customerId,
         BranchID:    1,
@@ -255,7 +320,8 @@ document.getElementById('saleForm').addEventListener('submit', function (e) {
         Items:       items
     };
 
-    fetch('/Sale/Save', {
+    const url = editId ? '/Sale/Update' : '/Sale/Save';
+    fetch(url, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload)
@@ -264,7 +330,11 @@ document.getElementById('saleForm').addEventListener('submit', function (e) {
         .then(data => {
             if (data.success) {
                 alert('✅ ' + data.message);
-                resetForm();
+                if (editId) {
+                    window.location.href = '/Sale/List';
+                } else {
+                    resetForm();
+                }
             } else {
                 alert('❌ ' + (data.message || 'Unknown error'));
             }

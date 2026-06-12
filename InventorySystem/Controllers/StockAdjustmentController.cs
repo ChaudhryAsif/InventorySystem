@@ -167,27 +167,11 @@ namespace InventorySystem.Controllers
                         Reason = detail.Reason
                     });
 
-                    // Update stock only if status is "Posted"
+                    // Apply to stock only when saved directly as "Posted".
+                    // Post() guards against re-posting, so stock is touched exactly once.
                     if (model.Status == "Posted")
                     {
-                        var stock = await _context.Stock
-                            .FirstOrDefaultAsync(s => s.ItemId == detail.ItemId);
-
-                        if (stock == null)
-                        {
-                            _context.Stock.Add(new Stock
-                            {
-                                ItemId = detail.ItemId,
-                                BranchId = model.BranchId,
-                                Quantity = detail.Quantity,
-                                LastUpdated = DateTime.Now
-                            });
-                        }
-                        else
-                        {
-                            stock.Quantity += detail.Quantity;
-                            stock.LastUpdated = DateTime.Now;
-                        }
+                        await ApplyDetailToStockAsync(detail.ItemId, model.BranchId, detail.Quantity);
                     }
                 }
 
@@ -257,33 +241,44 @@ namespace InventorySystem.Controllers
             if (adjustment.Status == "Posted")
                 return BadRequest("Adjustment already posted.");
 
-            // Update stock for each detail
+            // Update stock for each detail (single source of truth)
             foreach (var detail in adjustment.Details!)
             {
-                var stock = await _context.Stock
-                    .FirstOrDefaultAsync(s => s.ItemId == detail.ItemId);
-
-                if (stock == null)
-                {
-                    _context.Stock.Add(new Stock
-                    {
-                        ItemId = detail.ItemId,
-                        BranchId = adjustment.BranchId,
-                        Quantity = detail.Quantity,
-                        LastUpdated = DateTime.Now
-                    });
-                }
-                else
-                {
-                    stock.Quantity += detail.Quantity;
-                    stock.LastUpdated = DateTime.Now;
-                }
+                await ApplyDetailToStockAsync(detail.ItemId, adjustment.BranchId, detail.Quantity);
             }
 
             adjustment.Status = "Posted";
             await _context.SaveChangesAsync();
 
             return Json(new { success = true, message = "Adjustment posted successfully." });
+        }
+
+        /// <summary>
+        /// Single source of truth for applying one adjustment line to stock.
+        /// Used by both Save (when saved directly as "Posted") and Post.
+        /// Because Post() rejects an already-"Posted" adjustment, each adjustment
+        /// can only ever affect stock once — eliminating the double-count bug.
+        /// </summary>
+        private async Task ApplyDetailToStockAsync(long itemId, int branchId, decimal quantity)
+        {
+            var stock = await _context.Stock
+                .FirstOrDefaultAsync(s => s.ItemId == itemId && s.BranchId == branchId);
+
+            if (stock == null)
+            {
+                _context.Stock.Add(new Stock
+                {
+                    ItemId = itemId,
+                    BranchId = branchId,
+                    Quantity = quantity,
+                    LastUpdated = DateTime.Now
+                });
+            }
+            else
+            {
+                stock.Quantity += quantity;
+                stock.LastUpdated = DateTime.Now;
+            }
         }
 
         [HttpDelete]

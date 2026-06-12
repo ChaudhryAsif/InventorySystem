@@ -95,15 +95,21 @@ namespace InventorySystem.Controllers
 
         [AllowAnonymous]
         [HttpGet("/WhatsApp/Webhook")]
-        public IActionResult MetaWebhookVerify()
+        public async Task<IActionResult> MetaWebhookVerify()
         {
-            // Use .Value to get the clean string value
             var hubMode = Request.Query["hub.mode"].ToString();
             var hubChallenge = Request.Query["hub.challenge"].ToString();
             var hubVerifyToken = Request.Query["hub.verify_token"].ToString();
 
-            // Verify token matches your dashboard: "AsifPOS@2026"
-            if (hubMode == "subscribe" && hubVerifyToken == "AsifPOS@2026")
+            // Verify against the token configured on the active channel (not hard-coded).
+            var expectedToken = await _db.WhatsAppChannels
+                .Where(c => c.IsActive && c.WebhookVerifyToken != "")
+                .Select(c => c.WebhookVerifyToken)
+                .FirstOrDefaultAsync();
+
+            if (hubMode == "subscribe"
+                && !string.IsNullOrEmpty(expectedToken)
+                && hubVerifyToken == expectedToken)
             {
                 // Return as plain text WITHOUT quotes
                 return Content(hubChallenge, "text/plain");

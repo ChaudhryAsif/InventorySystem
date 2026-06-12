@@ -2,6 +2,7 @@ namespace InventorySystem.Models
 {
     public class SaleInvoiceViewModel
     {
+        public int? SaleId { get; set; }   // null/0 = new invoice, > 0 = edit
         public DateTime? SaleDate { get; set; }
         public string? CustomerID { get; set; }
         public int? BranchID { get; set; }

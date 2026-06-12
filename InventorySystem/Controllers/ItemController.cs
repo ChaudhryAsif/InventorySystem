@@ -41,7 +41,13 @@ namespace InventorySystem.Controllers
                             .FirstOrDefault() ?? "",
                         barcode = "",
                         salePrice = i.SalePrice ?? 0,
-                        purchasePrice = i.SalePrice ?? 0,
+                        // Actual last-purchase cost for this item (not the sale price).
+                        // Falls back to 0 when the item has never been purchased.
+                        purchasePrice = _context.PurchaseInvoiceBody
+                            .Where(b => b.Itemid == i.ItemID)
+                            .OrderByDescending(b => b.Srno)
+                            .Select(b => b.PurPrice)
+                            .FirstOrDefault() ?? 0,
                         imageUrl = i.ImagePath,
                         currentStock = _context.Stock
                             .Where(s => s.ItemId == i.ItemID && s.BranchId == branchId)
