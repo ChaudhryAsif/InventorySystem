@@ -1,4 +1,5 @@
 using InventorySystem.Core.Models;
+using InventorySystem.Core.Services;
 using InventorySystem.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,10 +11,12 @@ namespace InventorySystem.Controllers
     public class StockAdjustmentController : Controller
     {
         private readonly ApplicationDbContext _context;
+        private readonly IStockService _stock;
 
-        public StockAdjustmentController(ApplicationDbContext context)
+        public StockAdjustmentController(ApplicationDbContext context, IStockService stock)
         {
             _context = context;
+            _stock = stock;
         }
 
         [HttpGet]
@@ -155,6 +158,8 @@ namespace InventorySystem.Controllers
                     if (detail.ItemId <= 0 || detail.Quantity <= 0)
                         continue;
 
+                    var direction = detail.Direction == "Decrease" ? "Decrease" : "Increase";
+
                     // Add detail record
                     _context.StockAdjustmentDetail.Add(new StockAdjustmentDetail
                     {
@@ -162,6 +167,7 @@ namespace InventorySystem.Controllers
                         ItemId = detail.ItemId,
                         Description = detail.Description,
                         Quantity = detail.Quantity,
+                        Direction = direction,
                         UnitCost = detail.UnitCost,
                         TotalCost = detail.Quantity * (detail.UnitCost ?? 0),
                         Reason = detail.Reason
@@ -171,7 +177,7 @@ namespace InventorySystem.Controllers
                     // Post() guards against re-posting, so stock is touched exactly once.
                     if (model.Status == "Posted")
                     {
-                        await ApplyDetailToStockAsync(detail.ItemId, model.BranchId, detail.Quantity);
+                        await ApplyDetailToStockAsync(detail.ItemId, model.BranchId, detail.Quantity, direction);
                     }
                 }
 
@@ -221,6 +227,7 @@ namespace InventorySystem.Controllers
                     ItemName = d.Item!.ItemName,
                     d.Description,
                     d.Quantity,
+                    d.Direction,
                     d.UnitCost,
                     d.TotalCost,
                     d.Reason
@@ -244,7 +251,7 @@ namespace InventorySystem.Controllers
             // Update stock for each detail (single source of truth)
             foreach (var detail in adjustment.Details!)
             {
-                await ApplyDetailToStockAsync(detail.ItemId, adjustment.BranchId, detail.Quantity);
+                await ApplyDetailToStockAsync(detail.ItemId, adjustment.BranchId, detail.Quantity, detail.Direction);
             }
 
             adjustment.Status = "Posted";
@@ -259,26 +266,11 @@ namespace InventorySystem.Controllers
         /// Because Post() rejects an already-"Posted" adjustment, each adjustment
         /// can only ever affect stock once — eliminating the double-count bug.
         /// </summary>
-        private async Task ApplyDetailToStockAsync(long itemId, int branchId, decimal quantity)
+        private async Task ApplyDetailToStockAsync(long itemId, int branchId, decimal quantity, string? direction)
         {
-            var stock = await _context.Stock
-                .FirstOrDefaultAsync(s => s.ItemId == itemId && s.BranchId == branchId);
+            var signedQty = direction == "Decrease" ? -quantity : quantity;
 
-            if (stock == null)
-            {
-                _context.Stock.Add(new Stock
-                {
-                    ItemId = itemId,
-                    BranchId = branchId,
-                    Quantity = quantity,
-                    LastUpdated = DateTime.Now
-                });
-            }
-            else
-            {
-                stock.Quantity += quantity;
-                stock.LastUpdated = DateTime.Now;
-            }
+            await _stock.AdjustAsync(itemId, branchId, signedQty);
         }
 
         [HttpDelete]
@@ -316,6 +308,7 @@ namespace InventorySystem.Controllers
         public long ItemId { get; set; }
         public string? Description { get; set; }
         public decimal Quantity { get; set; }
+        public string? Direction { get; set; } = "Increase";
         public decimal? UnitCost { get; set; }
         public string? Reason { get; set; }
     }

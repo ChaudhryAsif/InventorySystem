@@ -26,11 +26,14 @@ namespace InventorySystem.Controllers
         /// Used by Purchase & Sale pages — includes live stock quantity.
         /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetItems(int branchId = 1)
+        public async Task<IActionResult> GetItems(int branchId = 1, int page = 1, int pageSize = 200)
         {
             try
             {
+                var totalCount = await _context.Items.CountAsync();
+
                 var items = await _context.Items
+                    .Skip((page - 1) * pageSize).Take(pageSize)
                     .Select(i => new
                     {
                         itemID = i.ItemID,
@@ -56,7 +59,7 @@ namespace InventorySystem.Controllers
                     })
                     .ToListAsync();
 
-                return Json(new { success = true, items });
+                return Json(new { success = true, items, totalCount, page, pageSize });
             }
             catch (Exception ex)
             {
@@ -65,11 +68,14 @@ namespace InventorySystem.Controllers
         }
 
         [HttpGet]
-        public async Task<JsonResult> GetList()
+        public async Task<JsonResult> GetList(int page = 1, int pageSize = 50)
         {
             try
             {
+                var totalCount = await _context.Items.CountAsync();
+
                 var items = await _context.Items
+                    .Skip((page - 1) * pageSize).Take(pageSize)
                     .Select(i => new
                     {
                         ItemID = i.ItemID,
@@ -92,7 +98,7 @@ namespace InventorySystem.Controllers
                     })
                     .ToListAsync();
 
-                return Json(items);
+                return Json(new { data = items, totalCount, page, pageSize });
             }
             catch (Exception ex)
             {

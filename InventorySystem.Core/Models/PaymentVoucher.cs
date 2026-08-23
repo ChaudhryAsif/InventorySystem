@@ -31,6 +31,8 @@ namespace InventorySystem.Core.Models
 
         public int? PurchaseId { get; set; }       // Optional: against a purchase invoice
         public int? SaleId { get; set; }           // Optional: against a sale invoice
+        public int? PurchaseReturnId { get; set; } // Optional: against a purchase return
+        public int? SaleReturnId { get; set; }     // Optional: against a sale return
 
         public int? BranchId { get; set; }
 

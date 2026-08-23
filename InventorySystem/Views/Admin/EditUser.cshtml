@@ -107,28 +107,28 @@
 @section Scripts {
     <script>
         // Form validation before submit
-        document.getElementById('editUserForm').addEventListener('submit', function (e) {
+        document.getElementById('editUserForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
             const fullName = document.getElementById('FullName').value.trim();
 
             if (!fullName) {
-                e.preventDefault();
-                alert('Full name is required!');
+                await alertDialog('Full name is required!', { type: 'warning' });
                 document.getElementById('FullName').focus();
-                return false;
+                return;
             }
 
             // Optional: Check if at least one role is selected
             const rolesChecked = document.querySelectorAll('input[name="selectedRoles"]:checked').length;
             if (rolesChecked === 0) {
-                const confirmed = confirm('No roles selected. Continue without assigning roles?');
+                const confirmed = await confirmDialog('No roles selected. Continue without assigning roles?');
                 if (!confirmed) {
-                    e.preventDefault();
-                    return false;
+                    return;
                 }
             }
 
             document.getElementById('submitBtn').disabled = true;
             document.getElementById('submitBtn').textContent = '⏳ Saving...';
+            this.submit();
         });
 
         // Real-time role change feedback

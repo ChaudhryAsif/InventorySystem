@@ -2,6 +2,7 @@ namespace InventorySystem.Models
 {
     public class PurchaseReturnViewModel
     {
+        public int? PurchaseReturnId { get; set; }   // null/0 = new return, > 0 = edit
         public DateTime? ReturnDate { get; set; }
         public string? VendorID { get; set; }
         public int? OriginalPurchaseId { get; set; }

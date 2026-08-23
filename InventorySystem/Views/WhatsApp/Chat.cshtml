@@ -30,7 +30,7 @@
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="threadId" value="@Model.Id" />
                     <button type="submit" class="btn btn-sm btn-outline-secondary ms-2"
-                            onclick="return confirm('Mark this conversation as closed?')">
+                            onclick="return confirmCloseChat(event, this)">
                         ✔️ Close Chat
                     </button>
                 </form>
@@ -145,6 +145,15 @@
 
 @section Scripts {
     <script>
+        // Async confirm gate for the inline "Close Chat" submit button
+        async function confirmCloseChat(e, btn) {
+            e.preventDefault();
+            if (await confirmDialog('Mark this conversation as closed?', { danger: true })) {
+                btn.closest('form').submit();
+            }
+            return false;
+        }
+
         // Scroll to bottom on load
         const chatWindow = document.getElementById('chatWindow');
         chatWindow.scrollTop = chatWindow.scrollHeight;

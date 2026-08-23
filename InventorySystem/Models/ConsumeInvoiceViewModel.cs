@@ -2,6 +2,7 @@
 {
     public class ConsumeInvoiceViewModel
     {
+        public int? ConsumeId { get; set; }   // null/0 = new voucher, > 0 = edit
         public DateTime? ConsumeDate { get; set; }
         public int? BranchID { get; set; }
         public string? RefNo { get; set; }

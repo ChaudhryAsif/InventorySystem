@@ -216,9 +216,9 @@
             for (let i = 0; i < 32; i++) t += chars[Math.floor(Math.random() * chars.length)];
             document.getElementById('verifyTokenInput').value = t;
         }
-        function copyWebhookUrl() {
+        async function copyWebhookUrl() {
             navigator.clipboard.writeText(document.getElementById('webhookUrlDisplay').value)
-                .then(() => alert('Webhook URL copied!'));
+                .then(async () => await alertDialog('Webhook URL copied!'));
         }
         @if (Model.Id > 0)
         {
@@ -232,9 +232,9 @@
                         body: `channelId=@Model.Id&webhookBaseUrl=${encodeURIComponent(window.location.origin)}`
                     });
                     const data = await res.json();
-                    alert(data.message);
+                    await alertDialog(data.message);
                     if (data.success) location.reload();
-                } catch(e) { alert('Error: ' + e.message); }
+                } catch(e) { await alertDialog('Error: ' + e.message, { type: 'error' }); }
                 finally { btn.disabled = false; btn.textContent = '🔗 Register via API'; }
             });
             </text>

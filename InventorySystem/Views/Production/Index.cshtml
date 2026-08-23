@@ -25,6 +25,8 @@
     .btn-complete  { background:#7c3aed; color:#fff; border:none; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; cursor:pointer; }
     .btn-cancel    { background:#ef4444; color:#fff; border:none; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; cursor:pointer; }
     .btn-delete    { background:#6b7280; color:#fff; border:none; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .btn-edit      { background:#f59e0b; color:#fff; border:none; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .btn-print     { background:#0f172a; color:#fff; border:none; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; cursor:pointer; }
     .summary-cards { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.5rem; }
     .summary-card  { background:#fff; border-radius:10px; padding:1rem 1.2rem; box-shadow:0 2px 8px rgba(0,0,0,.07); }
     .summary-card .val { font-size:1.6rem; font-weight:700; color:#1e3a5f; }
@@ -116,6 +118,17 @@
                                     onclick="location.href='/Production/Materials/@orderId'">
                                 📋 Materials
                             </button>
+                            <button class="btn-print"
+                                    onclick="location.href='/Production/Print/@orderId'">
+                                🖨 Print
+                            </button>
+                            @if (status == "Pending")
+                            {
+                                <button class="btn-edit"
+                                        onclick="location.href='/Production/Edit/@orderId'">
+                                    ✏️ Edit
+                                </button>
+                            }
                             @if (status == "Pending" || status == "InProduction")
                             {
                                 <button class="btn-consume"
@@ -153,22 +166,22 @@
 </div>
 
 <script>
-function completeOrder(id) {
-    if (!confirm('Mark this production order as Completed?')) return;
+async function completeOrder(id) {
+    if (!(await confirmDialog('Mark this production order as Completed?'))) return;
     fetch(`/Production/Complete/${id}`, { method: 'POST' })
         .then(r => r.json())
-        .then(d => { if (d.success) location.reload(); else alert(d.message); });
+        .then(async d => { if (d.success) location.reload(); else await alertDialog(d.message); });
 }
-function cancelOrder(id) {
-    if (!confirm('Cancel this production order?')) return;
+async function cancelOrder(id) {
+    if (!(await confirmDialog('Cancel this production order?', { danger: true }))) return;
     fetch(`/Production/Cancel/${id}`, { method: 'POST' })
         .then(r => r.json())
-        .then(d => { if (d.success) location.reload(); else alert(d.message); });
+        .then(async d => { if (d.success) location.reload(); else await alertDialog(d.message); });
 }
-function deleteOrder(id) {
-    if (!confirm('Permanently delete this order?')) return;
+async function deleteOrder(id) {
+    if (!(await confirmDialog('Permanently delete this order?', { danger: true }))) return;
     fetch(`/Production/Delete/${id}`, { method: 'POST' })
         .then(r => r.json())
-        .then(d => { if (d.success) location.reload(); else alert(d.message); });
+        .then(async d => { if (d.success) location.reload(); else await alertDialog(d.message); });
 }
 </script>

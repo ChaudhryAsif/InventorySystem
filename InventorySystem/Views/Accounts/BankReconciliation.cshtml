@@ -102,11 +102,11 @@
         const accountId = document.getElementById('bankAccount').value;
         const from      = document.getElementById('from').value;
         const to        = document.getElementById('to').value;
-        if (!accountId) { alert('Please select a bank account.'); return; }
+        if (!accountId) { await alertDialog('Please select a bank account.', { type: 'warning' }); return; }
 
         const res  = await fetch(`/Accounts/GetBankRecon?accountHeadId=${accountId}&from=${from}&to=${to}`);
         const json = await res.json();
-        if (!json.success) { alert('Failed to load reconciliation data.'); return; }
+        if (!json.success) { await alertDialog('Failed to load reconciliation data.', { type: 'error' }); return; }
 
         const d = json.data;
         document.getElementById('summaryCards').style.display = '';
@@ -150,7 +150,7 @@
         if (json.success) {
             loadRecon(); // refresh balances
         } else {
-            alert('❌ ' + json.message);
+            await alertDialog('❌ ' + json.message);
         }
     }
 

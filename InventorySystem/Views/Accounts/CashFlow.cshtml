@@ -212,11 +212,11 @@
         async function loadReport() {
             const from = document.getElementById('fromDate').value;
             const to   = document.getElementById('toDate').value;
-            if (!from || !to) { alert('Please select both dates.'); return; }
+            if (!from || !to) { await alertDialog('Please select both dates.'); return; }
 
             const res  = await fetch(`/Accounts/GetCashFlow?from=${from}&to=${to}`);
             const json = await res.json();
-            if (!json.success) { alert('Failed to load cash flow.'); return; }
+            if (!json.success) { await alertDialog('Failed to load cash flow.'); return; }
 
             const d = json.data;
             document.getElementById('reportSection').style.display = '';

@@ -169,7 +169,7 @@
                             <input type="hidden" name="threadId" value="@activeThread.Id" />
                             <input type="hidden" name="status"   value="@currentStatus" />
                             <button type="submit" class="btn-wa-outline"
-                                    onclick="return confirm('Close this conversation?')">✔️ Close</button>
+                                    onclick="return confirmCloseChat(event, this)">✔️ Close</button>
                         </form> *@
                     }
 

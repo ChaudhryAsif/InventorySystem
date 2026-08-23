@@ -134,20 +134,20 @@
 @section Scripts {
     <script>
         // Form validation
-        document.getElementById('createUserForm').addEventListener('submit', function (e) {
+        document.getElementById('createUserForm').addEventListener('submit', async function (e) {
             const password = document.getElementById('password').value;
             const confirmPassword = document.getElementById('confirmPassword').value;
 
             if (password !== confirmPassword) {
                 e.preventDefault();
-                alert('Passwords do not match!');
+                await alertDialog('Passwords do not match!');
                 document.getElementById('confirmPassword').focus();
                 return false;
             }
 
             if (password.length < 6) {
                 e.preventDefault();
-                alert('Password must be at least 6 characters long!');
+                await alertDialog('Password must be at least 6 characters long!');
                 return false;
             }
 
@@ -155,7 +155,7 @@
             const rolesChecked = document.querySelectorAll('input[name="selectedRoles"]:checked').length;
             if (rolesChecked === 0) {
                 e.preventDefault();
-                alert('Please select at least one role for the user!');
+                await alertDialog('Please select at least one role for the user!');
                 return false;
             }
 

@@ -71,6 +71,7 @@
                     </td>
                     <td>
                         <a href="/CostSheet/Edit/@s.CostSheetId" class="btn-sm btn-edit">✏️ Edit</a>
+                        <a href="/CostSheet/Print/@s.CostSheetId" class="btn-sm" style="background:#0f172a;color:#fff;">🖨 Print</a>
                         <button class="btn-sm btn-delete" onclick="deleteSheet(@s.CostSheetId)">🗑️ Delete</button>
                         @if (s.Status == "Final")
                         {
@@ -96,11 +97,11 @@
 </table>
 
 <script>
-function deleteSheet(id) {
-    if (!confirm('Delete this cost sheet? This cannot be undone.')) return;
+async function deleteSheet(id) {
+    if (!(await confirmDialog('Delete this cost sheet? This cannot be undone.', { danger: true }))) return;
     fetch(`/CostSheet/Delete/${id}`, { method: 'POST' })
         .then(r => r.json())
-        .then(d => { if (d.success) location.reload(); else alert('❌ Could not delete.'); })
-        .catch(() => alert('❌ Error deleting cost sheet.'));
+        .then(async d => { if (d.success) location.reload(); else await alertDialog('❌ Could not delete.'); })
+        .catch(async () => await alertDialog('❌ Error deleting cost sheet.'));
 }
 </script>

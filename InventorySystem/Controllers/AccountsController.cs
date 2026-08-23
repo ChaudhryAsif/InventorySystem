@@ -76,13 +76,18 @@ namespace InventorySystem.Controllers
         [HttpGet] public IActionResult VoucherList() => View();
 
         [HttpGet]
-        public async Task<IActionResult> GetVouchers(string? type, DateTime? from, DateTime? to)
+        public async Task<IActionResult> GetVouchers(string? type, DateTime? from, DateTime? to, int page = 1, int pageSize = 200)
         {
             var list = await _accounts.GetVouchersAsync(type, from, to);
+            var totalCount = list.Count;
+            var paged = list.Skip((page - 1) * pageSize).Take(pageSize);
             return Json(new
             {
                 success = true,
-                data = list.Select(v => new {
+                totalCount,
+                page,
+                pageSize,
+                data = paged.Select(v => new {
                     v.VoucherId,
                     v.VoucherNo,
                     v.VoucherType,
@@ -120,6 +125,20 @@ namespace InventorySystem.Controllers
             return Json(new { result.success, result.message });
         }
 
+        [HttpPost]
+        public async Task<IActionResult> ApproveVoucher([FromBody] int id)
+        {
+            var result = await _accounts.ApproveVoucherAsync(id);
+            return Json(new { result.success, result.message });
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> PostVoucher([FromBody] int id)
+        {
+            var result = await _accounts.PostVoucherAsync(id);
+            return Json(new { result.success, result.message });
+        }
+
         [HttpGet]
         public async Task<IActionResult> GetNextVoucherNo(string type, DateTime? date = null)
         {
@@ -135,10 +154,11 @@ namespace InventorySystem.Controllers
         [HttpGet] public IActionResult PartyLedger() => View();
 
         [HttpGet]
-        public async Task<IActionResult> GetGeneralLedger(int accountHeadId, DateTime? from, DateTime? to)
+        public async Task<IActionResult> GetGeneralLedger(int accountHeadId, DateTime? from, DateTime? to, int page = 1, int pageSize = 200)
         {
             var entries = await _accounts.GetAccountLedgerAsync(accountHeadId, from, to);
             decimal running = 0;
+            // Running balance is computed over the FULL set first (order matters), then the page is sliced off.
             var rows = entries.Select(e => {
                 running += e.Debit - e.Credit;
                 return new
@@ -152,11 +172,18 @@ namespace InventorySystem.Controllers
                     e.Credit,
                     balance = running
                 };
-            });
+            }).ToList();
+
+            var totalCount = rows.Count;
+            var pagedRows = rows.Skip((page - 1) * pageSize).Take(pageSize);
+
             return Json(new
             {
                 success = true,
-                data = rows,
+                totalCount,
+                page,
+                pageSize,
+                data = pagedRows,
                 summary = new { totalDebit = entries.Sum(e => e.Debit), totalCredit = entries.Sum(e => e.Credit), closing = running }
             });
         }

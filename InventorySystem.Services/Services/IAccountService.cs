@@ -14,6 +14,8 @@ namespace InventorySystem.Core.Services
         Task<List<Voucher>> GetVouchersAsync(string? type, DateTime? from, DateTime? to);
         Task<Voucher?> GetVoucherAsync(int id);
         Task<(bool success, string message, int? voucherId)> SaveVoucherAsync(Voucher voucher);
+        Task<(bool success, string message)> ApproveVoucherAsync(int voucherId);
+        Task<(bool success, string message)> PostVoucherAsync(int voucherId);
         Task<(bool success, string message)> VoidVoucherAsync(int voucherId);
 
         // Ledger

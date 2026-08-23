@@ -1,4 +1,5 @@
 using InventorySystem.Authorization;
+using InventorySystem.Core.Options;
 using InventorySystem.Core.Services;
 using InventorySystem.Data;
 using InventorySystem.Services.Services;
@@ -12,6 +13,8 @@ builder.Services.AddControllersWithViews();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.Configure<AccountingOptions>(builder.Configuration.GetSection("Accounting"));
 
 // ── Cookie authentication ────────────────────────────────────────────────────
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -43,6 +46,8 @@ builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IMenuService, MenuService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
+builder.Services.AddScoped<ILedgerPostingService, LedgerPostingService>();
+builder.Services.AddScoped<IStockService, StockService>();
 
 // ── WhatsApp Chatbot Services ──────────────────────────────────────────────────
 builder.Services.AddHttpClient("MetaClient");

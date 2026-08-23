@@ -333,13 +333,14 @@ async function viewDetails(id) {
         let totalCost = 0;
 
         // Build details table
-        const detailsHtml = details.length === 0 ? 
-            '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #6b7280;">No items found</td></tr>' :
+        const detailsHtml = details.length === 0 ?
+            '<tr><td colspan="9" style="text-align: center; padding: 2rem; color: #6b7280;">No items found</td></tr>' :
             details.map((item, index) => {
                 const itemId = item.ItemId || item.itemId;
                 const itemName = item.ItemName || item.itemName || 'N/A';
                 const description = item.Description || item.description || '-';
                 const quantity = item.Quantity || item.quantity || 0;
+                const direction = item.Direction || item.direction || 'Increase';
                 const unitCost = item.UnitCost || item.unitCost || 0;
                 const itemTotalCost = item.TotalCost || item.totalCost || (quantity * unitCost);
                 const reason = item.Reason || item.reason || '-';
@@ -347,12 +348,16 @@ async function viewDetails(id) {
                 totalQuantity += quantity;
                 totalCost += itemTotalCost;
 
+                const directionColor = direction === 'Decrease' ? '#dc2626' : '#059669';
+                const directionArrow = direction === 'Decrease' ? '▼' : '▲';
+
                 return `
                     <tr>
                         <td>${index + 1}</td>
                         <td>${itemId}</td>
                         <td><strong>${itemName}</strong></td>
                         <td>${description}</td>
+                        <td style="text-align: center; font-weight: 600; color: ${directionColor};">${directionArrow} ${direction}</td>
                         <td style="text-align: right; font-weight: 600;">${quantity.toFixed(2)}</td>
                         <td style="text-align: right;"> ${unitCost.toFixed(2)}</td>
                         <td style="text-align: right; font-weight: 600; color: #059669;"> ${itemTotalCost.toFixed(2)}</td>
@@ -394,6 +399,7 @@ async function viewDetails(id) {
                         <th>Item ID</th>
                         <th>Item Name</th>
                         <th>Description</th>
+                        <th style="text-align: center;">Direction</th>
                         <th style="text-align: right;">Quantity</th>
                         <th style="text-align: right;">Unit Cost</th>
                         <th style="text-align: right;">Total Cost</th>
@@ -438,30 +444,30 @@ function closeDetailsModal(event) {
 }
 
 async function postAdjustment(id) {
-    if (!confirm('Post this adjustment to stock?')) return;
+    if (!(await confirmDialog('Post this adjustment to stock?'))) return;
 
     try {
         const response = await fetch(`/StockAdjustment/Post/${id}`, { method: 'POST' });
         const result = await response.json();
-        alert(result.message);
+        await alertDialog(result.message);
         if (result.success) loadAdjustments();
     } catch (error) {
         console.error('Error posting adjustment:', error);
-        alert('Error posting adjustment');
+        await alertDialog('Error posting adjustment', { type: 'error' });
     }
 }
 
 async function deleteAdjustment(id) {
-    if (!confirm('Delete this adjustment?')) return;
+    if (!(await confirmDialog('Delete this adjustment?', { danger: true }))) return;
 
     try {
         const response = await fetch(`/StockAdjustment/Delete/${id}`, { method: 'DELETE' });
         const result = await response.json();
-        alert(result.message);
+        await alertDialog(result.message);
         if (result.success) loadAdjustments();
     } catch (error) {
         console.error('Error deleting adjustment:', error);
-        alert('Error deleting adjustment');
+        await alertDialog('Error deleting adjustment', { type: 'error' });
     }
 }
 

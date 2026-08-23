@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace InventorySystem.Core.Services
 {
@@ -13,11 +14,13 @@ namespace InventorySystem.Core.Services
     public class WhatsAppService : IWhatsAppService
     {
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly ILogger<WhatsAppService> _logger;
         private const string GraphApiBase = "https://graph.facebook.com/v19.0";
 
-        public WhatsAppService(IHttpClientFactory httpClientFactory)
+        public WhatsAppService(IHttpClientFactory httpClientFactory, ILogger<WhatsAppService> logger)
         {
             _httpClientFactory = httpClientFactory;
+            _logger = logger;
         }
 
         // Send a plain text message to a customer.
@@ -143,7 +146,7 @@ namespace InventorySystem.Core.Services
                     $"{GraphApiBase}/{phoneNumberId}/media", multipart);
                 var responseBody = await response.Content.ReadAsStringAsync();
 
-                Console.WriteLine($"WhatsApp upload [{response.StatusCode}]: {responseBody}");
+                _logger.LogInformation("WhatsApp upload [{StatusCode}]: {ResponseBody}", response.StatusCode, responseBody);
 
                 if (!response.IsSuccessStatusCode) return null;
 
@@ -152,7 +155,7 @@ namespace InventorySystem.Core.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"WhatsApp upload exception: {ex.Message}");
+                _logger.LogError(ex, "WhatsApp upload exception");
                 return null;
             }
         }

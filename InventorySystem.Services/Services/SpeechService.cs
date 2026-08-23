@@ -1,5 +1,6 @@
 ﻿using InventorySystem.Services.Services;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
 
 namespace InventorySystem.Core.Services
@@ -12,6 +13,7 @@ namespace InventorySystem.Core.Services
     {
         private readonly string _groqApiKey;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly ILogger<SpeechService> _logger;
 
         // Google Translate TTS hard-caps each call at ~200 chars. Leave a little headroom.
         private const int TtsChunkSize = 190;
@@ -21,11 +23,12 @@ namespace InventorySystem.Core.Services
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-        public SpeechService(IConfiguration config, IHttpClientFactory httpClientFactory)
+        public SpeechService(IConfiguration config, IHttpClientFactory httpClientFactory, ILogger<SpeechService> logger)
         {
             _groqApiKey = config["Groq:ApiKey"]
                 ?? throw new Exception("Groq API Key missing in appsettings.json");
             _httpClientFactory = httpClientFactory;
+            _logger = logger;
         }
 
         // Transcribe a WhatsApp voice note (OGG/Opus) to text using Groq Whisper.
@@ -60,7 +63,7 @@ namespace InventorySystem.Core.Services
                 if (!response.IsSuccessStatusCode)
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"Groq Whisper error: {error}");
+                    _logger.LogError("Groq Whisper error: {Error}", error);
                     return "";
                 }
 
@@ -69,7 +72,7 @@ namespace InventorySystem.Core.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Groq Whisper exception: {ex.Message}");
+                _logger.LogError(ex, "Groq Whisper exception");
                 return "";
             }
         }
@@ -84,7 +87,7 @@ namespace InventorySystem.Core.Services
             {
                 if (string.IsNullOrWhiteSpace(text)) return null;
 
-                Console.WriteLine($"Google TTS [en]: {text[..Math.Min(80, text.Length)]}...");
+                _logger.LogInformation("Google TTS [en]: {TextPreview}...", text[..Math.Min(80, text.Length)]);
 
                 var chunks = SplitIntoChunks(text, TtsChunkSize);
                 var allAudio = new List<byte>();
@@ -101,7 +104,7 @@ namespace InventorySystem.Core.Services
                     var response = await client.GetAsync(url);
                     if (!response.IsSuccessStatusCode)
                     {
-                        Console.WriteLine($"Google TTS error: {response.StatusCode}");
+                        _logger.LogError("Google TTS error: {StatusCode}", response.StatusCode);
                         return null;
                     }
 
@@ -109,12 +112,12 @@ namespace InventorySystem.Core.Services
                 }
 
                 var audioBytes = allAudio.ToArray();
-                Console.WriteLine($"Google TTS success: {audioBytes.Length} bytes");
+                _logger.LogInformation("Google TTS success: {ByteCount} bytes", audioBytes.Length);
                 return audioBytes.Length > 0 ? audioBytes : null;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Google TTS exception: {ex.Message}");
+                _logger.LogError(ex, "Google TTS exception");
                 return null;
             }
         }

@@ -1,16 +1,89 @@
-﻿let rowCounter = 0;
+// ── Purchase Invoice column map ─────────────────────────────────────────────
+//  cells[0]  #
+//  cells[1]  Item ID input + 🔍 lookup button
+//  cells[2]  Item Name (readonly)
+//  cells[3]  Quantity                              data-field="qty"
+//  cells[4]  Pur. Price                             data-field="price"
+//  cells[5]  Sale Rate
+//  cells[6]  Disc %                                data-field="disc"
+//  cells[7]  Disc Amt (readonly, calculated)
+//  cells[8]  Total    (readonly, calculated)
+//  cells[9]  Remove button
+// ───────────────────────────────────────────────────────────────────────────
+
+// Self-contained placeholder — via.placeholder.com is no longer online, so items
+// without a real photo must fall back to something that doesn't depend on the network.
+const NO_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23e2e8f0'/%3E%3Ccircle cx='38' cy='36' r='8' fill='%23ffffff'/%3E%3Cpath d='M20 78 L42 50 L58 68 L72 48 L90 78 Z' fill='%23ffffff'/%3E%3C/svg%3E";
+
+let rowCounter = 0;
 let selectedSupplier = null;
 let allSuppliers = [];
 let selectedItem = null;
 let allItems = [];
 let currentRow = null;
+let editId = null;   // set when editing an existing invoice (?id=)
 
-
-// Add first row on page load
+// ── Init ────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', function () {
-    addNewRow();
-    loadNextInvoiceNumber();
+    const id = new URLSearchParams(window.location.search).get('id');
+    if (id) {
+        editId = parseInt(id);
+        loadInvoiceForEdit(editId);
+    } else {
+        addNewRow();
+        loadNextInvoiceNumber();
+    }
 });
+
+// ── Load an existing invoice into the form (edit mode) ───────────────────────
+async function loadInvoiceForEdit(id) {
+    try {
+        const res = await fetch('/Purchase/GetPurchaseById?id=' + id);
+        if (!res.ok) { await alertDialog('Invoice not found.'); window.location.href = '/Purchase/List'; return; }
+        const inv = await res.json();
+
+        const header = document.querySelector('.page-header h2');
+        if (header) header.textContent = '✏️ Edit Purchase Invoice #' + inv.purchaseId;
+
+        document.getElementById('invoiceNo').value = inv.purchaseId;
+        document.getElementById('billNo').value     = inv.billNo || '';
+        if (inv.purchaseDate) document.getElementById('invoiceDate').value = inv.purchaseDate;
+
+        document.getElementById('hftxtSupplierId').value = inv.vendorID || '';
+        document.getElementById('supplierAccount').value = inv.vendorName || '';
+        document.getElementById('supplierDetails').value = '';
+        document.getElementById('remarks').value          = inv.remarks || '';
+
+        document.getElementById('gstPercent').value  = inv.gstPer || 0;
+        document.getElementById('freight').value     = inv.freightExp || 0;
+        document.getElementById('otherExp').value    = inv.otherExp || 0;
+        const total = parseFloat(inv.totalAmount) || 0;
+        const discPct = total > 0 ? ((parseFloat(inv.discount) || 0) / total) * 100 : 0;
+        document.getElementById('discPercent').value = discPct.toFixed(2);
+
+        // Rebuild item rows
+        document.getElementById('itemsBody').innerHTML = '';
+        rowCounter = 0;
+        (inv.items || []).forEach(it => {
+            addNewRow();
+            const row = document.querySelector('#itemsBody tr:last-child');
+            row.cells[1].querySelector('input').value = it.itemid;
+            row.cells[2].querySelector('input').value = it.descr || '';
+            row.cells[3].querySelector('input').value = it.quantity;
+            row.cells[4].querySelector('input').value = parseFloat(it.purPrice || 0).toFixed(2);
+            row.cells[5].querySelector('input').value = parseFloat(it.salePrice || 0).toFixed(2);
+            row.cells[6].querySelector('input').value = it.discPer || 0;
+            calculateRowTotal(row);
+        });
+        if ((inv.items || []).length === 0) addNewRow();
+
+        calculateTotals();
+    } catch (e) {
+        console.error(e);
+        await alertDialog('Error loading invoice for edit.');
+        window.location.href = '/Purchase/List';
+    }
+}
 
 // Add new row
 document.getElementById('addRowBtn').addEventListener('click', addNewRow);
@@ -54,15 +127,15 @@ function addNewRow() {
     });
 }
 
-function removeRow(row) {
+async function removeRow(row) {
     if (document.getElementById('itemsBody').rows.length > 1) {
-        if (confirm('Remove this item?')) {
+        if (await confirmDialog('Remove this item?', { danger: true })) {
             row.remove();
             updateRowNumbers();
             calculateTotals();
         }
     } else {
-        alert('At least one row is required!');
+        await alertDialog('At least one row is required!');
     }
 }
 
@@ -128,6 +201,10 @@ function loadNextInvoiceNumber() {
 }
 
 function resetForm() {
+    editId = null;
+    const header = document.querySelector('.page-header h2');
+    if (header) header.textContent = 'Purchase Invoice';
+
     // --- Header fields ---
     document.getElementById('billNo').value = '';
     document.getElementById('invoiceDate').value = new Date().toISOString().split('T')[0];
@@ -135,9 +212,6 @@ function resetForm() {
     document.getElementById('hftxtSupplierId').value = '';
     document.getElementById('supplierDetails').value = '';
     document.getElementById('remarks').value = '';
-    // document.getElementById('paymentMode').selectedIndex = 0;
-    // document.getElementById('branch').selectedIndex = 0;
-    document.getElementById('printStyle').selectedIndex = 0;
 
     // --- Invoice number: fetch the accurate next ID from server ---
     loadNextInvoiceNumber();
@@ -158,47 +232,20 @@ function resetForm() {
     calculateTotals();
 }
 
-// Event listeners for total calculations
-document.getElementById('gstPercent').addEventListener('input', calculateTotals);
-document.getElementById('freight').addEventListener('input', calculateTotals);
-document.getElementById('otherExp').addEventListener('input', calculateTotals);
-document.getElementById('discPercent').addEventListener('input', calculateTotals);
-
 // New Invoice
-document.getElementById('newBtn').addEventListener('click', function () {
-    if (confirm('Create new invoice? Unsaved changes will be lost.')) {
-        document.getElementById('purchaseForm').reset();
-        document.getElementById('itemsBody').innerHTML = '';
-        rowCounter = 0;
-        addNewRow();
-        calculateTotals();
+document.getElementById('newBtn').addEventListener('click', async function () {
+    if (await confirmDialog('Create new invoice? Unsaved changes will be lost.')) {
+        resetForm();
     }
 });
 
-// Edit Invoice
-// document.getElementById('editBtn').addEventListener('click', function() {
-//     alert('Edit mode activated');
-// });
-
-// Delete Invoice
-// document.getElementById('deleteBtn').addEventListener('click', function() {
-//     if (confirm('Delete this invoice?')) {
-//         document.getElementById('purchaseForm').reset();
-//         document.getElementById('itemsBody').innerHTML = '';
-//         rowCounter = 0;
-//         addNewRow();
-//         calculateTotals();
-//         alert('Invoice deleted successfully!');
-//     }
-// });
-
 // Form Submit
-document.getElementById('purchaseForm').addEventListener('submit', function (e) {
+document.getElementById('purchaseForm').addEventListener('submit', async function (e) {
     e.preventDefault();
 
     const supplierAccount = document.getElementById('hftxtSupplierId').value;
     if (!supplierAccount) {
-        alert('Please select a supplier!');
+        await alertDialog('Please select a supplier!');
         return;
     }
 
@@ -213,46 +260,36 @@ document.getElementById('purchaseForm').addEventListener('submit', function (e) 
     });
 
     if (!hasValidItem) {
-        alert('Please add at least one item with quantity!');
+        await alertDialog('Please add at least one item with quantity!');
         return;
     }
-
-    const invoiceData = {
-        invoiceNo: document.getElementById('invoiceNo').value,
-        billNo: document.getElementById('billNo').value,
-        invoiceDate: document.getElementById('invoiceDate').value,
-        // branch: document.getElementById('branch').value,
-        supplierAccount: supplierAccount,
-        // paymentMode: document.getElementById('paymentMode').value,
-        remarks: document.getElementById('remarks').value,
-        totalQty: document.getElementById('totalQty').value,
-        invoiceTotal: document.getElementById('invoiceTotal').value,
-        netAmount: document.getElementById('netAmount').textContent
-    };
 
     // Prepare items data
     const items = [];
     rows.forEach(row => {
-        const item = {
-            Itemid: row.cells[1].querySelector('input').value,
+        const itemId = row.cells[1].querySelector('input').value;
+        const qty    = parseFloat(row.cells[3].querySelector('input').value) || 0;
+        if (!itemId || qty <= 0) return;
+
+        items.push({
+            Itemid: parseInt(itemId),
             Desc: row.cells[2].querySelector('input').value,
-            Quantity: parseFloat(row.cells[3].querySelector('input').value) || 0,
+            Quantity: qty,
             PurPrice: parseFloat(row.cells[4].querySelector('input').value) || 0,
             SalePrice: parseFloat(row.cells[5].querySelector('input').value) || 0,
             DiscPer: parseFloat(row.cells[6].querySelector('input').value) || 0,
             DiscAmt: parseFloat(row.cells[7].querySelector('input').value) || 0,
             Total: parseFloat(row.cells[8].querySelector('input').value) || 0
-        };
-        items.push(item);
+        });
     });
 
     // Full payload
     const payload = {
+        PurchaseId: editId,
         PurchaseDate: document.getElementById('invoiceDate').value,
         VendorID: supplierAccount,
         BillNo: document.getElementById('billNo').value,
         BranchID: 1,
-        // PaymentMode: document.getElementById('paymentMode').selectedIndex,
         Remarks: document.getElementById('remarks').value,
         GSTPer: parseFloat(document.getElementById('gstPercent').value),
         GSTAmount: parseFloat(document.getElementById('gstAmount').value),
@@ -264,25 +301,30 @@ document.getElementById('purchaseForm').addEventListener('submit', function (e) 
         Items: items
     };
 
+    const url = editId ? '/Purchase/Update' : '/Purchase/Save';
+
     // Send to controller
-    fetch('/Purchase/Save', {
+    fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     })
         .then(res => res.json())
-        .then(data => {
+        .then(async data => {
             if (data.success) {
-                alert('✅ ' + data.message);
-                resetForm(data.id);
-
+                await alertDialog('✅ ' + data.message);
+                if (editId) {
+                    window.location.href = '/Purchase/List';
+                } else {
+                    resetForm();
+                }
             } else {
-                alert('❌ Failed: ' + (data.message || 'Unknown error'));
+                await alertDialog('❌ Failed: ' + (data.message || 'Unknown error'));
             }
         })
-        .catch(err => {
+        .catch(async err => {
             console.error(err);
-            alert('Error saving invoice.');
+            await alertDialog('Error saving invoice.');
         });
 });
 
@@ -523,7 +565,7 @@ function displayItems(items) {
 
         row.innerHTML = `
                 <td>${item.itemID}</td>
-                <td><img src="${item.imageUrl || 'https://via.placeholder.com/40'}" class="item-image-thumb" alt="Item"></td>
+                <td><img src="${item.imageUrl || NO_IMAGE_PLACEHOLDER}" class="item-image-thumb" alt="Item"></td>
                 <td>${item.itemName}</td>
                 <td>${item.categoryName}</td>
                 <td>${item.barcode || '-'}</td>

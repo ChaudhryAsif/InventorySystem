@@ -198,7 +198,8 @@
     <!-- Action Buttons -->
     <div style="display:flex;justify-content:flex-end;gap:0.8rem">
         <button class="btn btn-outline" onclick="clearForm()">🔄 Clear</button>
-        <button class="btn btn-primary btn-lg" onclick="saveVoucher()">💾 Save Voucher</button>
+        <button class="btn btn-outline btn-lg" onclick="saveVoucher('Draft')">📝 Save as Draft</button>
+        <button class="btn btn-primary btn-lg" onclick="saveVoucher('Posted')">💾 Save Voucher</button>
     </div>
 </div>
 
@@ -393,7 +394,7 @@ function recalcJV() {
 }
 
 // ── Build final lines for API ─────────────────────────────────
-function buildLines() {
+async function buildLines() {
     if (VTYPE === 'CV') {
         const fromId = +document.getElementById('cvFrom').value;
         const toId   = +document.getElementById('cvTo').value;
@@ -409,7 +410,7 @@ function buildLines() {
     if (IS_SIMPLE) {
         const rows = [...document.querySelectorAll('#lineBody tr')];
         const acct = getCashBankAccount();
-        if (!acct) { alert('❌ Cash/Bank account not found in Chart of Accounts. Check account codes 1101/1102.'); return null; }
+        if (!acct) { await alertDialog('❌ Cash/Bank account not found in Chart of Accounts. Check account codes 1101/1102.'); return null; }
 
         const userLines = rows.map(row => ({
             accountHeadId: +row.querySelector('.a-sel').value,
@@ -444,15 +445,15 @@ function buildLines() {
     })).filter(l => l.accountHeadId && (l.debit > 0 || l.credit > 0));
 }
 
-async function saveVoucher() {
-    const lines = buildLines();
-    if (!lines) { alert('❌ Please fill in all required fields.'); return; }
-    if (lines.length < 2) { alert('❌ At least 2 accounting entries are required.'); return; }
+async function saveVoucher(status) {
+    const lines = await buildLines();
+    if (!lines) { await alertDialog('❌ Please fill in all required fields.'); return; }
+    if (lines.length < 2) { await alertDialog('❌ At least 2 accounting entries are required.'); return; }
 
     const totalD = lines.reduce((s, l) => s + (l.debit  || 0), 0);
     const totalC = lines.reduce((s, l) => s + (l.credit || 0), 0);
     if (Math.abs(totalD - totalC) > 0.001) {
-        alert(`❌ Voucher not balanced!\nDebit: ${totalD.toFixed(2)}  |  Credit: ${totalC.toFixed(2)}`);
+        await alertDialog(`❌ Voucher not balanced!\nDebit: ${totalD.toFixed(2)}  |  Credit: ${totalC.toFixed(2)}`);
         return;
     }
 
@@ -464,13 +465,14 @@ async function saveVoucher() {
         paymentMode: document.getElementById('paymentMode')?.value || '',
         referenceNo: document.getElementById('referenceNo').value,
         narration:   document.getElementById('narration').value,
+        status:      status || 'Posted',
         details:     lines
     };
 
     const res  = await fetch('/Accounts/SaveVoucher', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const json = await res.json();
-    if (json.success) { alert('✅ ' + json.message); clearForm(); }
-    else { alert('❌ ' + json.message); }
+    if (json.success) { await alertDialog('✅ ' + json.message); clearForm(); }
+    else { await alertDialog('❌ ' + json.message); }
 }
 
 async function clearForm() {

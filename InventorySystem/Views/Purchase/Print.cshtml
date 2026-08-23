@@ -1,0 +1,88 @@
+@model InventorySystem.Core.Models.PurchaseInvoice
+@{
+    Layout = null;
+    var bodies = Model.PurchaseInvoiceBodies ?? new List<InventorySystem.Core.Models.PurchaseInvoiceBody>();
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Purchase Invoice #@Model.PurchaseId</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:2rem; }
+        .inv { max-width:800px; margin:0 auto; }
+        .inv-head { display:flex; justify-content:space-between; border-bottom:3px solid #0f172a; padding-bottom:1rem; margin-bottom:1.5rem; }
+        .inv-head h1 { margin:0; font-size:1.6rem; }
+        .muted { color:#64748b; font-size:.85rem; }
+        .meta { display:grid; grid-template-columns:1fr 1fr; gap:.5rem 2rem; margin-bottom:1.5rem; }
+        .meta div span { display:block; font-size:.72rem; color:#64748b; text-transform:uppercase; }
+        table { width:100%; border-collapse:collapse; }
+        th, td { padding:.55rem .7rem; border-bottom:1px solid #e2e8f0; font-size:.9rem; text-align:left; }
+        th { background:#0f172a; color:#fff; text-transform:uppercase; font-size:.75rem; }
+        .num { text-align:right; font-variant-numeric:tabular-nums; }
+        .totals { margin-top:1rem; margin-left:auto; width:300px; }
+        .totals td { border:none; padding:.3rem .5rem; }
+        .grand { font-weight:700; font-size:1.05rem; border-top:2px solid #0f172a; }
+        .actions { text-align:center; margin-bottom:1rem; }
+        .actions button { padding:.5rem 1.2rem; border:none; border-radius:8px; background:#0f172a; color:#fff; cursor:pointer; font-size:.9rem; }
+        @@media print { .actions { display:none; } body { padding:0; } }
+    </style>
+</head>
+<body>
+    <div class="actions"><button onclick="window.print()">🖨 Print</button></div>
+    <div class="inv">
+        <div class="inv-head">
+            <div>
+                <h1>PURCHASE INVOICE</h1>
+                <div class="muted">Invoice #@Model.PurchaseId</div>
+            </div>
+            <div style="text-align:right;">
+                <div class="muted">Date</div>
+                <strong>@(Model.PurchaseDate?.ToString("dd MMM yyyy") ?? "-")</strong>
+            </div>
+        </div>
+
+        <div class="meta">
+            <div><span>Vendor</span><strong>@ViewBag.VendorName</strong></div>
+            <div><span>Payment Mode</span><strong>@ViewBag.PaymentMode</strong></div>
+            <div><span>Bill No</span><strong>@(Model.BillNo ?? "-")</strong></div>
+            <div><span>Remarks</span><strong>@(Model.Remarks ?? "-")</strong></div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:40px;">#</th>
+                    <th>Item</th>
+                    <th class="num">Qty</th>
+                    <th class="num">Price</th>
+                    <th class="num">Disc</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ var i = 1; }
+                @foreach (var b in bodies)
+                {
+                    <tr>
+                        <td>@(i++)</td>
+                        <td>@(b.Descr ?? ("#" + b.Itemid))</td>
+                        <td class="num">@b.Quantity?.ToString("0.##")</td>
+                        <td class="num">@b.PurPrice?.ToString("0.00")</td>
+                        <td class="num">@b.DiscAmt?.ToString("0.00")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <table class="totals">
+            <tr><td>Total</td><td class="num">@Model.TotalAmount?.ToString("0.00")</td></tr>
+            <tr><td>GST (@Model.GSTPer?.ToString("0.##")%)</td><td class="num">@Model.GSTAmount?.ToString("0.00")</td></tr>
+            <tr><td>Freight</td><td class="num">@Model.FreightExp?.ToString("0.00")</td></tr>
+            <tr><td>Other</td><td class="num">@Model.OtherExp?.ToString("0.00")</td></tr>
+            <tr><td>Discount</td><td class="num">@Model.Discount?.ToString("0.00")</td></tr>
+            <tr class="grand"><td>Net Amount</td><td class="num">@Model.AmountPaid?.ToString("0.00")</td></tr>
+        </table>
+    </div>
+</body>
+</html>

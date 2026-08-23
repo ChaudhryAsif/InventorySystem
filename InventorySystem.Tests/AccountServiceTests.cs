@@ -396,6 +396,128 @@ public class AccountServiceTests
         Assert.Equal("RV", all[0].VoucherType);
     }
 
+    // ── DRAFT / APPROVED / POSTED WORKFLOW ──────────────────────────────────
+
+    [Fact]
+    public async Task SaveVoucher_AsDraft_DoesNotPostToGeneralLedger()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        var draft = BalancedVoucher("JV", 500m, Rent, Cash);
+        draft.Status = "Draft";
+
+        var (success, message, voucherId) = await svc.SaveVoucherAsync(draft);
+
+        Assert.True(success, message);
+        var voucher = await db.Vouchers.FindAsync(voucherId!.Value);
+        Assert.Equal("Draft", voucher!.Status);
+        Assert.Empty(await db.GeneralLedger.Where(g => g.VoucherId == voucherId).ToListAsync());
+    }
+
+    [Fact]
+    public async Task ApproveVoucher_DraftToApproved_StillNoGLEntries()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        var draft = BalancedVoucher("JV", 500m, Rent, Cash);
+        draft.Status = "Draft";
+        var (_, _, voucherId) = await svc.SaveVoucherAsync(draft);
+
+        var (success, message) = await svc.ApproveVoucherAsync(voucherId!.Value);
+
+        Assert.True(success, message);
+        Assert.Equal("Approved", (await db.Vouchers.FindAsync(voucherId.Value))!.Status);
+        Assert.Empty(await db.GeneralLedger.Where(g => g.VoucherId == voucherId).ToListAsync());
+    }
+
+    [Fact]
+    public async Task ApproveVoucher_NonDraft_Fails()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        var (_, _, voucherId) = await svc.SaveVoucherAsync(BalancedVoucher("PV", 500m, Rent, Cash)); // default status = Posted
+
+        var (success, message) = await svc.ApproveVoucherAsync(voucherId!.Value);
+
+        Assert.False(success);
+        Assert.Contains("Draft", message);
+    }
+
+    [Fact]
+    public async Task PostVoucher_ApprovedToPosted_WritesGeneralLedger()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        var draft = BalancedVoucher("JV", 500m, Rent, Cash);
+        draft.Status = "Draft";
+        var (_, _, voucherId) = await svc.SaveVoucherAsync(draft);
+        await svc.ApproveVoucherAsync(voucherId!.Value);
+
+        var (success, message) = await svc.PostVoucherAsync(voucherId.Value);
+
+        Assert.True(success, message);
+        Assert.Equal("Posted", (await db.Vouchers.FindAsync(voucherId.Value))!.Status);
+        var gl = await db.GeneralLedger.Where(g => g.VoucherId == voucherId && !g.IsVoid).ToListAsync();
+        Assert.Equal(2, gl.Count);
+        Assert.Equal(500m, gl.Sum(g => g.Debit));
+        Assert.Equal(500m, gl.Sum(g => g.Credit));
+
+        // Only Posted vouchers should feed reports — confirm it shows up now
+        var tb = await svc.GetTrialBalanceAsync(DateTime.Today);
+        Assert.Contains(tb.Rows, r => r.AccountCode == "5202");
+    }
+
+    [Fact]
+    public async Task PostVoucher_NotApproved_Fails()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        var draft = BalancedVoucher("JV", 500m, Rent, Cash);
+        draft.Status = "Draft";
+        var (_, _, voucherId) = await svc.SaveVoucherAsync(draft);
+
+        var (success, message) = await svc.PostVoucherAsync(voucherId!.Value);
+
+        Assert.False(success);
+        Assert.Contains("Approved", message);
+        Assert.Empty(await db.GeneralLedger.Where(g => g.VoucherId == voucherId).ToListAsync());
+    }
+
+    [Fact]
+    public async Task EditDraftVoucher_BeforePosting_ReplacesLinesWithNoGLSideEffects()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        var draft = BalancedVoucher("JV", 500m, Rent, Cash);
+        draft.Status = "Draft";
+        var (_, _, voucherId) = await svc.SaveVoucherAsync(draft);
+
+        var edit = BalancedVoucher("JV", 800m, Rent, Cash);
+        edit.VoucherId = voucherId!.Value;
+        edit.Status = "Draft";
+        var (success, message, _) = await svc.SaveVoucherAsync(edit);
+
+        Assert.True(success, message);
+        Assert.Equal("Draft", (await db.Vouchers.FindAsync(voucherId.Value))!.Status);
+        Assert.Equal(800m, (await db.Vouchers.FindAsync(voucherId.Value))!.TotalAmount);
+        Assert.Empty(await db.GeneralLedger.Where(g => g.VoucherId == voucherId).ToListAsync());
+    }
+
+    [Fact]
+    public async Task VoidVoucher_WhileStillDraft_Succeeds()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        var draft = BalancedVoucher("JV", 500m, Rent, Cash);
+        draft.Status = "Draft";
+        var (_, _, voucherId) = await svc.SaveVoucherAsync(draft);
+
+        var (success, message) = await svc.VoidVoucherAsync(voucherId!.Value);
+
+        Assert.True(success, message);
+        Assert.True((await db.Vouchers.FindAsync(voucherId.Value))!.IsVoid);
+    }
+
     // ── LEDGER ───────────────────────────────────────────────────────────────
 
     [Fact]

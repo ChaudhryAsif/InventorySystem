@@ -1,0 +1,106 @@
+@model InventorySystem.Core.Models.MenuItem
+
+@{
+    ViewData["Title"] = "Edit Menu Item";
+    Layout = "_Layout";
+}
+
+<div class="admin-page-header">
+    <span class="admin-page-icon">📋</span>
+    <div>
+        <h1 class="admin-page-title">Edit Menu Item</h1>
+        <p class="admin-page-subtitle">Update navigation settings for: <strong style="color: var(--primary-color);">@Model.Name</strong></p>
+    </div>
+</div>
+
+<form method="post" id="editMenuItemForm">
+    @Html.AntiForgeryToken()
+    @Html.HiddenFor(m => m.Id)
+
+    <div class="admin-form" style="max-width: 640px;">
+        <div class="admin-form-group">
+            <label class="admin-form-label" for="Name">Name *</label>
+            <input type="text" id="Name" asp-for="Name" class="admin-form-input" required>
+        </div>
+
+        <div class="admin-form-group">
+            <label class="admin-form-label" for="Icon">Icon</label>
+            <input type="text" id="Icon" asp-for="Icon" class="admin-form-input" placeholder="e.g. 📦">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="admin-form-group">
+                <label class="admin-form-label" for="Controller">Controller</label>
+                <input type="text" id="Controller" asp-for="Controller" class="admin-form-input" placeholder="e.g. Sale">
+            </div>
+            <div class="admin-form-group">
+                <label class="admin-form-label" for="Action">Action</label>
+                <input type="text" id="Action" asp-for="Action" class="admin-form-input" placeholder="e.g. Index">
+            </div>
+        </div>
+
+        <div class="admin-form-group">
+            <label class="admin-form-label" for="ParentId">Parent Menu</label>
+            <select id="ParentId" asp-for="ParentId" class="admin-form-input">
+                <option value="">— None (top-level) —</option>
+                @foreach (var parent in (List<InventorySystem.Core.Models.MenuItem>)ViewBag.ParentMenuItems)
+                {
+                    <option value="@parent.Id">@parent.Icon @parent.Name</option>
+                }
+            </select>
+        </div>
+
+        <div class="admin-form-group">
+            <label class="admin-form-label" for="RequiredPermission">Required Permission *</label>
+            <select id="RequiredPermission" asp-for="RequiredPermission" class="admin-form-input" required>
+                @foreach (var perm in (List<InventorySystem.Core.Models.Permission>)ViewBag.AllPermissions)
+                {
+                    <option value="@perm.Code">@perm.Code</option>
+                }
+            </select>
+        </div>
+
+        <div class="admin-form-group">
+            <label class="admin-form-label" for="SortOrder">Sort Order</label>
+            <input type="number" id="SortOrder" asp-for="SortOrder" class="admin-form-input" style="max-width: 140px;">
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.3rem;">
+                Lower numbers appear first in the sidebar.
+            </div>
+        </div>
+
+        <div class="admin-form-group">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <input type="checkbox" id="isActive" asp-for="IsActive"
+                       style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-color);">
+                <label for="isActive" style="margin: 0; cursor: pointer; color: var(--text-primary);">
+                    Show in sidebar
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid var(--border-color); display: flex; gap: 1rem; justify-content: flex-end;">
+        <a asp-action="MenuItems" class="admin-btn admin-btn-secondary">
+            ← Back
+        </a>
+        <button type="submit" class="admin-btn admin-btn-success" id="submitBtn">
+            💾 Save Changes
+        </button>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        document.getElementById('editMenuItemForm').addEventListener('submit', async function (e) {
+            const name = document.getElementById('Name').value.trim();
+            if (!name) {
+                e.preventDefault();
+                await alertDialog('Name is required!', { type: 'warning' });
+                document.getElementById('Name').focus();
+                return false;
+            }
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('submitBtn').textContent = '⏳ Saving...';
+        });
+    </script>
+}

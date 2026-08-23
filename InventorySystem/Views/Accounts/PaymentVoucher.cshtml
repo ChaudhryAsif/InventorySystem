@@ -284,14 +284,14 @@
             });
     }
 
-    function saveVoucher(e) {
+    async function saveVoucher(e) {
         e.preventDefault();
         const partyId = currentPartyId;
-        if (!partyId) { alert('Please select a party.'); return; }
+        if (!partyId) { await alertDialog('Please select a party.', { type: 'warning' }); return; }
 
         const amount = parseFloat(document.getElementById('voucherAmount').value);
         if (amount > currentBalance && currentBalance > 0) {
-            if (!confirm(`Amount $${amount.toFixed(2)} exceeds outstanding $${currentBalance.toFixed(2)}. Continue?`)) return;
+            if (!(await confirmDialog(`Amount $${amount.toFixed(2)} exceeds outstanding $${currentBalance.toFixed(2)}. Continue?`))) return;
         }
 
         const invoiceVal = document.getElementById('invoiceSelect').value;
@@ -316,8 +316,8 @@
             body: JSON.stringify(payload)
         })
         .then(r => r.json())
-        .then(res => {
-            alert(res.success ? '✅ ' + res.message : '❌ ' + res.message);
+        .then(async res => {
+            await alertDialog(res.success ? '✅ ' + res.message : '❌ ' + res.message);
             if (res.success) {
                 document.getElementById('voucherForm').reset();
                 document.getElementById('voucherDate').value = new Date().toISOString().split('T')[0];
@@ -327,9 +327,9 @@
         .finally(() => { btn.disabled = false; btn.textContent = '💾 Save Voucher'; });
     }
 
-    function voidVoucher(refNo) {
+    async function voidVoucher(refNo) {
         const id = parseInt(refNo.split('-')[1]);
-        if (!id || !confirm('Void this voucher? This will reverse the ledger entry.')) return;
+        if (!id || !(await confirmDialog('Void this voucher? This will reverse the ledger entry.', { danger: true }))) return;
         fetch('/Accounts/VoidVoucher', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

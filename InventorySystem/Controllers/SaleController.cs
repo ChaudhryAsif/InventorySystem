@@ -1,9 +1,12 @@
 using InventorySystem.Core.Models;
+using InventorySystem.Core.Options;
+using InventorySystem.Core.Services;
 using InventorySystem.Data;
 using InventorySystem.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace InventorySystem.Controllers
 {
@@ -11,10 +14,16 @@ namespace InventorySystem.Controllers
     public class SaleController : Controller
     {
         private readonly ApplicationDbContext _context;
+        private readonly ILedgerPostingService _ledgerPosting;
+        private readonly AccountingOptions _accountingOptions;
+        private readonly IStockService _stock;
 
-        public SaleController(ApplicationDbContext context)
+        public SaleController(ApplicationDbContext context, ILedgerPostingService ledgerPosting, IOptions<AccountingOptions> accountingOptions, IStockService stock)
         {
             _context = context;
+            _ledgerPosting = ledgerPosting;
+            _accountingOptions = accountingOptions.Value;
+            _stock = stock;
         }
 
         [HttpGet]
@@ -25,7 +34,7 @@ namespace InventorySystem.Controllers
         public IActionResult List() => View();
 
         [HttpPost]
-        public IActionResult Save([FromBody] SaleInvoiceViewModel model)
+        public async Task<IActionResult> Save([FromBody] SaleInvoiceViewModel model)
         {
             if (model == null || model.Items == null || !model.Items.Any())
                 return BadRequest("Invalid sale data.");
@@ -65,8 +74,8 @@ namespace InventorySystem.Controllers
                 _context.SaleInvoice.Add(invoice);
                 _context.SaveChanges(); // materialise SaleId
 
-                ApplyInvoiceLinesAndStock(invoice, validItems, branchId);
-                PostLedgerForSale(invoice);
+                await ApplyInvoiceLinesAndStockAsync(invoice, validItems, branchId);
+                await PostLedgerForSaleAsync(invoice);
 
                 transaction.Commit();
                 return Ok(new { success = true, message = "Sale invoice saved successfully", id = invoice.SaleId });
@@ -80,7 +89,7 @@ namespace InventorySystem.Controllers
 
         // ── UPDATE an existing invoice ────────────────────────────────────────
         [HttpPost]
-        public IActionResult Update([FromBody] SaleInvoiceViewModel model)
+        public async Task<IActionResult> Update([FromBody] SaleInvoiceViewModel model)
         {
             if (model == null || model.SaleId is null or <= 0)
                 return BadRequest("Invalid invoice id.");
@@ -102,7 +111,7 @@ namespace InventorySystem.Controllers
                 var bodies = _context.SaleInvoiceBody.Where(b => b.SaleId == invoice.SaleId).ToList();
 
                 // 1) Reverse the old invoice's effects (restore stock, drop ledger + bodies)
-                ReverseInvoiceEffects(invoice, bodies);
+                await ReverseInvoiceEffectsAsync(invoice, bodies);
                 _context.SaveChanges();
 
                 // 2) Validate the new lines against the now-restored stock
@@ -128,8 +137,8 @@ namespace InventorySystem.Controllers
                 invoice.NetAmount   = model.NetAmount;
                 invoice.Remarks     = model.Remarks;
 
-                ApplyInvoiceLinesAndStock(invoice, validItems, branchId);
-                PostLedgerForSale(invoice);
+                await ApplyInvoiceLinesAndStockAsync(invoice, validItems, branchId);
+                await PostLedgerForSaleAsync(invoice);
 
                 transaction.Commit();
                 return Ok(new { success = true, message = "Sale invoice updated successfully", id = invoice.SaleId });
@@ -143,7 +152,7 @@ namespace InventorySystem.Controllers
 
         // ── DELETE an invoice (with stock + ledger reversal) ──────────────────
         [HttpPost]
-        public IActionResult Delete(int id)
+        public async Task<IActionResult> Delete(int id)
         {
             using var transaction = _context.Database.BeginTransaction();
             try
@@ -154,7 +163,7 @@ namespace InventorySystem.Controllers
 
                 var bodies = _context.SaleInvoiceBody.Where(b => b.SaleId == id).ToList();
 
-                ReverseInvoiceEffects(invoice, bodies);
+                await ReverseInvoiceEffectsAsync(invoice, bodies);
                 _context.SaleInvoice.Remove(invoice);
                 _context.SaveChanges();
 
@@ -170,7 +179,7 @@ namespace InventorySystem.Controllers
 
         // ── LIST data (with optional search + date range) ─────────────────────
         [HttpGet]
-        public IActionResult GetSales(string? search, DateTime? from, DateTime? to)
+        public IActionResult GetSales(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50)
         {
             var query = _context.SaleInvoice.AsQueryable();
 
@@ -215,7 +224,11 @@ namespace InventorySystem.Controllers
                     s.SaleId.ToString().Contains(q));
             }
 
-            return Json(result);
+            var resultList = result.ToList();
+            var totalCount = resultList.Count;
+            var paged = resultList.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+            return Json(new { data = paged, totalCount, page, pageSize });
         }
 
         // ── Single invoice (for view + edit) ──────────────────────────────────
@@ -329,7 +342,7 @@ namespace InventorySystem.Controllers
         }
 
         /// <summary>Adds line items and deducts stock. Caller must have validated stock first.</summary>
-        private void ApplyInvoiceLinesAndStock(SaleInvoice invoice, List<SaleItemViewModel> validItems, int branchId)
+        private async Task ApplyInvoiceLinesAndStockAsync(SaleInvoice invoice, List<SaleItemViewModel> validItems, int branchId)
         {
             foreach (var item in validItems)
             {
@@ -345,15 +358,13 @@ namespace InventorySystem.Controllers
                     Total     = item.Total
                 });
 
-                var stock = _context.Stock.First(s => s.ItemId == item.ItemId && s.BranchId == branchId);
-                stock.Quantity   -= item.Quantity;
-                stock.LastUpdated = DateTime.Now;
+                await _stock.AdjustAsync(item.ItemId!.Value, branchId, -item.Quantity);
             }
             _context.SaveChanges();
         }
 
         /// <summary>Posts the customer receivable + (for non-credit) the receipt voucher and ledger.</summary>
-        private void PostLedgerForSale(SaleInvoice invoice)
+        private async Task PostLedgerForSaleAsync(SaleInvoice invoice)
         {
             if (!int.TryParse(invoice.CustomerID, out var customerPartyId) || customerPartyId <= 0)
                 return;
@@ -406,10 +417,16 @@ namespace InventorySystem.Controllers
             }
 
             _context.SaveChanges();
+
+            if (_accountingOptions.PostToGeneralLedger)
+            {
+                invoice.GLVoucherId = await _ledgerPosting.PostSaleAsync(invoice);
+                _context.SaveChanges();
+            }
         }
 
         /// <summary>Restores stock and removes all ledger/voucher/body rows tied to this invoice.</summary>
-        private void ReverseInvoiceEffects(SaleInvoice invoice, List<SaleInvoiceBody> bodies)
+        private async Task ReverseInvoiceEffectsAsync(SaleInvoice invoice, List<SaleInvoiceBody> bodies)
         {
             var branchId = invoice.BranchID ?? 1;
 
@@ -417,22 +434,7 @@ namespace InventorySystem.Controllers
             foreach (var body in bodies)
             {
                 if (body.ItemId == null) continue;
-                var stock = _context.Stock.FirstOrDefault(s => s.ItemId == body.ItemId && s.BranchId == branchId);
-                if (stock == null)
-                {
-                    _context.Stock.Add(new Stock
-                    {
-                        ItemId      = body.ItemId.Value,
-                        BranchId    = branchId,
-                        Quantity    = body.Quantity ?? 0,
-                        LastUpdated = DateTime.Now
-                    });
-                }
-                else
-                {
-                    stock.Quantity   += body.Quantity ?? 0;
-                    stock.LastUpdated = DateTime.Now;
-                }
+                await _stock.AdjustAsync(body.ItemId.Value, branchId, body.Quantity ?? 0);
             }
 
             // Remove the sale-invoice receivable ledger row(s)
@@ -451,6 +453,13 @@ namespace InventorySystem.Controllers
                 _context.AccountLedger.RemoveRange(receiptLedgers);
             }
             _context.PaymentVoucher.RemoveRange(vouchers);
+
+            // Void the matching double-entry voucher, if one was posted
+            if (_accountingOptions.PostToGeneralLedger && invoice.GLVoucherId != null)
+            {
+                await _ledgerPosting.VoidAsync(invoice.GLVoucherId);
+                invoice.GLVoucherId = null;
+            }
 
             // Remove the old line items
             _context.SaleInvoiceBody.RemoveRange(bodies);

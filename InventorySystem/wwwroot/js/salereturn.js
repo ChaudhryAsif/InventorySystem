@@ -16,11 +16,64 @@ let allCustomers    = [];
 let selectedItem    = null;
 let allItems        = [];
 let currentRow      = null;
+let editId          = null;   // set when editing an existing return (?id=)
 
 window.addEventListener('DOMContentLoaded', function () {
-    addNewRow();
-    loadNextReturnNumber();
+    const id = new URLSearchParams(window.location.search).get('id');
+    if (id) {
+        editId = parseInt(id);
+        loadReturnForEdit(editId);
+    } else {
+        addNewRow();
+        loadNextReturnNumber();
+    }
 });
+
+// ── Load an existing return into the form (edit mode) ────────────────────────
+async function loadReturnForEdit(id) {
+    try {
+        const res = await fetch('/SaleReturn/GetSaleReturnById?id=' + id);
+        if (!res.ok) { await alertDialog('Return not found.'); window.location.href = '/SaleReturn/List'; return; }
+        const r = await res.json();
+
+        const header = document.querySelector('.page-header h2');
+        if (header) header.textContent = '✏️ Edit Sale Return #' + r.saleReturnId;
+
+        document.getElementById('returnNo').value = r.saleReturnId;
+        if (r.returnDate) document.getElementById('returnDate').value = r.returnDate;
+        document.getElementById('originalSaleId').value = r.originalSaleId || '';
+        document.getElementById('paymentMode').value = (r.paymentMode ?? 0).toString();
+
+        document.getElementById('hftxtCustomerId').value = r.customerID || '';
+        document.getElementById('customerAccount').value = r.customerName || '';
+        document.getElementById('customerDetails').value = '';
+        document.getElementById('remarks').value = r.remarks || '';
+
+        const total = parseFloat(r.totalAmount) || 0;
+        const discPct = total > 0 ? (((total - (parseFloat(r.netAmount) || 0)) / total) * 100) : 0;
+        document.getElementById('discPercent').value = discPct.toFixed(2);
+
+        document.getElementById('itemsBody').innerHTML = '';
+        rowCounter = 0;
+        (r.items || []).forEach(it => {
+            addNewRow();
+            const row = document.querySelector('#itemsBody tr:last-child');
+            row.cells[1].querySelector('input').value = it.itemId;
+            row.cells[2].querySelector('input').value = it.descr || '';
+            row.cells[3].querySelector('input').value = it.quantity;
+            row.cells[4].querySelector('input').value = parseFloat(it.salePrice || 0).toFixed(2);
+            row.cells[5].querySelector('input').value = it.discPer || 0;
+            calculateRowTotal(row);
+        });
+        if ((r.items || []).length === 0) addNewRow();
+
+        calculateTotals();
+    } catch (e) {
+        console.error(e);
+        await alertDialog('Error loading return for edit.');
+        window.location.href = '/SaleReturn/List';
+    }
+}
 
 // ── Row management ──────────────────────────────────────────────────────────
 document.getElementById('addRowBtn').addEventListener('click', addNewRow);
@@ -56,15 +109,15 @@ function addNewRow() {
     newRow.querySelector('.btn-remove').addEventListener('click', () => removeRow(newRow));
 }
 
-function removeRow(row) {
+async function removeRow(row) {
     if (document.getElementById('itemsBody').rows.length > 1) {
-        if (confirm('Remove this item?')) {
+        if (await confirmDialog('Remove this item?', { danger: true })) {
             row.remove();
             updateRowNumbers();
             calculateTotals();
         }
     } else {
-        alert('At least one row is required!');
+        await alertDialog('At least one row is required!');
     }
 }
 
@@ -119,6 +172,9 @@ function loadNextReturnNumber() {
 
 // ── Reset form ──────────────────────────────────────────────────────────────
 function resetForm() {
+    editId = null;
+    const header = document.querySelector('.page-header h2');
+    if (header) header.textContent = '↩️ Sale Return';
     document.getElementById('returnDate').value      = new Date().toISOString().split('T')[0];
     document.getElementById('originalSaleId').value  = '';
     document.getElementById('customerAccount').value = '';
@@ -136,16 +192,16 @@ function resetForm() {
 }
 
 // ── New return ──────────────────────────────────────────────────────────────
-document.getElementById('newBtn').addEventListener('click', function () {
-    if (confirm('Create new return? Unsaved changes will be lost.')) resetForm();
+document.getElementById('newBtn').addEventListener('click', async function () {
+    if (await confirmDialog('Create new return? Unsaved changes will be lost.')) resetForm();
 });
 
 // ── Form submit ─────────────────────────────────────────────────────────────
-document.getElementById('saleReturnForm').addEventListener('submit', function (e) {
+document.getElementById('saleReturnForm').addEventListener('submit', async function (e) {
     e.preventDefault();
 
     if (!document.getElementById('hftxtCustomerId').value) {
-        alert('Please select a customer!');
+        await alertDialog('Please select a customer!');
         return;
     }
 
@@ -169,13 +225,14 @@ document.getElementById('saleReturnForm').addEventListener('submit', function (e
     });
 
     if (items.length === 0) {
-        alert('Please add at least one item with quantity!');
+        await alertDialog('Please add at least one item with quantity!');
         return;
     }
 
     const originalId = parseInt(document.getElementById('originalSaleId').value) || null;
 
     const payload = {
+        SaleReturnId:   editId,
         ReturnDate:     document.getElementById('returnDate').value,
         CustomerID:     document.getElementById('hftxtCustomerId').value,
         OriginalSaleId: originalId,
@@ -187,23 +244,28 @@ document.getElementById('saleReturnForm').addEventListener('submit', function (e
         Items:          items
     };
 
-    fetch('/SaleReturn/Save', {
+    const url = editId ? '/SaleReturn/Update' : '/SaleReturn/Save';
+    fetch(url, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload)
     })
         .then(res => res.json())
-        .then(data => {
+        .then(async data => {
             if (data.success) {
-                alert('✅ ' + data.message);
-                resetForm();
+                await alertDialog('✅ ' + data.message);
+                if (editId) {
+                    window.location.href = '/SaleReturn/List';
+                } else {
+                    resetForm();
+                }
             } else {
-                alert('❌ ' + (data.message || 'Unknown error'));
+                await alertDialog('❌ ' + (data.message || 'Unknown error'));
             }
         })
-        .catch(err => {
+        .catch(async err => {
             console.error(err);
-            alert('Error saving sale return.');
+            await alertDialog('Error saving sale return.');
         });
 });
 

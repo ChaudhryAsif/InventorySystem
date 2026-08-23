@@ -79,7 +79,7 @@
             const partyType = document.getElementById('partyType').value;
             const res  = await fetch(`/Accounts/GetOutstandingReport?partyType=${partyType}`);
             const json = await res.json();
-            if (!json.success) { alert('Failed to load report.'); return; }
+            if (!json.success) { await alertDialog('Failed to load report.', { type: 'error' }); return; }
 
             const data = json.data;
 

@@ -140,12 +140,12 @@ function calcPlyRow(input) {
     recalcAll();
 }
 
-function removePlyRow(btn) {
+async function removePlyRow(btn) {
     if (document.getElementById('plyBody').rows.length <= 1) {
-        alert('At least one ply layer is required!');
+        await alertDialog('At least one ply layer is required!', { type: 'warning' });
         return;
     }
-    if (confirm('Remove this ply layer?')) {
+    if (await confirmDialog('Remove this ply layer?', { danger: true })) {
         btn.closest('tr').remove();
         rebuildPlyNumbers();
         recalcAll();
@@ -323,11 +323,11 @@ function recalcAll() {
 function saveDraft() { doSave('Draft'); }
 function saveFinal() { doSave('Final'); }
 
-function doSave(status) {
+async function doSave(status) {
     document.getElementById('status').value = status;
 
     if (!getVal('itemName')) {
-        alert('Please enter an Item / Product Name.'); return;
+        await alertDialog('Please enter an Item / Product Name.', { type: 'warning' }); return;
     }
 
     // Validate at least one ply has an item selected
@@ -336,7 +336,7 @@ function doSave(status) {
         if (row.cells[1].querySelector('input').value.trim() !== '') hasValidPly = true;
     });
     if (!hasValidPly) {
-        alert('Please select at least one item in the Ply/Paper Layers section using the 🔍 button.');
+        await alertDialog('Please select at least one item in the Ply/Paper Layers section using the 🔍 button.', { type: 'warning' });
         return;
     }
 
@@ -432,18 +432,18 @@ function doSave(status) {
         body: JSON.stringify(payload)
     })
         .then(r => r.json())
-        .then(data => {
+        .then(async data => {
             if (data.success) {
-                alert(`✅ ${data.message}`);
+                await alertDialog(`✅ ${data.message}`);
                 document.getElementById('editCostSheetId').value = data.id;
                 setVal('sheetNo', data.id);
             } else {
-                alert('❌ ' + (data.message || 'Unknown error'));
+                await alertDialog('❌ ' + (data.message || 'Unknown error'));
             }
         })
-        .catch(err => {
+        .catch(async err => {
             console.error(err);
-            alert('❌ Error saving cost sheet. Please try again.');
+            await alertDialog('❌ Error saving cost sheet. Please try again.');
         })
         .finally(() => {
             btnDraft.disabled = btnFinal.disabled = false;
@@ -459,7 +459,7 @@ async function loadExistingSheet(id) {
     try {
         const res = await fetch(`/CostSheet/GetById/${id}`);
         const json = await res.json();
-        if (!json.success) { alert('Could not load cost sheet.'); return; }
+        if (!json.success) { await alertDialog('Could not load cost sheet.', { type: 'error' }); return; }
 
         const d = json.data;
 
@@ -543,7 +543,7 @@ async function loadExistingSheet(id) {
         recalcAll();
     } catch (err) {
         console.error(err);
-        alert('❌ Error loading cost sheet data.');
+        await alertDialog('❌ Error loading cost sheet data.');
     }
 }
 
@@ -559,8 +559,8 @@ async function getCustomerName(customerId) {
 // ════════════════════════════════════════════════════════════════════════════
 // RESET FORM
 // ════════════════════════════════════════════════════════════════════════════
-function resetForm() {
-    if (!confirm('Reset form? All unsaved changes will be lost.')) return;
+async function resetForm() {
+    if (!(await confirmDialog('Reset form? All unsaved changes will be lost.'))) return;
 
     setVal('sheetDate', new Date().toISOString().split('T')[0]);
     setSelect('status', 'Draft');
@@ -810,7 +810,7 @@ function selectPlyItemRow(row, item) {
     document.getElementById('selectPlyItemBtn').disabled = false;
 }
 
-function confirmPlyItem() {
+async function confirmPlyItem() {
     if (!selectedPlyItem || !currentPlyRow) return;
 
     // Fill ItemId, Item Name, Rate from selected purchase item
@@ -820,10 +820,10 @@ function confirmPlyItem() {
         parseFloat(selectedPlyItem.lastPurPrice || 0).toFixed(2);
 
     if (!selectedPlyItem.lastPurPrice || selectedPlyItem.lastPurPrice === 0) {
-        alert(`⚠️ "${selectedPlyItem.itemName}" has no purchase history.\nRate set to 0 — please enter manually.`);
+        await alertDialog(`⚠️ "${selectedPlyItem.itemName}" has no purchase history.\nRate set to 0 — please enter manually.`);
     }
     if ((selectedPlyItem.currentStock || 0) <= 0) {
-        alert(`⚠️ "${selectedPlyItem.itemName}" has zero stock.\nPlease create a Purchase Invoice first.`);
+        await alertDialog(`⚠️ "${selectedPlyItem.itemName}" has zero stock.\nPlease create a Purchase Invoice first.`);
     }
 
     // Auto-focus KGs field for fast entry

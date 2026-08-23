@@ -45,6 +45,9 @@ namespace InventorySystem.Core.Models
         [StringLength(500)]
         public string? Location { get; set; }
 
+        /// <summary>Voucher posted to the double-entry ledger for this invoice, if PostToGeneralLedger is enabled.</summary>
+        public int? GLVoucherId { get; set; }
+
         public ICollection<PurchaseInvoiceBody>? PurchaseInvoiceBodies { get; set; }
     }
 }

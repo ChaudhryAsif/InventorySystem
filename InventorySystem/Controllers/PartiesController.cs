@@ -24,9 +24,13 @@ namespace InventorySystem.Controllers
 
         // GET: api/Parties
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<PartyViewModel>>> GetParties()
+        public async Task<IActionResult> GetParties(int page = 1, int pageSize = 50)
         {
+            var totalCount = await _context.Parties.CountAsync();
+
             var data = await _context.Parties
+                .OrderBy(p => p.PartyName)
+                .Skip((page - 1) * pageSize).Take(pageSize)
                 .Select(p => new PartyViewModel
                 {
                     PartyId = p.PartyId,
@@ -41,7 +45,7 @@ namespace InventorySystem.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(data);
+            return Ok(new { data, totalCount, page, pageSize });
         }
 
         [HttpGet]

@@ -182,7 +182,7 @@ function calcVariance(input) {
     document.getElementById('totalActual').textContent = total.toFixed(2);
 }
 
-function saveConsumption() {
+async function saveConsumption() {
     const rows = document.querySelectorAll('#consumeBody tr');
     const items = [];
 
@@ -200,11 +200,11 @@ function saveConsumption() {
     });
 
     if (!items.length) {
-        alert('Please enter actual KGs for at least one material.');
+        await alertDialog('Please enter actual KGs for at least one material.', { type: 'warning' });
         return;
     }
 
-    if (!confirm(`Save consumption for ${items.length} material(s)?\n\nThis will DEDUCT stock immediately.`)) return;
+    if (!(await confirmDialog(`Save consumption for ${items.length} material(s)?\n\nThis will DEDUCT stock immediately.`))) return;
 
     const btn = document.getElementById('saveBtn');
     btn.disabled    = true;
@@ -216,18 +216,18 @@ function saveConsumption() {
         body   : JSON.stringify({ ProductionOrderId: productionOrderId, Items: items })
     })
     .then(r => r.json())
-    .then(d => {
+    .then(async d => {
         if (d.success) {
-            alert(`✅ ${d.message}`);
+            await alertDialog(`✅ ${d.message}`);
             window.location.href = `/Production/Materials/${productionOrderId}`;
         } else {
-            alert('❌ ' + d.message);
+            await alertDialog('❌ ' + d.message);
             btn.disabled    = false;
             btn.textContent = '✅ Save Consumption & Deduct Stock';
         }
     })
-    .catch(() => {
-        alert('❌ Error saving consumption.');
+    .catch(async () => {
+        await alertDialog('❌ Error saving consumption.');
         btn.disabled    = false;
         btn.textContent = '✅ Save Consumption & Deduct Stock';
     });

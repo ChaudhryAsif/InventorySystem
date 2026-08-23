@@ -1,0 +1,50 @@
+@model dynamic
+
+@{
+    ViewData["Title"] = "Admin Report";
+    Layout = "_Layout";
+}
+
+<div class="admin-page-header">
+    <span class="admin-page-icon">📊</span>
+    <div>
+        <h1 class="admin-page-title">Admin Report</h1>
+        <p class="admin-page-subtitle">Snapshot of users, roles, permissions, and menu items</p>
+    </div>
+</div>
+
+<div class="admin-cards-grid">
+    <div class="admin-card">
+        <div class="admin-card-icon">👥</div>
+        <div class="admin-card-label">Active Users</div>
+        <div class="admin-card-value">@Model.Users</div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-icon">🚫</div>
+        <div class="admin-card-label">Inactive Users</div>
+        <div class="admin-card-value">@Model.InactiveUsers</div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-icon">🎭</div>
+        <div class="admin-card-label">Active Roles</div>
+        <div class="admin-card-value">@Model.Roles</div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-icon">🔐</div>
+        <div class="admin-card-label">Active Permissions</div>
+        <div class="admin-card-value">@Model.Permissions</div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-icon">📋</div>
+        <div class="admin-card-label">Active Menu Items</div>
+        <div class="admin-card-value">@Model.MenuItems</div>
+    </div>
+</div>
+
+<div style="margin-top: 2rem;">
+    <a asp-action="Dashboard" class="admin-btn admin-btn-secondary">← Back to Dashboard</a>
+</div>

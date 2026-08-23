@@ -94,11 +94,11 @@
     async function loadDayBook() {
         const from = document.getElementById('from').value;
         const to   = document.getElementById('to').value;
-        if (!from || !to) { alert('Please select both dates.'); return; }
+        if (!from || !to) { await alertDialog('Please select both dates.', { type: 'warning' }); return; }
 
         const res  = await fetch(`/Accounts/GetDayBook?from=${from}&to=${to}`);
         const json = await res.json();
-        if (!json.success) { alert('Failed to load day book.'); return; }
+        if (!json.success) { await alertDialog('Failed to load day book.', { type: 'error' }); return; }
 
         const d = json.data;
         const rows = d.rows;

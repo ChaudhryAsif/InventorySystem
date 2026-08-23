@@ -11,6 +11,10 @@
 //  cells[9]  Remove button
 // ───────────────────────────────────────────────────────────────────────────
 
+// Self-contained placeholder — via.placeholder.com is no longer online, so items
+// without a real photo must fall back to something that doesn't depend on the network.
+const NO_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23e2e8f0'/%3E%3Ccircle cx='38' cy='36' r='8' fill='%23ffffff'/%3E%3Cpath d='M20 78 L42 50 L58 68 L72 48 L90 78 Z' fill='%23ffffff'/%3E%3C/svg%3E";
+
 let rowCounter    = 0;
 let selectedCustomer = null;
 let allCustomers  = [];
@@ -35,7 +39,7 @@ window.addEventListener('DOMContentLoaded', function () {
 async function loadInvoiceForEdit(id) {
     try {
         const res = await fetch('/Sale/GetSaleById?id=' + id);
-        if (!res.ok) { alert('Invoice not found.'); window.location.href = '/Sale/List'; return; }
+        if (!res.ok) { await alertDialog('Invoice not found.', { type: 'error' }); window.location.href = '/Sale/List'; return; }
         const inv = await res.json();
 
         const header = document.querySelector('.page-header h2');
@@ -80,7 +84,7 @@ async function loadInvoiceForEdit(id) {
         calculateTotals();
     } catch (e) {
         console.error(e);
-        alert('Error loading invoice for edit.');
+        await alertDialog('Error loading invoice for edit.', { type: 'error' });
         window.location.href = '/Sale/List';
     }
 }
@@ -124,15 +128,15 @@ function addNewRow() {
     });
 }
 
-function removeRow(row) {
+async function removeRow(row) {
     if (document.getElementById('itemsBody').rows.length > 1) {
-        if (confirm('Remove this item?')) {
+        if (await confirmDialog('Remove this item?', { danger: true })) {
             row.remove();
             updateRowNumbers();
             calculateTotals();
         }
     } else {
-        alert('At least one row is required!');
+        await alertDialog('At least one row is required!', { type: 'warning' });
     }
 }
 
@@ -241,19 +245,19 @@ function resetForm() {
 }
 
 // ── New invoice ─────────────────────────────────────────────────────────────
-document.getElementById('newBtn').addEventListener('click', function () {
-    if (confirm('Create new invoice? Unsaved changes will be lost.')) {
+document.getElementById('newBtn').addEventListener('click', async function () {
+    if (await confirmDialog('Create new invoice? Unsaved changes will be lost.')) {
         resetForm();
     }
 });
 
 // ── Form submit ─────────────────────────────────────────────────────────────
-document.getElementById('saleForm').addEventListener('submit', function (e) {
+document.getElementById('saleForm').addEventListener('submit', async function (e) {
     e.preventDefault();
 
     const customerId = document.getElementById('hftxtCustomerId').value;
     if (!customerId) {
-        alert('Please select a customer!');
+        await alertDialog('Please select a customer!', { type: 'warning' });
         return;
     }
 
@@ -275,12 +279,12 @@ document.getElementById('saleForm').addEventListener('submit', function (e) {
     });
 
     if (!hasValidItem) {
-        alert('Please add at least one item with quantity!');
+        await alertDialog('Please add at least one item with quantity!', { type: 'warning' });
         return;
     }
 
     if (stockErrors.length > 0) {
-        alert('⚠️ Insufficient stock:\n\n' + stockErrors.join('\n'));
+        await alertDialog('⚠️ Insufficient stock:\n\n' + stockErrors.join('\n'));
         return;
     }
 
@@ -327,21 +331,21 @@ document.getElementById('saleForm').addEventListener('submit', function (e) {
         body:    JSON.stringify(payload)
     })
         .then(res => res.json())
-        .then(data => {
+        .then(async data => {
             if (data.success) {
-                alert('✅ ' + data.message);
+                await alertDialog('✅ ' + data.message);
                 if (editId) {
                     window.location.href = '/Sale/List';
                 } else {
                     resetForm();
                 }
             } else {
-                alert('❌ ' + (data.message || 'Unknown error'));
+                await alertDialog('❌ ' + (data.message || 'Unknown error'));
             }
         })
-        .catch(err => {
+        .catch(async err => {
             console.error(err);
-            alert('Error saving sale invoice.');
+            await alertDialog('Error saving sale invoice.', { type: 'error' });
         });
 });
 
@@ -530,7 +534,7 @@ function displayItems(items) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${item.itemID}</td>
-            <td><img src="${item.imageUrl || 'https://via.placeholder.com/40'}" class="item-image-thumb" alt="Item"></td>
+            <td><img src="${item.imageUrl || NO_IMAGE_PLACEHOLDER}" class="item-image-thumb" alt="Item"></td>
             <td>${item.itemName}</td>
             <td>${item.categoryName}</td>
             <td>${item.barcode || '-'}</td>
@@ -556,7 +560,7 @@ function selectItemRow(row, item) {
     document.getElementById('selectItemBtn').disabled = false;
 }
 
-function selectItem() {
+async function selectItem() {
     if (!selectedItem || !currentRow) return;
 
     // ── Prevent duplicate item rows ───────────────────────────────────────
@@ -565,7 +569,7 @@ function selectItem() {
         if (row !== currentRow) {
             const existingId = row.cells[1].querySelector('input').value;
             if (existingId && existingId == selectedItem.itemID) {
-                alert(`⚠️ "${selectedItem.itemName}" is already added in row ${row.cells[0].textContent}.\nPlease update the quantity in that row instead.`);
+                await alertDialog(`⚠️ "${selectedItem.itemName}" is already added in row ${row.cells[0].textContent}.\nPlease update the quantity in that row instead.`);
                 closeItemModal();
                 return;
             }

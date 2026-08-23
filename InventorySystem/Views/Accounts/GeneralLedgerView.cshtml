@@ -80,7 +80,7 @@ document.getElementById('toDate').value   = today;
 
 async function loadLedger() {
     const id   = document.getElementById('accountHeadId').value;
-    if (!id) { alert('Please select an account head.'); return; }
+    if (!id) { await alertDialog('Please select an account head.'); return; }
     const from = document.getElementById('fromDate').value;
     const to   = document.getElementById('toDate').value;
 

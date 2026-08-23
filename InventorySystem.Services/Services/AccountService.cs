@@ -129,6 +129,7 @@ namespace InventorySystem.Core.Services
                 try
                 {
                     Voucher saved;
+                    bool skipGLPosting;
                     if (isNew)
                     {
                         voucher.VoucherNo   = await GenerateVoucherNoAsync(voucher.VoucherType, voucher.VoucherDate);
@@ -137,6 +138,11 @@ namespace InventorySystem.Core.Services
                         _db.Vouchers.Add(voucher);
                         await _db.SaveChangesAsync();
                         saved = voucher;
+
+                        // A voucher explicitly saved as "Draft" is not posted to the
+                        // ledger yet — that happens via ApproveVoucherAsync/PostVoucherAsync.
+                        // Any other status (default "Posted") keeps the existing immediate-post behavior.
+                        skipGLPosting = saved.Status == "Draft";
                     }
                     else
                     {
@@ -146,13 +152,18 @@ namespace InventorySystem.Core.Services
                         if (existing == null) return (false, "Voucher not found.", null);
                         if (existing.IsVoid)  return (false, "Cannot edit a void voucher.", null);
 
-                        // Void old GL entries, re-post below
-                        var oldGL = await _db.GeneralLedger
-                            .Where(g => g.VoucherId == voucher.VoucherId && !g.IsVoid)
-                            .ToListAsync();
-                        oldGL.ForEach(g => g.IsVoid = true);
+                        // A still-draft voucher has no GL entries yet — nothing to void.
+                        skipGLPosting = existing.Status == "Draft";
+                        if (!skipGLPosting)
+                        {
+                            // Void old GL entries, re-post below
+                            var oldGL = await _db.GeneralLedger
+                                .Where(g => g.VoucherId == voucher.VoucherId && !g.IsVoid)
+                                .ToListAsync();
+                            oldGL.ForEach(g => g.IsVoid = true);
+                        }
 
-                        // VoucherNo, VoucherType and CreatedDate stay server-side;
+                        // VoucherNo, VoucherType, CreatedDate and Status stay server-side;
                         // only editable fields are merged from the client model.
                         existing.VoucherDate = voucher.VoucherDate;
                         existing.PartyId     = voucher.PartyId;
@@ -179,25 +190,9 @@ namespace InventorySystem.Core.Services
                         saved = existing;
                     }
 
-                    // Post to General Ledger
-                    foreach (var detail in saved.Details)
-                    {
-                        _db.GeneralLedger.Add(new GeneralLedger
-                        {
-                            VoucherNo      = saved.VoucherNo,
-                            VoucherType    = saved.VoucherType,
-                            VoucherDate    = saved.VoucherDate,
-                            AccountHeadId  = detail.AccountHeadId,
-                            PartyId        = detail.PartyId,
-                            Debit          = detail.Debit,
-                            Credit         = detail.Credit,
-                            Narration      = detail.Narration ?? saved.Narration,
-                            VoucherId      = saved.VoucherId,
-                            BranchId       = saved.BranchId,
-                            CreatedBy      = saved.CreatedBy,
-                            CreatedDate    = DateTime.Now
-                        });
-                    }
+                    if (!skipGLPosting)
+                        await PostVoucherLinesToGLAsync(saved);
+
                     await _db.SaveChangesAsync();
                     await tx.CommitAsync();
 
@@ -224,6 +219,59 @@ namespace InventorySystem.Core.Services
             }
 
             return (false, "Could not generate a unique voucher number. Please try again.", null);
+        }
+
+        /// <summary>Writes one GeneralLedger row per detail line. Caller must SaveChangesAsync.</summary>
+        private async Task PostVoucherLinesToGLAsync(Voucher saved)
+        {
+            foreach (var detail in saved.Details)
+            {
+                _db.GeneralLedger.Add(new GeneralLedger
+                {
+                    VoucherNo      = saved.VoucherNo,
+                    VoucherType    = saved.VoucherType,
+                    VoucherDate    = saved.VoucherDate,
+                    AccountHeadId  = detail.AccountHeadId,
+                    PartyId        = detail.PartyId,
+                    Debit          = detail.Debit,
+                    Credit         = detail.Credit,
+                    Narration      = detail.Narration ?? saved.Narration,
+                    VoucherId      = saved.VoucherId,
+                    BranchId       = saved.BranchId,
+                    CreatedBy      = saved.CreatedBy,
+                    CreatedDate    = DateTime.Now
+                });
+            }
+            await Task.CompletedTask;
+        }
+
+        public async Task<(bool success, string message)> ApproveVoucherAsync(int voucherId)
+        {
+            var voucher = await _db.Vouchers.FindAsync(voucherId);
+            if (voucher == null) return (false, "Voucher not found.");
+            if (voucher.IsVoid)   return (false, "Voucher is void.");
+            if (voucher.Status != "Draft")
+                return (false, "Only a Draft voucher can be approved.");
+
+            voucher.Status = "Approved";
+            await _db.SaveChangesAsync();
+            return (true, $"Voucher {voucher.VoucherNo} approved.");
+        }
+
+        public async Task<(bool success, string message)> PostVoucherAsync(int voucherId)
+        {
+            var voucher = await _db.Vouchers
+                .Include(v => v.Details)
+                .FirstOrDefaultAsync(v => v.VoucherId == voucherId);
+            if (voucher == null) return (false, "Voucher not found.");
+            if (voucher.IsVoid)   return (false, "Voucher is void.");
+            if (voucher.Status != "Approved")
+                return (false, "Only an Approved voucher can be posted.");
+
+            await PostVoucherLinesToGLAsync(voucher);
+            voucher.Status = "Posted";
+            await _db.SaveChangesAsync();
+            return (true, $"Voucher {voucher.VoucherNo} posted.");
         }
 
         public async Task<(bool success, string message)> VoidVoucherAsync(int voucherId)

@@ -134,13 +134,13 @@ async function selectItem(itemId) {
         const item = items.find(i => i.itemID === itemId);
 
         if (!item) {
-            alert('Item not found. Please try again.');
+            await alertDialog('Item not found. Please try again.');
             return;
         }
 
         // Check if item already added
         if (adjustmentItems.some(i => i.ItemID === itemId)) {
-            alert('This item is already added to the adjustment.');
+            await alertDialog('This item is already added to the adjustment.');
             return;
         }
 
@@ -150,6 +150,7 @@ async function selectItem(itemId) {
             CompanyName: item.companyName,
             CurrentStock: item.currentStock,
             Quantity: 0,
+            Direction: 'Increase',
             UnitCost: 0,
             TotalCost: 0,
             Description: '',
@@ -160,7 +161,7 @@ async function selectItem(itemId) {
         renderItemsTable();
     } catch (error) {
         console.error('Error selecting item:', error);
-        alert('Error selecting item. Please try again.');
+        await alertDialog('Error selecting item. Please try again.');
     }
 }
 
@@ -171,7 +172,7 @@ function renderItemsTable() {
     if (adjustmentItems.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="10" style="text-align: center; padding: 2rem; color: #6b7280;">
+                <td colspan="11" style="text-align: center; padding: 2rem; color: #6b7280;">
                     No items added yet. Click "Add Item" to start.
                 </td>
             </tr>
@@ -189,10 +190,16 @@ function renderItemsTable() {
                 <small style="color: #6b7280;">${item.CompanyName || ''}</small>
             </td>
             <td>
-                <input type="text" class="item-input" value="${item.Description || ''}" 
+                <input type="text" class="item-input" value="${item.Description || ''}"
                        onchange="updateItemField(${index}, 'Description', this.value)">
             </td>
             <td class="num"><strong>${item.CurrentStock}</strong></td>
+            <td>
+                <select class="item-input" onchange="updateItemField(${index}, 'Direction', this.value)">
+                    <option value="Increase" ${item.Direction !== 'Decrease' ? 'selected' : ''}>Increase</option>
+                    <option value="Decrease" ${item.Direction === 'Decrease' ? 'selected' : ''}>Decrease</option>
+                </select>
+            </td>
             <td>
                 <input type="number" class="item-input" value="${item.Quantity}" min="0" step="0.01"
                        onchange="updateItemQuantity(${index}, parseFloat(this.value) || 0)">
@@ -238,8 +245,8 @@ function updateItemCost(index, cost) {
 }
 
 // Remove item
-function removeItem(index) {
-    if (confirm('Remove this item from adjustment?')) {
+async function removeItem(index) {
+    if (await confirmDialog('Remove this item from adjustment?', { danger: true })) {
         adjustmentItems.splice(index, 1);
         renderItemsTable();
     }
@@ -263,7 +270,7 @@ async function saveDraft() {
 
 // Save and post
 async function saveAndPost() {
-    if (!confirm('This will add the quantities to stock. Continue?')) {
+    if (!(await confirmDialog('This will add the quantities to stock. Continue?'))) {
         return;
     }
     await saveAdjustment('Posted');
@@ -272,14 +279,14 @@ async function saveAndPost() {
 // Save adjustment
 async function saveAdjustment(status) {
     if (adjustmentItems.length === 0) {
-        alert('Please add at least one item.');
+        await alertDialog('Please add at least one item.');
         return;
     }
 
     // Validate quantities
     const invalidItems = adjustmentItems.filter(item => item.Quantity <= 0);
     if (invalidItems.length > 0) {
-        alert('All items must have quantity greater than 0.');
+        await alertDialog('All items must have quantity greater than 0.');
         return;
     }
 
@@ -295,6 +302,7 @@ async function saveAdjustment(status) {
             ItemId: item.ItemID,
             Description: item.Description,
             Quantity: item.Quantity,
+            Direction: item.Direction || 'Increase',
             UnitCost: item.UnitCost,
             Reason: item.Reason
         }))
@@ -312,20 +320,20 @@ async function saveAdjustment(status) {
         const result = await response.json();
 
         if (result.success) {
-            alert(result.message);
+            await alertDialog(result.message);
             window.location.href = '/StockAdjustment/Index';
         } else {
-            alert('Error: ' + result.message);
+            await alertDialog('Error: ' + result.message);
         }
     } catch (error) {
         console.error('Error saving adjustment:', error);
-        alert('Error saving adjustment. Please try again.');
+        await alertDialog('Error saving adjustment. Please try again.');
     }
 }
 
 // Reset form
-function resetForm() {
-    if (confirm('This will clear all data. Continue?')) {
+async function resetForm() {
+    if (await confirmDialog('This will clear all data. Continue?')) {
         adjustmentItems = [];
         renderItemsTable();
         document.getElementById('adjustmentDate').value = new Date().toISOString().split('T')[0];

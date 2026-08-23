@@ -112,11 +112,11 @@
         async function loadReport() {
             const partyType = document.getElementById('partyType').value;
             const asOf      = document.getElementById('asOf').value;
-            if (!asOf) { alert('Please select a date.'); return; }
+            if (!asOf) { await alertDialog('Please select a date.'); return; }
 
             const res  = await fetch(`/Accounts/GetAgingReport?partyType=${partyType}&asOf=${asOf}`);
             const json = await res.json();
-            if (!json.success) { alert('Failed to load aging report.'); return; }
+            if (!json.success) { await alertDialog('Failed to load aging report.'); return; }
 
             const d = json.data;
             document.getElementById('reportSection').style.display = '';

@@ -119,10 +119,10 @@ function saveSettings() {
         body: JSON.stringify(payload)
     })
     .then(r => r.json())
-    .then(d => {
-        if (d.success) alert('✅ ' + d.message);
-        else           alert('❌ ' + d.message);
+    .then(async d => {
+        if (d.success) await alertDialog('✅ ' + d.message);
+        else           await alertDialog('❌ ' + d.message);
     })
-    .catch(() => alert('❌ Error saving settings.'));
+    .catch(async () => await alertDialog('❌ Error saving settings.'));
 }
 </script>

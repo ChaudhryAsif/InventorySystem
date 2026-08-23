@@ -147,28 +147,41 @@ async function loadVouchers() {
             <td>${v.referenceNo || '—'}</td>
             <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${v.narration||''}">${v.narration || '—'}</td>
             <td style="text-align:right;font-weight:600">${fmt(v.totalAmount)}</td>
-            <td><span class="badge ${v.status==='Void'?'badge-danger':'badge-success'}">${v.status}</span></td>
+            <td><span class="badge ${statusBadge(v.status)}">${v.status}</span></td>
             <td>
                 <div class="action-buttons">
+                    ${v.status === 'Draft'    ? `<button class="btn btn-success btn-sm" onclick="approveVoucher(${v.voucherId}, '${v.voucherNo}')">✅ Approve</button>` : ''}
+                    ${v.status === 'Approved' ? `<button class="btn btn-success btn-sm" onclick="postVoucher(${v.voucherId}, '${v.voucherNo}')">📮 Post</button>` : ''}
                     <button class="btn btn-primary btn-sm" onclick="printVoucher(${v.voucherId})">🖨️ Print</button>
-                    <button class="btn btn-danger btn-sm" onclick="voidVoucher(${v.voucherId}, '${v.voucherNo}')">🚫 Void</button>
+                    ${v.status !== 'Void' ? `<button class="btn btn-danger btn-sm" onclick="voidVoucher(${v.voucherId}, '${v.voucherNo}')">🚫 Void</button>` : ''}
                 </div>
             </td>
         </tr>`;
     }).join('');
 }
 
-async function voidVoucher(id, no) {
-    if (!confirm(`Void voucher ${no}? This cannot be undone.`)) return;
-    const res  = await fetch('/Accounts/VoidVoucher', {
+function statusBadge(status) {
+    if (status === 'Void')     return 'badge-danger';
+    if (status === 'Draft')    return 'badge-system';
+    if (status === 'Approved') return 'badge-primary';
+    return 'badge-success'; // Posted
+}
+
+async function callVoucherAction(url, id, no, confirmMsg) {
+    if (confirmMsg && !(await confirmDialog(confirmMsg))) return;
+    const res  = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(id)
     });
     const json = await res.json();
     if (json.success) loadVouchers();
-    else alert('❌ ' + json.message);
+    else await alertDialog('❌ ' + json.message);
 }
+
+async function voidVoucher(id, no)    { await callVoucherAction('/Accounts/VoidVoucher',    id, no, `Void voucher ${no}? This cannot be undone.`); }
+async function approveVoucher(id, no) { await callVoucherAction('/Accounts/ApproveVoucher', id, no, null); }
+async function postVoucher(id, no)    { await callVoucherAction('/Accounts/PostVoucher',    id, no, `Post voucher ${no} to the General Ledger?`); }
 
         function printVoucher(id) {
             window.open('/Accounts/PrintVoucher?id=' + id, '_blank');

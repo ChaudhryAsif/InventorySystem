@@ -118,7 +118,7 @@
             });
         });
 
-        if (!payload.length) { alert('No accounts to save.'); return; }
+        if (!payload.length) { await alertDialog('No accounts to save.', { type: 'warning' }); return; }
 
         const res  = await fetch('/Accounts/SaveOpeningBalances', {
             method:  'POST',
@@ -126,7 +126,7 @@
             body:    JSON.stringify(payload)
         });
         const json = await res.json();
-        alert(json.success ? '✅ ' + json.message : '❌ ' + json.message);
+        await alertDialog(json.success ? '✅ ' + json.message : '❌ ' + json.message);
     }
 </script>
 }

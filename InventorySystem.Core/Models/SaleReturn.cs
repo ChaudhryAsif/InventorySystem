@@ -31,6 +31,9 @@ namespace InventorySystem.Core.Models
 
         public int? UserNo { get; set; }
 
+        /// <summary>Voucher posted to the double-entry ledger for this return, if PostToGeneralLedger is enabled.</summary>
+        public int? GLVoucherId { get; set; }
+
         public ICollection<SaleReturnBody>? SaleReturnBodies { get; set; }
     }
 }

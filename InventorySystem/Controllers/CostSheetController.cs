@@ -5,6 +5,7 @@ using InventorySystem.Core.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 using System.Security.Claims;
 
 namespace InventorySystem.Controllers
@@ -106,6 +107,31 @@ namespace InventorySystem.Controllers
 
                 MapToEntity(model, sheet);
                 await _context.SaveChangesAsync();
+
+                // ── Validate ply item references before saving ─────────────
+                if (model.Plies != null)
+                {
+                    var plyItemIds = model.Plies
+                        .Where(p => p.ItemId.HasValue)
+                        .Select(p => p.ItemId!.Value)
+                        .Distinct()
+                        .ToList();
+
+                    if (plyItemIds.Any())
+                    {
+                        var existingIds = await _context.Items
+                            .Where(i => plyItemIds.Contains(i.ItemID))
+                            .Select(i => i.ItemID)
+                            .ToListAsync();
+
+                        var missingIds = plyItemIds.Where(id => !existingIds.Contains(id)).ToList();
+                        if (missingIds.Any())
+                        {
+                            await tx.RollbackAsync();
+                            return StatusCode(400, new { success = false, message = $"Ply item ID {missingIds.First()} does not exist." });
+                        }
+                    }
+                }
 
                 // ── Save plies ───────────────────────────────────────────────
                 if (model.Plies != null)
@@ -291,6 +317,24 @@ namespace InventorySystem.Controllers
                     }).ToList()
                 }
             });
+        }
+
+        // ── Print ───────────────────────────────────────────────────────────────
+        [HttpGet]
+        public async Task<IActionResult> Print(int id)
+        {
+            var sheet = await _context.CostSheet
+                .Include(c => c.Plies)
+                .FirstOrDefaultAsync(c => c.CostSheetId == id);
+
+            if (sheet == null) return NotFound();
+
+            ViewBag.CustomerName = await _context.Parties
+                .Where(p => p.PartyId.ToString() == sheet.CustomerId)
+                .Select(p => p.PartyName)
+                .FirstOrDefaultAsync() ?? sheet.CustomerId;
+
+            return View(sheet);
         }
 
         // ── Next Sheet Number ───────────────────────────────────────────────────

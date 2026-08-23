@@ -1,0 +1,137 @@
+@model InventorySystem.Core.Models.CostSheet
+@{
+    Layout = null;
+    var plies = Model.Plies?.OrderBy(p => p.SrNo).ToList() ?? new List<InventorySystem.Core.Models.CostSheetPly>();
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Cost Sheet #@Model.CostSheetId</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:2rem; }
+        .inv { max-width:900px; margin:0 auto; }
+        .inv-head { display:flex; justify-content:space-between; border-bottom:3px solid #1e3a5f; padding-bottom:1rem; margin-bottom:1.5rem; }
+        .inv-head h1 { margin:0; font-size:1.6rem; color:#1e3a5f; }
+        .muted { color:#64748b; font-size:.85rem; }
+        .meta { display:grid; grid-template-columns:1fr 1fr 1fr; gap:.5rem 2rem; margin-bottom:1.5rem; }
+        .meta div span { display:block; font-size:.72rem; color:#64748b; text-transform:uppercase; }
+        table { width:100%; border-collapse:collapse; margin-top:.5rem; }
+        th, td { padding:.5rem .7rem; border-bottom:1px solid #e2e8f0; font-size:.85rem; text-align:left; }
+        th { background:#1e3a5f; color:#fff; text-transform:uppercase; font-size:.72rem; }
+        .num { text-align:right; font-variant-numeric:tabular-nums; }
+        .section-title { font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+                          color:#fff; background:#1e3a5f; padding:.35rem .8rem; border-radius:6px;
+                          margin:1.5rem 0 .5rem; display:inline-block; }
+        .cost-grid { display:grid; grid-template-columns:1fr 1fr; gap:.3rem 2rem; }
+        .cost-row { display:flex; justify-content:space-between; padding:.3rem 0; border-bottom:1px dashed #e2e8f0; font-size:.85rem; }
+        .cost-row span:last-child { font-weight:600; }
+        .totals { margin-top:1.5rem; margin-left:auto; width:340px; }
+        .totals td { border:none; padding:.35rem .5rem; }
+        .grand { font-weight:700; font-size:1.1rem; border-top:2px solid #1e3a5f; color:#1e3a5f; }
+        .actions { text-align:center; margin-bottom:1rem; }
+        .actions button { padding:.5rem 1.2rem; border:none; border-radius:8px; background:#1e3a5f; color:#fff; cursor:pointer; font-size:.9rem; }
+        @@media print { .actions { display:none; } body { padding:0; } }
+    </style>
+</head>
+<body>
+    <div class="actions"><button onclick="window.print()">🖨 Print</button></div>
+    <div class="inv">
+        <div class="inv-head">
+            <div>
+                <h1>COST SHEET</h1>
+                <div class="muted">Sheet #@Model.CostSheetId</div>
+            </div>
+            <div style="text-align:right;">
+                <div class="muted">Date</div>
+                <strong>@(Model.SheetDate?.ToString("dd MMM yyyy") ?? "-")</strong>
+            </div>
+        </div>
+
+        <div class="meta">
+            <div><span>Customer</span><strong>@ViewBag.CustomerName</strong></div>
+            <div><span>Item Name</span><strong>@(Model.ItemName ?? "-")</strong></div>
+            <div><span>Box Style</span><strong>@(Model.BoxStyle ?? "-")</strong></div>
+            <div><span>Size</span><strong>@Model.Length?.ToString("0.##") x @Model.Width?.ToString("0.##") x @Model.Height?.ToString("0.##") @Model.SizeUnit</strong></div>
+            <div><span>Flap</span><strong>@(Model.Flap?.ToString("0.##") ?? "-")</strong></div>
+            <div><span>Status</span><strong>@(Model.Status ?? "-")</strong></div>
+        </div>
+
+        <span class="section-title">Plies</span>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ply Name</th>
+                    <th>Specification</th>
+                    <th class="num">GSM</th>
+                    <th class="num">Rate/Kg</th>
+                    <th class="num">Kgs</th>
+                    <th class="num">Cost</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in plies)
+                {
+                    <tr>
+                        <td>@p.SrNo</td>
+                        <td>@(p.PlyName ?? "-")</td>
+                        <td>@(p.Specification ?? "-")</td>
+                        <td class="num">@p.GSM?.ToString("0.##")</td>
+                        <td class="num">@p.Rate?.ToString("0.00")</td>
+                        <td class="num">@p.KGs?.ToString("0.000")</td>
+                        <td class="num">@p.Cost?.ToString("0.00")</td>
+                    </tr>
+                }
+                @if (!plies.Any())
+                {
+                    <tr><td colspan="7" style="text-align:center;color:#9ca3af;">No plies.</td></tr>
+                }
+            </tbody>
+        </table>
+
+        <span class="section-title">Cost Breakdown</span>
+        <div class="cost-grid">
+            <div class="cost-row"><span>Paper Cost</span><span>@Model.PaperCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Printing Cost</span><span>@Model.PrintingCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Lamination Cost</span><span>@Model.LaminationCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Glue/Silicate Cost</span><span>@Model.GlueSilicateCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Labour Cost</span><span>@Model.LabourCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Energy Cost</span><span>@Model.EnergyCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Binding Cost</span><span>@Model.BindingCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Freight Cost</span><span>@Model.FreightCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Sub Total</span><span>@Model.SubTotal?.ToString("0.00")</span></div>
+        </div>
+
+        <span class="section-title">Overheads</span>
+        <div class="cost-grid">
+            <div class="cost-row"><span>Waste (@Model.WastePct?.ToString("0.##")%)</span><span>@Model.WasteCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Admin Exp (@Model.AdminExpPct?.ToString("0.##")%)</span><span>@Model.AdminExpCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Selling/Dist (@Model.SellingDistPct?.ToString("0.##")%)</span><span>@Model.SellingDistCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Repair/Maint (@Model.RepairMaintPct?.ToString("0.##")%)</span><span>@Model.RepairMaintCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Store/Spares (@Model.StoreSparesPct?.ToString("0.##")%)</span><span>@Model.StoreSparesCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Mfg Cost (@Model.MfgCostPct?.ToString("0.##")%)</span><span>@Model.MfgCostValue?.ToString("0.00")</span></div>
+        </div>
+
+        <span class="section-title">Commission &amp; Tax</span>
+        <div class="cost-grid">
+            <div class="cost-row"><span>Commission A (@(Model.CommPersonA ?? "-") @Model.CommPersonAPct?.ToString("0.##")%)</span><span>@Model.CommPersonACost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Commission B (@(Model.CommPersonB ?? "-") @Model.CommPersonBPct?.ToString("0.##")%)</span><span>@Model.CommPersonBCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>WH Tax %</span><span>@Model.WHTaxPct?.ToString("0.##")</span></div>
+            <div class="cost-row"><span>GST %</span><span>@Model.GSTPercentage?.ToString("0.##")</span></div>
+            <div class="cost-row"><span>Profit % / Amount</span><span>@Model.ProfitPct?.ToString("0.##")% / @Model.ProfitAmount?.ToString("0.00")</span></div>
+        </div>
+
+        <table class="totals">
+            <tr><td>Final Cost (w/o GST)</td><td class="num">@Model.FinalCostWOGST?.ToString("0.00")</td></tr>
+            <tr class="grand"><td>Final Rate (w/ GST)</td><td class="num">@Model.FinalRateWithGST?.ToString("0.00")</td></tr>
+        </table>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Remarks))
+        {
+            <div style="margin-top:1rem;font-size:.85rem;"><span class="muted">Remarks:</span> @Model.Remarks</div>
+        }
+    </div>
+</body>
+</html>

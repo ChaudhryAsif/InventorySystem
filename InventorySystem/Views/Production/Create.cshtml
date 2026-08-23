@@ -1,6 +1,8 @@
-﻿@{
+﻿@model InventorySystem.Core.Models.ProductionOrder
+@{
     Layout = "_Layout";
-    ViewData["Title"] = "New Production Order";
+    bool isEdit = Model != null && Model.ProductionOrderId > 0;
+    ViewData["Title"] = isEdit ? "Edit Production Order" : "New Production Order";
     var finalSheets = (ViewBag.FinalSheets as IEnumerable<dynamic>) ?? new List<dynamic>();
     int selectedId  = (int)(ViewBag.SelectedCostSheetId ?? 0);
 }
@@ -27,11 +29,20 @@
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
     <div>
-        <h2 style="font-size:1.5rem;font-weight:700;color:#1e3a5f;margin:0;">🏭 New Production Order</h2>
-        <p style="color:#6b7280;margin:.2rem 0 0;font-size:.9rem;">Create a production order from an approved (Final) Cost Sheet</p>
+        <h2 style="font-size:1.5rem;font-weight:700;color:#1e3a5f;margin:0;">🏭 @(isEdit ? $"Edit Production Order #{Model!.ProductionOrderId}" : "New Production Order")</h2>
+        <p style="color:#6b7280;margin:.2rem 0 0;font-size:.9rem;">@(isEdit ? "Update this order's cost sheet, quantity or dates" : "Create a production order from an approved (Final) Cost Sheet")</p>
     </div>
     <a href="/Production/Index" style="color:#6b7280;font-size:.9rem;">← Back to Orders</a>
 </div>
+
+@if (isEdit && Model!.Status != "Pending")
+{
+    <div style="margin-bottom:1rem;padding:.8rem 1rem;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:.85rem;color:#991b1b;">
+        ⚠️ This order is <strong>@Model.Status</strong> — it can no longer be edited (stock has already been affected). Cancel it and create a new order instead.
+    </div>
+}
+
+<input type="hidden" id="editProductionOrderId" value="@(isEdit ? Model!.ProductionOrderId.ToString() : "0")">
 
 <div class="po-card">
     <span class="po-title">📋 Select Cost Sheet</span>
@@ -126,12 +137,13 @@
 
 <div style="text-align:right;margin-top:1rem;">
     <button class="btn-save" id="saveBtn" onclick="saveOrder()">
-        🏭 Create Production Order
+        @(isEdit ? "💾 Save Changes" : "🏭 Create Production Order")
     </button>
 </div>
 
 <script>
 let currentRate = 0;
+const editId = parseInt(document.getElementById('editProductionOrderId').value) || 0;
 
 function loadCostSheetInfo() {
     const id = document.getElementById('costSheetSelect').value;
@@ -146,7 +158,7 @@ function loadCostSheetInfo() {
         return;
     }
 
-    fetch(`/Production/GetCostSheetInfo?id=${id}`)
+    return fetch(`/Production/GetCostSheetInfo?id=${id}`)
         .then(r => r.json())
         .then(d => {
             if (!d.success) return;
@@ -165,7 +177,7 @@ function loadCostSheetInfo() {
             document.getElementById('sheetInfoBox').style.display = 'flex';
             calcTotal();
         })
-        .catch(() => alert('❌ Failed to load cost sheet info.'));
+        .catch(async () => await alertDialog('❌ Failed to load cost sheet info.'));
 }
 
 function calcTotal() {
@@ -174,7 +186,7 @@ function calcTotal() {
     document.getElementById('totalValue').value = total > 0 ? total.toFixed(2) : '';
 }
 
-function saveOrder() {
+async function saveOrder() {
     const costSheetId  = parseInt(document.getElementById('costSheetSelect').value);
     const orderQty     = parseInt(document.getElementById('orderQty').value);
     const orderDate    = document.getElementById('orderDate').value;
@@ -183,20 +195,22 @@ function saveOrder() {
     const customerId   = document.getElementById('customerId').value;
     const remarks      = document.getElementById('remarks').value;
 
-    if (!costSheetId)              { alert('Please select a Cost Sheet.');      return; }
-    if (!orderQty || orderQty < 1) { alert('Please enter order quantity.');     return; }
-    if (!orderDate)                { alert('Please enter order date.');          return; }
-    if (!deliveryDate)             { alert('Please enter delivery date.');       return; }
+    if (!costSheetId)              { await alertDialog('Please select a Cost Sheet.', { type: 'warning' });      return; }
+    if (!orderQty || orderQty < 1) { await alertDialog('Please enter order quantity.', { type: 'warning' });     return; }
+    if (!orderDate)                { await alertDialog('Please enter order date.', { type: 'warning' });          return; }
+    if (!deliveryDate)             { await alertDialog('Please enter delivery date.', { type: 'warning' });       return; }
     if (new Date(deliveryDate) <= new Date(orderDate)) {
-        alert('Delivery date must be after order date.');
+        await alertDialog('Delivery date must be after order date.', { type: 'warning' });
         return;
     }
 
     const btn = document.getElementById('saveBtn');
+    const defaultLabel = editId > 0 ? '💾 Save Changes' : '🏭 Create Production Order';
     btn.disabled    = true;
-    btn.textContent = '⏳ Creating...';
+    btn.textContent = editId > 0 ? '⏳ Saving...' : '⏳ Creating...';
 
     const payload = {
+        ProductionOrderId : editId,
         CostSheetId  : costSheetId,
         CustomerId   : customerId,
         ProductName  : productName,
@@ -206,30 +220,56 @@ function saveOrder() {
         Remarks      : remarks
     };
 
-    fetch('/Production/Save', {
+    fetch(editId > 0 ? '/Production/Update' : '/Production/Save', {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body   : JSON.stringify(payload)
     })
     .then(r => r.json())
-    .then(d => {
+    .then(async d => {
         if (d.success) {
-            alert(`✅ ${d.message}`);
-            window.location.href = `/Production/Materials/${d.id}`;
+            await alertDialog(`✅ ${d.message}`);
+            window.location.href = `/Production/Materials/${d.id || editId}`;
         } else {
-            alert('❌ ' + (d.message || 'Unknown error'));
+            await alertDialog('❌ ' + (d.message || 'Unknown error'));
             btn.disabled    = false;
-            btn.textContent = '🏭 Create Production Order';
+            btn.textContent = defaultLabel;
         }
     })
-    .catch(() => {
-        alert('❌ Error saving order. Please try again.');
+    .catch(async () => {
+        await alertDialog('❌ Error saving order. Please try again.');
         btn.disabled    = false;
-        btn.textContent = '🏭 Create Production Order';
+        btn.textContent = defaultLabel;
     });
 }
 
+function loadOrderForEdit(id) {
+    fetch(`/Production/GetById?id=${id}`)
+        .then(r => r.json())
+        .then(async d => {
+            if (!d.success) { await alertDialog('❌ Could not load order for editing.'); return; }
+            const o = d.data;
+
+            document.getElementById('costSheetSelect').value = o.costSheetId;
+            loadCostSheetInfo().then(() => {
+                document.getElementById('productName').value  = o.productName || '';
+                document.getElementById('customerName').value = o.customerName || '';
+                document.getElementById('customerId').value   = o.customerId || '';
+                document.getElementById('orderQty').value      = o.orderQty;
+                document.getElementById('orderDate').value     = o.orderDate ? o.orderDate.substring(0, 10) : '';
+                document.getElementById('deliveryDate').value  = o.deliveryDate ? o.deliveryDate.substring(0, 10) : '';
+                document.getElementById('remarks').value       = o.remarks || '';
+                calcTotal();
+            });
+        })
+        .catch(async () => await alertDialog('❌ Failed to load order for editing.'));
+}
+
 window.addEventListener('DOMContentLoaded', () => {
+    if (editId > 0) {
+        loadOrderForEdit(editId);
+        return;
+    }
     const sel = document.getElementById('costSheetSelect');
     if (sel.value) loadCostSheetInfo();
 });

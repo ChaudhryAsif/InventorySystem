@@ -1,0 +1,88 @@
+@model InventorySystem.Core.Models.ProductionOrder
+@{
+    Layout = null;
+    var mats = Model.Materials?.ToList() ?? new List<InventorySystem.Core.Models.ProductionMaterial>();
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Production Order #@Model.ProductionOrderId</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:2rem; }
+        .inv { max-width:900px; margin:0 auto; }
+        .inv-head { display:flex; justify-content:space-between; border-bottom:3px solid #1e3a5f; padding-bottom:1rem; margin-bottom:1.5rem; }
+        .inv-head h1 { margin:0; font-size:1.6rem; color:#1e3a5f; }
+        .muted { color:#64748b; font-size:.85rem; }
+        .meta { display:grid; grid-template-columns:1fr 1fr; gap:.5rem 2rem; margin-bottom:1.5rem; }
+        .meta div span { display:block; font-size:.72rem; color:#64748b; text-transform:uppercase; }
+        table { width:100%; border-collapse:collapse; margin-top:1rem; }
+        th, td { padding:.55rem .7rem; border-bottom:1px solid #e2e8f0; font-size:.9rem; text-align:left; }
+        th { background:#1e3a5f; color:#fff; text-transform:uppercase; font-size:.75rem; }
+        .num { text-align:right; font-variant-numeric:tabular-nums; }
+        .actions { text-align:center; margin-bottom:1rem; }
+        .actions button { padding:.5rem 1.2rem; border:none; border-radius:8px; background:#1e3a5f; color:#fff; cursor:pointer; font-size:.9rem; }
+        @@media print { .actions { display:none; } body { padding:0; } }
+    </style>
+</head>
+<body>
+    <div class="actions"><button onclick="window.print()">🖨 Print</button></div>
+    <div class="inv">
+        <div class="inv-head">
+            <div>
+                <h1>PRODUCTION ORDER</h1>
+                <div class="muted">Order #@Model.ProductionOrderId</div>
+            </div>
+            <div style="text-align:right;">
+                <div class="muted">Status</div>
+                <strong>@Model.Status</strong>
+            </div>
+        </div>
+
+        <div class="meta">
+            <div><span>Product / Item</span><strong>@(Model.ProductName ?? "-")</strong></div>
+            <div><span>Customer</span><strong>@ViewBag.CustomerName</strong></div>
+            <div><span>Order Date</span><strong>@Model.OrderDate.ToString("dd MMM yyyy")</strong></div>
+            <div><span>Delivery Date</span><strong>@Model.DeliveryDate.ToString("dd MMM yyyy")</strong></div>
+            <div><span>Order Qty</span><strong>@Model.OrderQty.ToString("N0")</strong></div>
+            <div><span>Remarks</span><strong>@(Model.Remarks ?? "-")</strong></div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:40px;">#</th>
+                    <th>Item Name</th>
+                    <th>Specification</th>
+                    <th class="num">Kg / Unit</th>
+                    <th class="num">Required Kg</th>
+                    <th class="num">Available Kg</th>
+                    <th class="num">Shortfall Kg</th>
+                    <th>Stock Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ var i = 1; }
+                @foreach (var m in mats)
+                {
+                    <tr>
+                        <td>@(i++)</td>
+                        <td>@(m.ItemName ?? "-")</td>
+                        <td>@(m.Specification ?? "-")</td>
+                        <td class="num">@m.KgPerUnit.ToString("0.000")</td>
+                        <td class="num">@m.RequiredKg.ToString("0.00")</td>
+                        <td class="num">@m.AvailableKg.ToString("0.00")</td>
+                        <td class="num">@m.ShortfallKg.ToString("0.00")</td>
+                        <td>@m.StockStatus</td>
+                    </tr>
+                }
+                @if (!mats.Any())
+                {
+                    <tr><td colspan="8" style="text-align:center;color:#9ca3af;">No materials linked.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

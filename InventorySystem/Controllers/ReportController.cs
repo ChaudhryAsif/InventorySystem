@@ -84,7 +84,8 @@ namespace InventorySystem.Controllers
         public async Task<IActionResult> GetPurchaseData(
             DateTime? from, DateTime? to,
             string? vendorId = null,
-            int? invoiceNo = null)
+            int? invoiceNo = null,
+            int page = 1, int pageSize = 50)
         {
             try
             {
@@ -120,7 +121,10 @@ namespace InventorySystem.Controllers
                     })
                     .ToListAsync();
 
-                var invoiceIds = invoices.Select(i => i.PurchaseId).ToList();
+                var totalCount = invoices.Count;
+                var pagedInvoices = invoices.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+                var invoiceIds = pagedInvoices.Select(i => i.PurchaseId).ToList();
                 var lineItems  = await _context.PurchaseInvoiceBody
                     .Where(b => invoiceIds.Contains(b.PurchaseId))
                     .Select(b => new
@@ -148,7 +152,10 @@ namespace InventorySystem.Controllers
                 return Json(new
                 {
                     success = true,
-                    data = invoices.Select(p => new
+                    totalCount,
+                    page,
+                    pageSize,
+                    data = pagedInvoices.Select(p => new
                     {
                         invoiceNo    = p.PurchaseId,
                         purchaseDate = p.PurchaseDate.HasValue
@@ -196,7 +203,8 @@ namespace InventorySystem.Controllers
         public async Task<IActionResult> GetSaleData(
             DateTime? from, DateTime? to,
             string? customerId = null,
-            int? invoiceNo = null)
+            int? invoiceNo = null,
+            int page = 1, int pageSize = 50)
         {
             try
             {
@@ -232,7 +240,10 @@ namespace InventorySystem.Controllers
                     })
                     .ToListAsync();
 
-                var invoiceIds = invoices.Select(i => i.SaleId).ToList();
+                var totalCount = invoices.Count;
+                var pagedInvoices = invoices.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+                var invoiceIds = pagedInvoices.Select(i => i.SaleId).ToList();
                 var lineItems  = await _context.SaleInvoiceBody
                     .Where(b => invoiceIds.Contains(b.SaleId))
                     .Select(b => new
@@ -259,7 +270,10 @@ namespace InventorySystem.Controllers
                 return Json(new
                 {
                     success = true,
-                    data = invoices.Select(s => new
+                    totalCount,
+                    page,
+                    pageSize,
+                    data = pagedInvoices.Select(s => new
                     {
                         invoiceNo    = s.SaleId,
                         saleDate     = s.SaleDate.HasValue
@@ -305,7 +319,8 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public async Task<IActionResult> GetConsumeData(
             DateTime? from, DateTime? to,
-            int? voucherNo = null)
+            int? voucherNo = null,
+            int page = 1, int pageSize = 50)
         {
             try
             {
@@ -331,7 +346,10 @@ namespace InventorySystem.Controllers
                     })
                     .ToListAsync();
 
-                var voucherIds = vouchers.Select(v => v.ConsumeId).ToList();
+                var totalCount = vouchers.Count;
+                var pagedVouchers = vouchers.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+                var voucherIds = pagedVouchers.Select(v => v.ConsumeId).ToList();
                 var lineItems = await _context.ConsumeInvoiceBody
                     .Where(b => voucherIds.Contains(b.ConsumeId))
                     .Select(b => new
@@ -351,10 +369,19 @@ namespace InventorySystem.Controllers
                     .GroupBy(b => b.ConsumeId)
                     .ToDictionary(g => g.Key, g => g.ToList());
 
+                // Summary totalQty covers the full filtered set, not just the current page
+                var allVoucherIds = vouchers.Select(v => v.ConsumeId).ToList();
+                var summaryTotalQty = await _context.ConsumeInvoiceBody
+                    .Where(b => allVoucherIds.Contains(b.ConsumeId))
+                    .SumAsync(b => (decimal?)b.Quantity) ?? 0;
+
                 return Json(new
                 {
                     success = true,
-                    data = vouchers.Select(c => new
+                    totalCount,
+                    page,
+                    pageSize,
+                    data = pagedVouchers.Select(c => new
                     {
                         voucherNo = c.ConsumeId,
                         consumeDate = c.ConsumeDate.HasValue
@@ -378,7 +405,7 @@ namespace InventorySystem.Controllers
                     summary = new
                     {
                         totalVouchers = vouchers.Count,
-                        totalQty = lineItems.Sum(i => i.qty)
+                        totalQty = summaryTotalQty
                     }
                 });
             }

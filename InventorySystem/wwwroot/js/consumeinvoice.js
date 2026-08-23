@@ -7,16 +7,66 @@
 //  cells[5]  Remove button
 // ───────────────────────────────────────────────────────────────────────────
 
+// Self-contained placeholder — via.placeholder.com is no longer online, so items
+// without a real photo must fall back to something that doesn't depend on the network.
+const NO_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23e2e8f0'/%3E%3Ccircle cx='38' cy='36' r='8' fill='%23ffffff'/%3E%3Cpath d='M20 78 L42 50 L58 68 L72 48 L90 78 Z' fill='%23ffffff'/%3E%3C/svg%3E";
+
 let rowCounter   = 0;
 let selectedItem = null;
 let allItems     = [];
 let currentRow   = null;
+let editId       = null;   // set when editing an existing voucher (?id=)
 
 // ── Init ────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', function () {
-    addNewRow();
-    loadNextVoucherNumber();
+    const id = new URLSearchParams(window.location.search).get('id');
+    if (id) {
+        editId = parseInt(id);
+        loadVoucherForEdit(editId);
+    } else {
+        addNewRow();
+        loadNextVoucherNumber();
+    }
 });
+
+// ── Load an existing voucher into the form (edit mode) ───────────────────────
+async function loadVoucherForEdit(id) {
+    try {
+        const res = await fetch('/Consume/GetConsumeById?id=' + id);
+        if (!res.ok) { await alertDialog('Voucher not found.'); window.location.href = '/Consume/List'; return; }
+        const inv = await res.json();
+
+        const header = document.querySelector('.page-header h2');
+        if (header) header.textContent = '✏️ Edit Consumption Voucher #' + inv.consumeId;
+
+        document.getElementById('voucherNo').value = inv.consumeId;
+        document.getElementById('refNo').value      = inv.refNo || '';
+        if (inv.consumeDate) document.getElementById('voucherDate').value = inv.consumeDate;
+        document.getElementById('purpose').value  = inv.purpose || '';
+        document.getElementById('remarks').value  = inv.remarks || '';
+
+        document.getElementById('itemsBody').innerHTML = '';
+        rowCounter = 0;
+        (inv.items || []).forEach(it => {
+            addNewRow();
+            const row = document.querySelector('#itemsBody tr:last-child');
+            const avail = parseFloat(it.availStock) || 0;
+            row.cells[1].querySelector('input').value = it.itemId;
+            row.cells[2].querySelector('input').value = it.descr || '';
+            row.cells[3].querySelector('input').value = avail;
+            const qtyInput = row.cells[4].querySelector('input');
+            qtyInput.value = it.quantity;
+            qtyInput.max   = avail;
+        });
+        if ((inv.items || []).length === 0) addNewRow();
+
+        calculateTotals();
+    } catch (e) {
+        console.error(e);
+        await alertDialog('Error loading voucher for edit.');
+        window.location.href = '/Consume/List';
+    }
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ROW MANAGEMENT
@@ -58,15 +108,15 @@ function addNewRow() {
     });
 }
 
-function removeRow(row) {
+async function removeRow(row) {
     if (document.getElementById('itemsBody').rows.length > 1) {
-        if (confirm('Remove this item?')) {
+        if (await confirmDialog('Remove this item?', { danger: true })) {
             row.remove();
             updateRowNumbers();
             calculateTotals();
         }
     } else {
-        alert('At least one row is required!');
+        await alertDialog('At least one row is required!');
     }
 }
 
@@ -128,6 +178,9 @@ function loadNextVoucherNumber() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function resetForm() {
+    editId = null;
+    const header = document.querySelector('.page-header h2');
+    if (header) header.textContent = '🏭 Raw Material Consumption';
     document.getElementById('refNo').value       = '';
     document.getElementById('voucherDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('purpose').value     = '';
@@ -140,15 +193,15 @@ function resetForm() {
     loadNextVoucherNumber();
 }
 
-document.getElementById('newBtn').addEventListener('click', function () {
-    if (confirm('Create new voucher? Unsaved changes will be lost.')) resetForm();
+document.getElementById('newBtn').addEventListener('click', async function () {
+    if (await confirmDialog('Create new voucher? Unsaved changes will be lost.')) resetForm();
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
 // FORM SUBMIT
 // ══════════════════════════════════════════════════════════════════════════════
 
-document.getElementById('consumeForm').addEventListener('submit', function (e) {
+document.getElementById('consumeForm').addEventListener('submit', async function (e) {
     e.preventDefault();
 
     const rows = document.querySelectorAll('#itemsBody tr');
@@ -169,11 +222,11 @@ document.getElementById('consumeForm').addEventListener('submit', function (e) {
     });
 
     if (!hasValidItem) {
-        alert('Please add at least one raw material with quantity!');
+        await alertDialog('Please add at least one raw material with quantity!');
         return;
     }
     if (stockErrors.length > 0) {
-        alert('⚠️ Insufficient stock:\n\n' + stockErrors.join('\n'));
+        await alertDialog('⚠️ Insufficient stock:\n\n' + stockErrors.join('\n'));
         return;
     }
 
@@ -192,6 +245,7 @@ document.getElementById('consumeForm').addEventListener('submit', function (e) {
     });
 
     const payload = {
+        ConsumeId:   editId,
         ConsumeDate: document.getElementById('voucherDate').value,
         BranchID:    1,
         RefNo:       document.getElementById('refNo').value   || null,
@@ -205,23 +259,28 @@ document.getElementById('consumeForm').addEventListener('submit', function (e) {
     saveBtn.disabled    = true;
     saveBtn.textContent = '⏳ Saving...';
 
-    fetch('/Consume/Save', {
+    const url = editId ? '/Consume/Update' : '/Consume/Save';
+    fetch(url, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload)
     })
         .then(res => res.json())
-        .then(data => {
+        .then(async data => {
             if (data.success) {
-                alert('✅ ' + data.message);
-                resetForm();
+                await alertDialog('✅ ' + data.message);
+                if (editId) {
+                    window.location.href = '/Consume/List';
+                } else {
+                    resetForm();
+                }
             } else {
-                alert('❌ ' + (data.message || 'Unknown error'));
+                await alertDialog('❌ ' + (data.message || 'Unknown error'));
             }
         })
-        .catch(err => {
+        .catch(async err => {
             console.error(err);
-            alert('❌ Error saving consumption voucher. Please try again.');
+            await alertDialog('❌ Error saving consumption voucher. Please try again.');
         })
         .finally(() => {
             saveBtn.disabled    = false;
@@ -307,9 +366,9 @@ function displayItems(items) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${item.itemID}</td>
-            <td><img src="${item.imageUrl || 'https://via.placeholder.com/40'}"
+            <td><img src="${item.imageUrl || NO_IMAGE_PLACEHOLDER}"
                      class="item-image-thumb" alt="Item"
-                     onerror="this.src='https://via.placeholder.com/40'"></td>
+                     onerror="this.onerror=null;this.src=NO_IMAGE_PLACEHOLDER"></td>
             <td>${item.itemName}</td>
             <td>${item.categoryName}</td>
             <td>${item.barcode || '-'}</td>
@@ -332,7 +391,7 @@ function selectItemRow(row, item) {
     document.getElementById('selectItemBtn').disabled = false;
 }
 
-function selectItem() {
+async function selectItem() {
     if (!selectedItem || !currentRow) return;
 
     // ── Prevent duplicate items across rows ───────────────────────────────
@@ -341,7 +400,7 @@ function selectItem() {
         if (row === currentRow) continue;
         const existingId = row.cells[1].querySelector('input').value;
         if (existingId && existingId == selectedItem.itemID) {
-            alert(`⚠️ "${selectedItem.itemName}" is already added in row ${row.cells[0].textContent}.\nPlease update the quantity in that row instead.`);
+            await alertDialog(`⚠️ "${selectedItem.itemName}" is already added in row ${row.cells[0].textContent}.\nPlease update the quantity in that row instead.`);
             closeItemModal();
             return;
         }
@@ -364,7 +423,7 @@ function selectItem() {
     if (avail <= 0) {
         currentRow.cells[3].querySelector('input').style.background = '#ffeaea';
         currentRow.cells[3].querySelector('input').style.color      = '#dc3545';
-        alert(`⚠️ "${selectedItem.itemName}" has zero stock. Cannot consume.`);
+        await alertDialog(`⚠️ "${selectedItem.itemName}" has zero stock. Cannot consume.`);
     } else {
         currentRow.cells[3].querySelector('input').style.background = '#e8f5e9';
         currentRow.cells[3].querySelector('input').style.color      = '#2e7d32';

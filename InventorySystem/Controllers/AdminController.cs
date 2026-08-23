@@ -24,7 +24,7 @@ namespace InventorySystem.Controllers
         // ── CHECK ADMIN ──────────────────────────────────────────────────────
         private bool IsAdmin()
         {
-            return User.FindFirst(ClaimTypes.Role)?.Value == "Admin";
+            return User.IsInRole("Admin") || User.IsInRole("SuperAdmin");
         }
 
         private IActionResult AdminOnly()

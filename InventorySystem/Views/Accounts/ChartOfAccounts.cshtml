@@ -270,7 +270,7 @@ function editAccount(id) {
 async function saveAccount() {
     const code = document.getElementById('accountCode').value.trim();
     const name = document.getElementById('accountName').value.trim();
-    if (!code || !name) { alert('Account Code and Name are required.'); return; }
+    if (!code || !name) { await alertDialog('Account Code and Name are required.', { type: 'warning' }); return; }
 
     const payload = {
         accountHeadId:      +document.getElementById('accountHeadId').value,
@@ -293,12 +293,12 @@ async function saveAccount() {
     });
     const json = await res.json();
     if (json.success) { closeModal(); await loadAccounts(); }
-    else { alert('❌ ' + json.message); }
+    else { await alertDialog('❌ ' + json.message); }
 }
 
 /* ── Delete ────────────────────────────────────────────────────── */
 async function deleteAccount(id) {
-    if (!confirm('Delete this account? This cannot be undone.')) return;
+    if (!(await confirmDialog('Delete this account? This cannot be undone.', { danger: true }))) return;
     const res  = await fetch('/Accounts/DeleteAccountHead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -306,7 +306,7 @@ async function deleteAccount(id) {
     });
     const json = await res.json();
     if (json.success) { await loadAccounts(); }
-    else { alert('❌ ' + json.message); }
+    else { await alertDialog('❌ ' + json.message); }
 }
 
 // Close on backdrop click

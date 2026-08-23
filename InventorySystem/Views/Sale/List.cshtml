@@ -97,7 +97,8 @@ async function loadSales(){
     body.innerHTML = '<tr><td colspan="8" class="sl-empty">Loading…</td></tr>';
     try{
         const res = await fetch('/Sale/GetSales?' + qs.toString());
-        const data = await res.json();
+        const payload = await res.json();
+        const data = payload.data || [];
         if(!data || data.length === 0){
             body.innerHTML = '<tr><td colspan="8" class="sl-empty">No invoices found.</td></tr>';
             return;
@@ -135,7 +136,7 @@ function clearFilters(){
 async function viewSale(id){
     try{
         const res = await fetch('/Sale/GetSaleById?id=' + id);
-        if(!res.ok){ alert('Invoice not found.'); return; }
+        if(!res.ok){ await alertDialog('Invoice not found.', { type: 'error' }); return; }
         const inv = await res.json();
         document.getElementById('vmTitle').textContent = 'Sale Invoice #' + inv.saleId;
         document.getElementById('vmPrint').href = '/Sale/Print/' + inv.saleId;
@@ -156,18 +157,18 @@ async function viewSale(id){
                 <td class="sl-num">${fmt(it.total)}</td>
             </tr>`).join('');
         document.getElementById('viewModal').classList.add('show');
-    }catch(e){ alert('Error loading invoice.'); }
+    }catch(e){ await alertDialog('Error loading invoice.', { type: 'error' }); }
 }
 function closeView(){ document.getElementById('viewModal').classList.remove('show'); }
 
 async function deleteSale(id){
-    if(!confirm(`Delete Sale Invoice #${id}? This will restore stock and reverse its ledger entries.`)) return;
+    if(!(await confirmDialog(`Delete Sale Invoice #${id}? This will restore stock and reverse its ledger entries.`, { danger: true }))) return;
     try{
         const res = await fetch('/Sale/Delete?id=' + id, { method:'POST' });
         const data = await res.json();
-        if(data.success){ alert('✅ ' + data.message); loadSales(); }
-        else alert('❌ ' + (data.message || 'Delete failed.'));
-    }catch(e){ alert('Error deleting invoice.'); }
+        if(data.success){ await alertDialog('✅ ' + data.message); loadSales(); }
+        else await alertDialog('❌ ' + (data.message || 'Delete failed.'));
+    }catch(e){ await alertDialog('Error deleting invoice.', { type: 'error' }); }
 }
 
 document.addEventListener('DOMContentLoaded', loadSales);

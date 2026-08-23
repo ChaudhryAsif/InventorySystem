@@ -51,6 +51,10 @@ namespace InventorySystem.Core.Models
 
         public decimal Quantity { get; set; }
 
+        /// <summary>"Increase" | "Decrease" — direction to apply Quantity to stock.</summary>
+        [StringLength(10)]
+        public string Direction { get; set; } = "Increase";
+
         public decimal? UnitCost { get; set; }
 
         public decimal? TotalCost { get; set; }
