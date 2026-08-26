@@ -4,7 +4,7 @@
 
 <link href="~/css/parties.css" rel="stylesheet" />
 
-<div class="main-wrapper">
+<div>
     <div class="page-header">
         <div class="page-title">
             <h2>Parties Management (Accounts)</h2>
@@ -246,7 +246,7 @@ function renderPartiesTable(data) {
                 <td>${party.contactPerson || '-'}</td>
                 <td>${party.phone || '-'}</td>
                 <td>${party.email || '-'}</td>
-                <td>$${parseFloat(party.openingBalance || 0).toFixed(2)}</td>
+                <td>Rs. ${parseFloat(party.openingBalance || 0).toFixed(2)}</td>
                 <td>${statusBadge}</td>
                 <td>
                     <div class="action-buttons">
@@ -376,7 +376,7 @@ function renderPartiesTable(data) {
             <td>${data.contactPerson || '-'}</td>
             <td>${data.phone || '-'}</td>
             <td>${data.email || '-'}</td>
-            <td>$${parseFloat(data.openingBalance).toFixed(2)}</td>
+            <td>Rs. ${parseFloat(data.openingBalance).toFixed(2)}</td>
             <td>${statusBadge}</td>
             <td>
                 <div class="action-buttons">

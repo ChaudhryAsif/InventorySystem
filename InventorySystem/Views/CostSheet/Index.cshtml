@@ -13,9 +13,13 @@
     .cs-table tbody tr:hover { background:#f8faff; }
     .badge-draft  { background:#fff3cd; color:#856404; padding:.2rem .6rem; border-radius:20px; font-size:.75rem; font-weight:600; }
     .badge-final  { background:#d1fae5; color:#065f46; padding:.2rem .6rem; border-radius:20px; font-size:.75rem; font-weight:600; }
-    .btn-sm       { padding:.3rem .75rem; border-radius:6px; font-size:.8rem; border:none; cursor:pointer; }
+    .cs-actions   { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; }
+    .btn-sm       { display:inline-block; padding:.35rem .75rem; border-radius:6px; font-size:.78rem; font-weight:600;
+                    border:none; cursor:pointer; text-decoration:none; line-height:1.2; white-space:nowrap; }
     .btn-edit     { background:#3b82f6; color:#fff; }
-    .btn-delete   { background:#ef4444; color:#fff; margin-left:.3rem; }
+    .btn-print    { background:#0f172a; color:#fff; }
+    .btn-delete   { background:#ef4444; color:#fff; }
+    .btn-produce  { background:#16a34a; color:#fff; }
 </style>
 
 <!-- Add this top section for info and actions -->
@@ -70,16 +74,15 @@
                         { <span class="badge-draft">✏️ Draft</span> }
                     </td>
                     <td>
-                        <a href="/CostSheet/Edit/@s.CostSheetId" class="btn-sm btn-edit">✏️ Edit</a>
-                        <a href="/CostSheet/Print/@s.CostSheetId" class="btn-sm" style="background:#0f172a;color:#fff;">🖨 Print</a>
-                        <button class="btn-sm btn-delete" onclick="deleteSheet(@s.CostSheetId)">🗑️ Delete</button>
-                        @if (s.Status == "Final")
-                        {
-                            <a href="/Production/Create?costSheetId=@s.CostSheetId"
-                               style="background:#16a34a;color:#fff;padding:.3rem .7rem;border-radius:6px;text-decoration:none;font-size:.78rem;">
-                                🏭 Produce
-                            </a>
-                        }
+                        <div class="cs-actions">
+                            <a href="/CostSheet/Edit/@s.CostSheetId" class="btn-sm btn-edit">✏️ Edit</a>
+                            <a href="/CostSheet/Print/@s.CostSheetId" class="btn-sm btn-print">🖨 Print</a>
+                            <button class="btn-sm btn-delete" onclick="deleteSheet(@s.CostSheetId)">🗑️ Delete</button>
+                            @if (s.Status == "Final")
+                            {
+                                <a href="/Production/Create?costSheetId=@s.CostSheetId" class="btn-sm btn-produce">🏭 Produce</a>
+                            }
+                        </div>
                     </td>
                 </tr>
                 i++;

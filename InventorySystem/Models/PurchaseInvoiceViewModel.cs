@@ -2,7 +2,7 @@
 {
     public class PurchaseInvoiceViewModel
     {
-        public int PurchaseId { get; set; }
+        public int? PurchaseId { get; set; }   // null/0 = new invoice, > 0 = edit
         public DateTime? PurchaseDate { get; set; }
         public string? VendorID { get; set; }
         public string? BillNo { get; set; }

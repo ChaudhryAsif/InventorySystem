@@ -13,6 +13,17 @@
     .badge-draft { background: #fef3c7; color: #92400e; }
     .badge-posted { background: #d1fae5; color: #065f46; }
 
+    /* Buttons — this page previously relied on .btn/.btn-sm/.btn-info/.btn-success/.btn-danger/.btn-primary
+       classes that were never defined anywhere, so buttons rendered as unstyled browser defaults. */
+    .btn { display: inline-block; border: none; border-radius: 6px; cursor: pointer; text-decoration: none;
+           font-weight: 600; padding: .5rem 1rem; font-size: .85rem; }
+    .btn-sm { padding: .35rem .75rem; font-size: .78rem; }
+    .btn-primary { background: #1e3a5f; color: #fff; }
+    .btn-info    { background: #0ea5e9; color: #fff; }
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-danger  { background: #ef4444; color: #fff; }
+    .sa-actions  { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
+
     /* Modal Styles */
     .details-modal {
         display: none;
@@ -282,11 +293,13 @@ async function loadAdjustments() {
                 <td><span class="badge badge-${status.toLowerCase()}">${status}</span></td>
                 <td>${remarks}</td>
                 <td>
-                    <button class="btn btn-sm btn-info" onclick="viewDetails(${adjustmentId})">👁️ View</button>
-                    ${status === 'Draft' ? `
-                        <button class="btn btn-sm btn-success" onclick="postAdjustment(${adjustmentId})">✅ Post</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteAdjustment(${adjustmentId})">🗑️ Delete</button>
-                    ` : ''}
+                    <div class="sa-actions">
+                        <button class="btn btn-sm btn-info" onclick="viewDetails(${adjustmentId})">👁️ View</button>
+                        ${status === 'Draft' ? `
+                            <button class="btn btn-sm btn-success" onclick="postAdjustment(${adjustmentId})">✅ Post</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteAdjustment(${adjustmentId})">🗑️ Delete</button>
+                        ` : ''}
+                    </div>
                 </td>
             </tr>
             `;

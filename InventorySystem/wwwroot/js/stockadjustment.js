@@ -293,8 +293,7 @@ async function saveAdjustment(status) {
     const data = {
         AdjustmentNo: document.getElementById('adjustmentNo').value,
         AdjustmentDate: document.getElementById('adjustmentDate').value,
-        //BranchId: parseInt(document.getElementById('branchId').value),
-        BranchId: 1,
+        BranchId: parseInt(document.getElementById('branchId').value) || 1,
         AdjustmentType: document.getElementById('adjustmentType').value,
         Remarks: document.getElementById('remarks').value,
         Status: status,

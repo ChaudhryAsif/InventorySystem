@@ -209,9 +209,9 @@
             .then(res => {
                 if (!res.success) return;
                 currentBalance = res.balance;
-                document.getElementById('totalDebit').textContent        = '$' + res.totalDebit.toFixed(2);
-                document.getElementById('totalCredit').textContent       = '$' + res.totalCredit.toFixed(2);
-                document.getElementById('outstandingBalance').textContent = '$' + res.balance.toFixed(2);
+                document.getElementById('totalDebit').textContent        = 'Rs. ' + res.totalDebit.toFixed(2);
+                document.getElementById('totalCredit').textContent       = 'Rs. ' + res.totalCredit.toFixed(2);
+                document.getElementById('outstandingBalance').textContent = 'Rs. ' + res.balance.toFixed(2);
                 document.getElementById('balanceStatus').textContent      = res.status;
 
                 const card = document.getElementById('balanceCard');
@@ -256,7 +256,7 @@
                         <td>${i + 1}</td>
                         <td>${r.date}</td>
                         <td><span class="ac-type-badge ac-type-${r.transactionType.toLowerCase()}">${r.transactionType}</span></td>
-                        <td class="ac-num"><strong>$${Math.max(r.debit, r.credit).toFixed(2)}</strong></td>
+                        <td class="ac-num"><strong>Rs. ${Math.max(r.debit, r.credit).toFixed(2)}</strong></td>
                         <td>–</td><td>${r.refNo}</td><td>–</td><td>–</td>
                         <td><button class="ac-void-btn" onclick="voidVoucher('${r.refNo}')">✕</button></td>
                     </tr>`).join('');
@@ -277,9 +277,9 @@
                         <td>${r.date}</td>
                         <td>${esc(r.description)}</td>
                         <td><span class="ac-type-badge ac-type-${r.transactionType.toLowerCase()}">${r.transactionType}</span></td>
-                        <td class="ac-num">${r.debit > 0 ? '$' + r.debit.toFixed(2) : '–'}</td>
-                        <td class="ac-num">${r.credit > 0 ? '$' + r.credit.toFixed(2) : '–'}</td>
-                        <td class="ac-num ac-balance-cell"><strong>$${r.balance.toFixed(2)}</strong></td>
+                        <td class="ac-num">${r.debit > 0 ? 'Rs. ' + r.debit.toFixed(2) : '–'}</td>
+                        <td class="ac-num">${r.credit > 0 ? 'Rs. ' + r.credit.toFixed(2) : '–'}</td>
+                        <td class="ac-num ac-balance-cell"><strong>Rs. ${r.balance.toFixed(2)}</strong></td>
                     </tr>`).join('');
             });
     }
@@ -291,7 +291,7 @@
 
         const amount = parseFloat(document.getElementById('voucherAmount').value);
         if (amount > currentBalance && currentBalance > 0) {
-            if (!(await confirmDialog(`Amount $${amount.toFixed(2)} exceeds outstanding $${currentBalance.toFixed(2)}. Continue?`))) return;
+            if (!(await confirmDialog(`Amount Rs. ${amount.toFixed(2)} exceeds outstanding Rs. ${currentBalance.toFixed(2)}. Continue?`))) return;
         }
 
         const invoiceVal = document.getElementById('invoiceSelect').value;

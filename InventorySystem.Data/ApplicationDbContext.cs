@@ -50,8 +50,6 @@ namespace InventorySystem.Data
         public DbSet<MenuItem> MenuItems => Set<MenuItem>();
 
         // ── Consumption ───────────────────────────────────────────────────────────
-        public DbSet<ConsumeInvoice> ConsumeInvoice => Set<ConsumeInvoice>();
-        public DbSet<ConsumeInvoiceBody> ConsumeInvoiceBody => Set<ConsumeInvoiceBody>();
 
         // ── Cost Sheet ────────────────────────────────────────────────────────────
         public DbSet<CostSheetSettings> CostSheetSettings => Set<CostSheetSettings>();
@@ -90,9 +88,6 @@ namespace InventorySystem.Data
                 .Property(p => p.Srno).ValueGeneratedOnAdd();
 
             modelBuilder.Entity<SaleReturnBody>()
-                .Property(p => p.Srno).ValueGeneratedOnAdd();
-
-            modelBuilder.Entity<ConsumeInvoiceBody>()
                 .Property(p => p.Srno).ValueGeneratedOnAdd();
 
             modelBuilder.Entity<CostSheetPly>()
@@ -301,11 +296,6 @@ namespace InventorySystem.Data
 
             modelBuilder.Entity<SaleReturnBody>()
                 .Property(x => x.Total)
-                .HasPrecision(18, 2);
-
-            // ConsumeInvoiceBody
-            modelBuilder.Entity<ConsumeInvoiceBody>()
-                .Property(x => x.Quantity)
                 .HasPrecision(18, 2);
 
             // CostSheet

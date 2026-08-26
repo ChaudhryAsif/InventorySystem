@@ -84,7 +84,7 @@
         const json = await res.json();
         const sel  = document.getElementById('bankAccount');
         json.data
-            .filter(a => a.accountType === 'Assets')
+            .filter(a => a.accountCode === '1101' || a.accountCode === '1102')
             .forEach(a => {
                 const opt = document.createElement('option');
                 opt.value       = a.accountHeadId;

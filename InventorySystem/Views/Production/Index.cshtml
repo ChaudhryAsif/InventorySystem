@@ -108,8 +108,8 @@
                     <td>@((int)o.OrderQty)</td>
                     <td>@fRate.ToString("N2")</td>
                     <td><strong>@tVal.ToString("N0")</strong></td>
-                    <td>@((DateTime)o.OrderDate)</td>
-                    <td>@((DateTime)o.DeliveryDate)</td>
+                    <td>@(((DateTime)o.OrderDate).ToString("dd-MMM-yyyy"))</td>
+                    <td>@(((DateTime)o.DeliveryDate).ToString("dd-MMM-yyyy"))</td>
                     <td><span class="@daysClass">@daysText</span></td>
                     <td><span class="status-badge status-@status">@status</span></td>
                     <td>

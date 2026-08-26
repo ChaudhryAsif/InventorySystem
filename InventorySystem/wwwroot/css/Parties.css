@@ -1,6 +1,6 @@
 ﻿.main-wrapper {
-    margin-left: 126px;
-    margin-top: 26px;
+    margin-left: var(--sidebar-width);
+    margin-top: var(--header-height);
     min-height: calc(100vh - var(--header-height));
     padding: 2rem;
 }

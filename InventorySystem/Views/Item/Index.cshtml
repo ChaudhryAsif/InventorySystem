@@ -5,7 +5,7 @@
 }
 
   <!-- Main Content -->
-<div class="main-wrapper">
+<div>
     <div class="page-header">
         <div class="page-title">
             <h2>Item Management</h2>
@@ -476,7 +476,7 @@ function saveItem(event) {
                 <td>${itemData.itemName}</td>
                 <td>Electronics</td>
                
-                <td>$${parseFloat(itemData.salePrice).toFixed(2)}</td>
+                <td>${parseFloat(itemData.salePrice).toFixed(2)}</td>
                 <td><span class="badge badge-success">Active</span></td>
                 <td>
                     <div class="action-buttons">

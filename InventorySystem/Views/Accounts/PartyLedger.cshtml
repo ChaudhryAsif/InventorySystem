@@ -48,17 +48,17 @@
     <div class="ac-balance-grid" id="ledgerSummary" style="display:none;">
         <div class="ac-balance-card ac-card-orange">
             <div class="ac-card-icon">📤</div>
-            <div class="ac-card-value" id="sumDebit">$0.00</div>
+            <div class="ac-card-value" id="sumDebit">Rs. 0.00</div>
             <div class="ac-card-label" id="sumDebitLabel">Total Debit</div>
         </div>
         <div class="ac-balance-card ac-card-green">
             <div class="ac-card-icon">📥</div>
-            <div class="ac-card-value" id="sumCredit">$0.00</div>
+            <div class="ac-card-value" id="sumCredit">Rs. 0.00</div>
             <div class="ac-card-label" id="sumCreditLabel">Total Credit</div>
         </div>
         <div class="ac-balance-card" id="sumCard">
             <div class="ac-card-icon">⚖️</div>
-            <div class="ac-card-value" id="sumBalance">$0.00</div>
+            <div class="ac-card-value" id="sumBalance">Rs. 0.00</div>
             <div class="ac-card-label" id="sumBalanceLabel">Balance</div>
         </div>
     </div>
@@ -126,9 +126,9 @@
                 if (!res.success) return;
 
                 const s = res.summary;
-                document.getElementById('sumDebit').textContent   = '$' + s.totalDebit.toFixed(2);
-                document.getElementById('sumCredit').textContent  = '$' + s.totalCredit.toFixed(2);
-                document.getElementById('sumBalance').textContent = '$' + s.balance.toFixed(2);
+                document.getElementById('sumDebit').textContent   = 'Rs. ' + s.totalDebit.toFixed(2);
+                document.getElementById('sumCredit').textContent  = 'Rs. ' + s.totalCredit.toFixed(2);
+                document.getElementById('sumBalance').textContent = 'Rs. ' + s.balance.toFixed(2);
                 document.getElementById('sumBalanceLabel').textContent = s.balanceType;
 
                 const card = document.getElementById('sumCard');
@@ -149,9 +149,9 @@
                         <td>${r.date}</td>
                         <td>${esc(r.description)}</td>
                         <td><span class="ac-type-badge ac-type-${r.transactionType.toLowerCase()}">${r.transactionType}</span></td>
-                        <td class="ac-num">${r.debit  > 0 ? '$' + r.debit.toFixed(2)  : '–'}</td>
-                        <td class="ac-num">${r.credit > 0 ? '$' + r.credit.toFixed(2) : '–'}</td>
-                        <td class="ac-num ac-balance-cell"><strong>$${r.balance.toFixed(2)}</strong></td>
+                        <td class="ac-num">${r.debit  > 0 ? 'Rs. ' + r.debit.toFixed(2)  : '–'}</td>
+                        <td class="ac-num">${r.credit > 0 ? 'Rs. ' + r.credit.toFixed(2) : '–'}</td>
+                        <td class="ac-num ac-balance-cell"><strong>Rs. ${r.balance.toFixed(2)}</strong></td>
                     </tr>`).join('');
 
                 // Update print header

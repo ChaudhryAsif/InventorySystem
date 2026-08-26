@@ -85,7 +85,7 @@ namespace InventorySystem.Controllers
         [HttpPost]
         public async Task<IActionResult> Update([FromBody] PurchaseInvoiceViewModel model)
         {
-            if (model == null || model.PurchaseId <= 0)
+            if (model == null || model.PurchaseId is null or <= 0)
                 return BadRequest("Invalid invoice id.");
             if (model.Items == null || !model.Items.Any())
                 return BadRequest("Invalid invoice data.");

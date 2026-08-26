@@ -53,6 +53,7 @@ async function loadInvoiceForEdit(id) {
         document.getElementById('supplierAccount').value = inv.vendorName || '';
         document.getElementById('supplierDetails').value = '';
         document.getElementById('remarks').value          = inv.remarks || '';
+        document.getElementById('paymentMode').value      = (inv.paymentMode ?? 0).toString();
 
         document.getElementById('gstPercent').value  = inv.gstPer || 0;
         document.getElementById('freight').value     = inv.freightExp || 0;
@@ -212,6 +213,7 @@ function resetForm() {
     document.getElementById('hftxtSupplierId').value = '';
     document.getElementById('supplierDetails').value = '';
     document.getElementById('remarks').value = '';
+    document.getElementById('paymentMode').selectedIndex = 0;
 
     // --- Invoice number: fetch the accurate next ID from server ---
     loadNextInvoiceNumber();
@@ -289,7 +291,8 @@ document.getElementById('purchaseForm').addEventListener('submit', async functio
         PurchaseDate: document.getElementById('invoiceDate').value,
         VendorID: supplierAccount,
         BillNo: document.getElementById('billNo').value,
-        BranchID: 1,
+        BranchID: parseInt(document.getElementById('branch').value) || 1,
+        PaymentMode: parseInt(document.getElementById('paymentMode').value) || 0,
         Remarks: document.getElementById('remarks').value,
         GSTPer: parseFloat(document.getElementById('gstPercent').value),
         GSTAmount: parseFloat(document.getElementById('gstAmount').value),
@@ -394,7 +397,7 @@ function displaySuppliers(suppliers) {
                 <td>${supplier.contactPerson || '-'}</td>
                 <td>${supplier.phone}</td>
                 <td>${supplier.email || '-'}</td>
-                <td>$${parseFloat(supplier.openingBalance || 0).toFixed(2)}</td>
+                <td>Rs. ${parseFloat(supplier.openingBalance || 0).toFixed(2)}</td>
             `;
 
         row.addEventListener('click', function () {
@@ -569,7 +572,7 @@ function displayItems(items) {
                 <td>${item.itemName}</td>
                 <td>${item.categoryName}</td>
                 <td>${item.barcode || '-'}</td>
-                <td>$${parseFloat(item.salePrice).toFixed(2)}</td>
+                <td>Rs. ${parseFloat(item.salePrice).toFixed(2)}</td>
                 <td>${stockBadge}</td>
             `;
 

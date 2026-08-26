@@ -161,8 +161,8 @@
                 reportData = result.data;
 
                 document.getElementById('totalInvoices').textContent = result.summary.totalInvoices;
-                document.getElementById('totalAmount').textContent   = '$' + parseFloat(result.summary.totalAmount).toFixed(2);
-                document.getElementById('netAmount').textContent     = '$' + parseFloat(result.summary.netAmount).toFixed(2);
+                document.getElementById('totalAmount').textContent   = 'Rs. ' + parseFloat(result.summary.totalAmount).toFixed(2);
+                document.getElementById('netAmount').textContent     = 'Rs. ' + parseFloat(result.summary.netAmount).toFixed(2);
 
                 if (!reportData || reportData.length === 0) {
                     tbody.innerHTML = '';
@@ -186,11 +186,11 @@
                     <td>${item.itemId ?? '–'}</td>
                     <td><strong>${escHtml(item.itemName)}</strong></td>
                     <td class="rpt-amount">${item.qty}</td>
-                    <td class="rpt-amount">$${parseFloat(item.purPrice).toFixed(2)}</td>
-                    <td class="rpt-amount">$${parseFloat(item.salePrice).toFixed(2)}</td>
+                    <td class="rpt-amount">Rs. ${parseFloat(item.purPrice).toFixed(2)}</td>
+                    <td class="rpt-amount">Rs. ${parseFloat(item.salePrice).toFixed(2)}</td>
                     <td class="rpt-amount">${item.discPer}%</td>
-                    <td class="rpt-amount">$${parseFloat(item.discAmt).toFixed(2)}</td>
-                    <td class="rpt-amount"><strong>$${parseFloat(item.total).toFixed(2)}</strong></td>
+                    <td class="rpt-amount">Rs. ${parseFloat(item.discAmt).toFixed(2)}</td>
+                    <td class="rpt-amount"><strong>Rs. ${parseFloat(item.total).toFixed(2)}</strong></td>
                 </tr>`).join('')
             : '<tr><td colspan="8" style="text-align:center;color:#999;padding:0.75rem;">No items found</td></tr>';
 
@@ -206,8 +206,8 @@
                 <td>${r.billNo}</td>
                 <td>${r.branchName}</td>
                 <td><span class="rpt-badge rpt-badge-blue">${r.paymentMode}</span></td>
-                <td class="rpt-amount">$${parseFloat(r.totalAmount).toFixed(2)}</td>
-                <td class="rpt-amount"><strong>$${parseFloat(r.netAmount).toFixed(2)}</strong></td>
+                <td class="rpt-amount">Rs. ${parseFloat(r.totalAmount).toFixed(2)}</td>
+                <td class="rpt-amount"><strong>Rs. ${parseFloat(r.netAmount).toFixed(2)}</strong></td>
                 <td class="rpt-remarks" title="${escHtml(r.remarks)}">${escHtml(r.remarks) || '–'}</td>
             </tr>
             <tr class="rpt-detail-row" id="detail-${r.invoiceNo}">
