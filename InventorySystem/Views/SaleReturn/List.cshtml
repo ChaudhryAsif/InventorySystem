@@ -38,6 +38,7 @@
         <a href="/SaleReturn/Index" class="sl-btn" style="background:#16a34a;text-decoration:none;">➕ New Return</a>
     </div>
 
+    <label><input type="checkbox" id="includeCancelled" onchange="loadReturns()"> Include cancelled documents</label>
     <div class="sl-filters">
         <div class="fg"><label>Search</label><input type="text" id="fSearch" placeholder="Customer, Ref, or #" onkeyup="if(event.key==='Enter')loadReturns()"></div>
         <div class="fg"><label>From</label><input type="date" id="fFrom"></div>
@@ -89,6 +90,7 @@ async function loadReturns(){
     const f = document.getElementById('fFrom').value;
     const t = document.getElementById('fTo').value;
     const qs = new URLSearchParams();
+    if(document.getElementById("includeCancelled").checked) qs.set("includeCancelled", "true");
     if(s) qs.append('search', s);
     if(f) qs.append('from', f);
     if(t) qs.append('to', t);
@@ -97,32 +99,40 @@ async function loadReturns(){
     body.innerHTML = '<tr><td colspan="8" class="sl-empty">Loading…</td></tr>';
     try{
         const res = await fetch('/SaleReturn/GetSaleReturns?' + qs.toString());
+        if (!res.ok) throw new Error('Load failed');
         const payload = await res.json();
+        if (payload.success === false || !Array.isArray(payload.data)) throw new Error('Load failed');
         const data = payload.data || [];
         if(!data || data.length === 0){
-            body.innerHTML = '<tr><td colspan="8" class="sl-empty">No returns found.</td></tr>';
+            const matching = !!(s || f || t);
+            PosListState.show(body, { columns:8,
+                title:matching ? 'No matching sales returns found' : 'No sales returns yet',
+                message:matching ? 'Try a different search or clear the date filters.' : 'Create a sales return to get started.',
+                actionText:matching ? 'Clear filters' : 'Create sales return',
+                onAction:matching ? clearFilters : undefined,
+                href:matching ? undefined : '/SaleReturn/Index' });
             return;
         }
         body.innerHTML = data.map(r => `
             <tr>
-                <td><strong>#${r.saleReturnId}</strong></td>
+                <td>${r.isCancelled ? "<span>Cancelled</span> " : ""}<strong>#${r.saleReturnId}</strong></td>
                 <td>${r.returnDate || '-'}</td>
-                <td>${r.customerName || '-'}</td>
-                <td>${r.refNo || '-'}</td>
+                <td>${escapeHtml(r.customerName || '-')}</td>
+                <td>${escapeHtml(r.refNo || '-')}</td>
                 <td><span class="sl-badge ${r.paymentMode==='Credit'?'b-credit':'b-paid'}">${r.paymentMode}</span></td>
                 <td class="sl-num">${r.itemCount}</td>
                 <td class="sl-num">${fmt(r.netAmount)}</td>
                 <td>
                     <div class="sl-actions">
                         <button class="sl-btn sl-view" onclick="viewReturn(${r.saleReturnId})">👁 View</button>
-                        <a class="sl-btn sl-edit" style="text-decoration:none;" href="/SaleReturn/Index?id=${r.saleReturnId}">✏ Edit</a>
+                        <a class="sl-btn sl-edit" style="text-decoration:none;" href="${r.isCancelled ? "#" : `/SaleReturn/Index?id=${r.saleReturnId}`}">✏ Edit</a>
                         <a class="sl-btn sl-print" style="text-decoration:none;" target="_blank" href="/SaleReturn/Print/${r.saleReturnId}">🖨</a>
-                        <button class="sl-btn sl-del" onclick="deleteReturn(${r.saleReturnId})">🗑</button>
+                        <button ${r.isCancelled ? "disabled" : ""} class="sl-btn sl-del" onclick="deleteReturn(${r.saleReturnId})">Cancel</button>
                     </div>
                 </td>
             </tr>`).join('');
     }catch(e){
-        body.innerHTML = '<tr><td colspan="8" class="sl-empty" style="color:#dc2626;">Error loading returns.</td></tr>';
+        PosListState.show(body, { columns:8, error:true, title:'Could not load sales returns', message:'Check your connection and try again.', actionText:'Try again', onAction:loadReturns });
     }
 }
 
@@ -142,13 +152,13 @@ async function viewReturn(id){
         document.getElementById('vmPrint').href = '/SaleReturn/Print/' + r.saleReturnId;
         document.getElementById('vmMeta').innerHTML = `
             <div><span>Date</span><b>${r.returnDate||'-'}</b></div>
-            <div><span>Customer</span><b>${r.customerName||'-'}</b></div>
-            <div><span>Ref No</span><b>${r.refNo||'-'}</b></div>
+            <div><span>Customer</span><b>${escapeHtml(r.customerName||'-')}</b></div>
+            <div><span>Ref No</span><b>${escapeHtml(r.refNo||'-')}</b></div>
             <div><span>Net Amount</span><b>${fmt(r.netAmount)}</b></div>`;
         document.getElementById('vmBody').innerHTML = (r.items||[]).map((it,i)=>`
             <tr>
                 <td>${i+1}</td>
-                <td>${it.descr||('#'+it.itemId)}</td>
+                <td>${escapeHtml(it.descr||('#'+it.itemId))}</td>
                 <td class="sl-num">${fmt(it.quantity)}</td>
                 <td class="sl-num">${fmt(it.salePrice)}</td>
                 <td class="sl-num">${fmt(it.discAmt)}</td>
@@ -160,7 +170,7 @@ async function viewReturn(id){
 function closeView(){ document.getElementById('viewModal').classList.remove('show'); }
 
 async function deleteReturn(id){
-    if(!(await confirmDialog(`Delete Sale Return #${id}? This will reverse stock and its ledger entries.`, { danger: true }))) return;
+    if(!(await confirmDialog(`Cancel Sale Return #${id}? This will reverse stock and its ledger entries.`, { danger: true }))) return;
     try{
         const res = await fetch('/SaleReturn/Delete?id=' + id, { method:'POST' });
         const data = await res.json();

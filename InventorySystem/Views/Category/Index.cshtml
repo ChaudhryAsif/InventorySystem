@@ -1,21 +1,22 @@
-﻿@model IEnumerable<InventorySystem.Core.Models.ItemCategory>
+﻿@{ ViewData["Title"] = "Groups"; }
+@model IEnumerable<InventorySystem.Core.Models.ItemCategory>
 
 @{
     Layout = "_Layout";
 }
 
-<link href="~/css/itemcategory.css" rel="stylesheet" />
+<link href="~/css/itemcategory.css" rel="stylesheet" asp-append-version="true" />
 
 <!-- Main Content -->
 <div>
     <!-- Page Header -->
     <div class="page-header">
         <div class="page-title">
-            <h2>Item Category</h2>
-            <p>Manage all product categories in inventory</p>
+            <h2>Groups</h2>
+            <p>Organize inventory items into groups</p>
         </div>
         <button class="btn btn-success" onclick="openModal()">
-            ➕ Add Category
+            ➕ Add Group
         </button>
     </div>
 
@@ -23,7 +24,7 @@
     <div class="search-section">
         <div class="search-box">
             <span style="font-size: 1.2rem;">🔍</span>
-            <input type="text" class="search-input" placeholder="Search categories..." id="searchInput" onkeyup="searchTable()">
+            <input type="text" class="search-input" placeholder="Search groups..." id="searchInput" oninput="searchTable()">
         </div>
     </div>
 
@@ -34,8 +35,11 @@
                 <thead>
                     <tr>
                         @* <th style="width: 100px;">Category ID</th> *@
-                        <th>Category Name</th>
+                        <th>Group Name</th>
+                        <th>Group Type</th>
                         <th>Description</th>
+                        <th>Address / Location</th>
+                        <th>Contact Number</th>
                         <th style="width: 150px;">Created Date</th>
                         <th style="width: 120px;">Status</th>
                         <th style="width: 200px;">Actions</th>
@@ -46,7 +50,10 @@
                     {
                         <tr data-category-id="@category.CategoryId">
                             <td>@category.CategoryName</td>
+                            <td>@(category.GroupType == "RawMaterial" ? "Raw Material" : category.GroupType == "FinishedGoods" ? "Finished Goods" : "Not set")</td>
                             <td>@category.Description</td>
+                            <td>@category.Address</td>
+                            <td>@category.ContactNumber</td>
                             <td>@(category.CreatedDate != null ? category.CreatedDate.Value.ToString("yyyy-MM-dd") : "")</td>
                             <td>
                                 <span class="badge @(category.IsActive != null && category.IsActive.Value ? "badge-success" : "badge-danger")">
@@ -56,16 +63,22 @@
                             <td>
                                 <div class="action-buttons">
                                     <button class="btn btn-primary btn-sm"
-                                            onclick="editCategory(@category.CategoryId, '@category.CategoryName', @((category.IsActive ?? false).ToString().ToLower()), '@category.Description')">
+                                            onclick="editCategory(@category.CategoryId)">
                                         ✏️ Edit
                                     </button>
+@if (User.IsInRole("SuperAdmin")) {
                                     <button class="btn btn-danger btn-sm"
                                             onclick="deleteCategory('@category.CategoryId')">
                                         🗑️ Delete
                                     </button>
+                                    }
                                 </div>
                             </td>
                         </tr>
+                    }
+                    @if (!Model.Any())
+                    {
+                        <partial name="_ListEmptyState" model='new InventorySystem.Models.ListEmptyState(8, "No groups yet", "Create your first group to organize your inventory.", "+ Add Group", ActionId: "emptyAddGroup")' />
                     }
                 </tbody>
 
@@ -78,7 +91,7 @@
 <div class="modal" id="categoryModal">
     <div class="modal-dialog">
         <div class="modal-header">
-            <h3 class="modal-title" id="modalTitle">Add New Category</h3>
+            <h3 class="modal-title" id="modalTitle">Add Group</h3>
             <button class="modal-close" onclick="closeModal('categoryModal')">&times;</button>
         </div>
         <form id="categoryForm" onsubmit="saveCategory(event)">
@@ -86,8 +99,17 @@
                 <input type="hidden" id="categoryId">
 
                 <div class="form-group">
-                    <label class="form-label required">Category Name</label>
+                    <label class="form-label required">Group Name</label>
                     <input type="text" class="form-control" id="categoryName" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="groupAddress">Address / Location</label>
+                    <textarea class="form-control" id="groupAddress" rows="2" maxlength="500" autocomplete="street-address"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="groupContactNumber">Contact Number</label>
+                    <input type="tel" class="form-control" id="groupContactNumber" maxlength="32" autocomplete="tel">
                 </div>
 
                 <div class="form-group">
@@ -96,27 +118,55 @@
                 </div>
 
                 <div class="form-group">
+                    <label class="form-label required" for="groupType">Group Type</label>
+                    <select class="form-control" id="groupType" required>
+                        <option value="">Select Group Type</option>
+                        <option value="RawMaterial">Raw Material</option>
+                        <option value="FinishedGoods">Finished Goods</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
                     <label class="form-label">Status</label>
                     <select class="form-control" id="categoryStatus">
                         <option value="true">Active</option>
                         <option value="false">Inactive</option>
                     </select>
+                    <p class="category-status-help">Changing group status also changes all linked items. You will review the item names and confirm before anything is saved.</p>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-danger" onclick="closeModal('categoryModal')">✖ Cancel</button>
-                <button type="submit" class="btn btn-success">💾 Save</button>
+                <button type="submit" class="btn btn-success" id="saveCategoryButton">💾 Save</button>
             </div>
         </form>
     </div>
 </div>
+
+<dialog id="categoryStatusConfirmation" aria-labelledby="categoryStatusTitle" aria-describedby="categoryStatusSummary categoryStatusWarning">
+    <div class="modal-header">
+        <h3 class="modal-title" id="categoryStatusTitle"></h3>
+        <button type="button" class="modal-close" aria-label="Cancel status change" onclick="document.getElementById('categoryStatusConfirmation').close('cancel')">&times;</button>
+    </div>
+    <div class="modal-body">
+        <p id="categoryStatusSummary"></p>
+        <p id="categoryStatusWarning" class="category-status-warning"></p>
+        <p id="categoryStatusCount" class="category-status-help"></p>
+        <ul id="categoryStatusItems" aria-label="Linked items and current status"></ul>
+        <p class="category-status-help">Existing invoices, stock quantities and balances stay unchanged. Returns against existing invoices remain available.</p>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-primary" autofocus onclick="document.getElementById('categoryStatusConfirmation').close('cancel')">Cancel</button>
+        <button type="button" class="btn" id="confirmCategoryStatusButton" onclick="document.getElementById('categoryStatusConfirmation').close('confirm')"></button>
+    </div>
+</dialog>
 
 <script>
 
     // Load all categories
 function loadCategories() {
     fetch('/Category/GetList')
-        .then(response => response.json())
+        .then(response => { if (!response.ok) throw new Error('Load failed'); return response.json(); })
         .then(result => {
             if (result.success) {
                 const tableBody = document.getElementById("categoryTableBody");
@@ -127,8 +177,11 @@ function loadCategories() {
                     row.dataset.categoryId = category.categoryId;
                     row.innerHTML = `
                         
-                        <td>${category.categoryName}</td>
-                        <td>${category.description || ""}</td>
+                        <td>${escapeHtml(category.categoryName)}</td>
+                        <td>${category.groupType === "RawMaterial" ? "Raw Material" : category.groupType === "FinishedGoods" ? "Finished Goods" : "Not set"}</td>
+                        <td>${escapeHtml(category.description || "")}</td>
+                        <td>${escapeHtml(category.address || "")}</td>
+                        <td>${escapeHtml(category.contactNumber || "")}</td>
                         <td>${category.createdDate ? category.createdDate.split('T')[0] : ""}</td>
                         <td>
                             <span class="badge ${category.isActive ? "badge-success" : "badge-danger"}">
@@ -138,36 +191,30 @@ function loadCategories() {
                         <td>
                             <div class="action-buttons">
                                 <button class="btn btn-primary btn-sm" 
-                                    onclick="editCategory(${category.categoryId}, '${escapeQuotes(category.categoryName)}', ${category.isActive}, '${escapeQuotes(category.description)}')">
+                                    onclick="editCategory(${category.categoryId})">
                                     ✏️ Edit
                                 </button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteCategory(${category.categoryId})">
-                                    🗑️ Delete
-                                </button>
+                                ${result.canDelete === true ? `<button class="btn btn-danger btn-sm" onclick="deleteCategory(${category.categoryId})">🗑️ Delete</button>` : ''}
                             </div>
                         </td>
                     `;
 
                     tableBody.appendChild(row);
                 });
+                searchTable();
             } else {
-                console.error("Failed to load categories");
+                throw new Error('Load failed');
             }
         })
-        .catch(error => console.error("Error:", error));
+        .catch(() => PosListState.show(document.getElementById('categoryTableBody'), { columns:8, error:true, title:'Groups could not be loaded', message:'Check your connection and try again.', actionText:'Try again', onAction:loadCategories }));
 }
 
-// Helper to escape quotes in text (avoids breaking HTML)
-function escapeQuotes(str) {
-    return str ? str.replace(/'/g, "\\'").replace(/"/g, '\\"') : "";
-}
-
-            let isEditMode = false;
+            let categorySaveInProgress = false;
 
             function openModal() {
-                isEditMode = false;
-                document.getElementById('modalTitle').textContent = 'Add New Category';
+                document.getElementById('modalTitle').textContent = 'Add Group';
                 document.getElementById('categoryForm').reset();
+                document.getElementById('categoryId').value = '0';
                 document.getElementById('categoryModal').classList.add('show');
             }
 
@@ -175,60 +222,109 @@ function escapeQuotes(str) {
                 document.getElementById('categoryModal').classList.remove('show');
             }
 
-            function editCategory(id, name, status, description) {
-                isEditMode = true;
-
-                document.getElementById('modalTitle').textContent = 'Edit Category';
-                document.getElementById('categoryId').value = id;
-                document.getElementById('categoryName').value = name;
-                 document.getElementById('categoryDescription').value = description || "";
-                document.getElementById('categoryStatus').value = status.toString();
+            async function editCategory(id) {
+                try {
+                const response = await fetch(`/Category/GetById?id=${id}`);
+                if (!response.ok) throw new Error('Group could not be loaded. Refresh the list and try again.');
+                const category = await response.json();
+                document.getElementById('modalTitle').textContent = 'Edit Group';
+                document.getElementById('categoryId').value = category.categoryId;
+                document.getElementById('categoryName').value = category.categoryName;
+                document.getElementById('categoryDescription').value = category.description || '';
+                document.getElementById('groupAddress').value = category.address || '';
+                document.getElementById('groupContactNumber').value = category.contactNumber || '';
+                document.getElementById('groupType').value = category.groupType || '';
+                document.getElementById('categoryStatus').value = (category.isActive === true).toString();
                 document.getElementById('categoryModal').classList.add('show');
+                } catch (error) { await alertDialog(error.message, { type: 'error' }); }
             }
 
-            
+    function confirmCategoryStatus(preview) {
+        const dialog = document.getElementById('categoryStatusConfirmation');
+        const action = preview.targetActive ? 'Activate' : 'Deactivate';
+        document.getElementById('categoryStatusTitle').textContent = `${action} group and its items?`;
+        document.getElementById('categoryStatusSummary').textContent = `${action} "${preview.categoryName}" and all ${preview.items.length} linked item(s)?`;
+        document.getElementById('categoryStatusWarning').textContent = preview.targetActive
+            ? 'All linked items will become active, including items previously disabled individually. They will be available for purchases and sales.'
+            : 'All linked items will become inactive and unavailable for purchases and sales.';
+        document.getElementById('categoryStatusCount').textContent = `${preview.changedItemCount} item status(es) will change. ${preview.message}`;
+        const list = document.getElementById('categoryStatusItems');
+        list.replaceChildren();
+        for (const item of preview.items) {
+            const li = document.createElement('li');
+            const name = document.createElement('span');
+            name.textContent = `${item.itemName} (ID ${item.itemId})`;
+            const status = document.createElement('small');
+            status.textContent = `${item.isActive ? 'Active' : 'Inactive'} → ${preview.targetActive ? 'Active' : 'Inactive'}`;
+            li.append(name, status); list.appendChild(li);
+        }
+        if (!preview.items.length) {
+            const li = document.createElement('li'); li.textContent = 'No linked items. Only the group status will change.'; list.appendChild(li);
+        }
+        const confirmButton = document.getElementById('confirmCategoryStatusButton');
+        confirmButton.textContent = `${action} group${preview.items.length ? ' and all items' : ''}`;
+        confirmButton.className = `btn ${preview.targetActive ? 'btn-success' : 'btn-danger'}`;
+        return new Promise(resolve => {
+            dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true });
+            dialog.returnValue = 'cancel';
+            dialog.showModal();
+        });
+    }
+
     async function saveCategory(event) {
         event.preventDefault();
+        if (categorySaveInProgress) return;
 
         const name = document.getElementById('categoryName').value.trim();
         const description = document.getElementById('categoryDescription').value;
         const status = document.getElementById('categoryStatus').value;
-        const id = document.getElementById('categoryId') ? document.getElementById('categoryId').value : 0;
-        var categoryId = $("#categoryId").val();
+        const id = Number(document.getElementById('categoryId').value) || 0;
         // Simple validation
         if (name === "") {
-            await alertDialog("Please enter category name", { type: 'warning' });
+            await alertDialog("Please enter group name", { type: 'warning' });
             return;
         }
 
+        const groupType = document.getElementById('groupType').value;
+        if (!groupType) { await alertDialog('Please select a group type.', { type:'warning' }); return; }
         const category = {
             CategoryId: id,
             CategoryName: name,
             Description: description,
+            Address: document.getElementById('groupAddress').value.trim(),
+            ContactNumber: document.getElementById('groupContactNumber').value.trim(),
+            GroupType: groupType,
             IsActive: status
         };
 
-        $.ajax({
-                url: '/Category/Save',
-                type: 'POST',
-                data: category,
-                success: async function (response) {
-                    if (response.success) {
-                            loadCategories();
-                        closeModal("categoryModal");
-                    } else {
-                        await alertDialog('Error: ' + response.message, { type: 'error' });
-                    }
-                },
-                error: async function (xhr, status, error) {
-                    console.error(error);
-                    await alertDialog('Something went wrong while saving category.', { type: 'error' });
+        categorySaveInProgress = true;
+        const button = document.getElementById('saveCategoryButton');
+        button.disabled = true;
+        try {
+            while (true) {
+                const response = await $.ajax({ url: '/Category/Save', type: 'POST', data: category });
+                if (response.requiresConfirmation) {
+                    if (!await confirmCategoryStatus(response)) return;
+                    category.StatusConfirmationToken = response.confirmationToken;
+                    continue;
                 }
-        });
+                if (response.success) {
+                    loadCategories(); closeModal();
+                    await alertDialog(response.message, { type: 'success' });
+                } else {
+                    await alertDialog(response.message || 'Group could not be saved.', { type: 'error' });
+                }
+                return;
+            }
+        } catch (error) {
+            await alertDialog('Group could not be saved. Check your connection and try again.', { type: 'error' });
+        } finally {
+            categorySaveInProgress = false; button.disabled = false;
+        }
     }
 
     async function deleteCategory(id) {
-        if (await confirmDialog('Are you sure you want to delete this category?', { danger: true })) {
+        if (await confirmDialog('Are you sure you want to delete this group?', { danger: true })) {
             try {
                     const response = await fetch(`/Category/Delete?id=${id}`, { method: 'POST' });
 
@@ -238,6 +334,7 @@ function escapeQuotes(str) {
                     // Remove row from table
                     const row = document.querySelector(`#categoryTableBody tr[data-category-id="${id}"]`);
                     if (row) row.remove();
+                    searchTable();
 
                     await alertDialog(result.message);
                 } else {
@@ -245,35 +342,28 @@ function escapeQuotes(str) {
                 }
             } catch (error) {
                 console.error('Error:', error);
-                await alertDialog('An error occurred while deleting the category.', { type: 'error' });
+                await alertDialog('An error occurred while deleting the group.', { type: 'error' });
             }
         }
     }
 
-            function searchTable() {
-                const input = document.getElementById('searchInput');
-                const filter = input.value.toUpperCase();
-                const table = document.getElementById('categoryTable');
-                const rows = table.getElementsByTagName('tr');
-
-                for (let i = 1; i < rows.length; i++) {
-                    const cells = rows[i].getElementsByTagName('td');
-                    let found = false;
-
-                    for (let j = 0; j < cells.length; j++) {
-                        const cell = cells[j];
-                        if (cell) {
-                            const textValue = cell.textContent || cell.innerText;
-                            if (textValue.toUpperCase().indexOf(filter) > -1) {
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    rows[i].style.display = found ? '' : 'none';
-                }
-            }
+    function searchTable() {
+        const body = document.getElementById('categoryTableBody');
+        if (body.querySelector('[data-list-state="error"]')) return;
+        PosListState.clear(body);
+        const filter = document.getElementById('searchInput').value.trim().toLowerCase();
+        const rows = [...body.querySelectorAll('tr[data-category-id]')];
+        rows.forEach(row => row.hidden = !row.textContent.toLowerCase().includes(filter));
+        if (!rows.some(row => !row.hidden)) {
+            const matching = rows.length > 0 || !!filter;
+            PosListState.show(body, { columns:8,
+                title:matching ? 'No matching groups found' : 'No groups yet',
+                message:matching ? 'Try a different search or clear the search.' : 'Create your first group to organize your inventory.',
+                actionText:matching ? 'Clear search' : '+ Add Group',
+                onAction:matching ? () => { document.getElementById('searchInput').value=''; searchTable(); document.getElementById('searchInput').focus(); } : openModal });
+        }
+    }
+    document.getElementById('emptyAddGroup')?.addEventListener('click', openModal);
 
             // Close modal on outside click
             document.getElementById('categoryModal').addEventListener('click', function(e) {
@@ -285,6 +375,7 @@ function escapeQuotes(str) {
             // Close modal with Escape key
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'Escape') {
+                    if (document.getElementById('categoryStatusConfirmation').open) return;
                     closeModal("categoryModal");
                 }
             });

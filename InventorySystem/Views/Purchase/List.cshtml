@@ -38,6 +38,7 @@
         <a href="/Purchase/Index" class="sl-btn" style="background:#16a34a;text-decoration:none;">➕ New Purchase</a>
     </div>
 
+    <label><input type="checkbox" id="includeCancelled" onchange="loadPurchases()"> Include cancelled documents</label>
     <div class="sl-filters">
         <div class="fg"><label>Search</label><input type="text" id="fSearch" placeholder="Vendor, Bill No, or #" onkeyup="if(event.key==='Enter')loadPurchases()"></div>
         <div class="fg"><label>From</label><input type="date" id="fFrom"></div>
@@ -89,6 +90,7 @@ async function loadPurchases(){
     const f = document.getElementById('fFrom').value;
     const t = document.getElementById('fTo').value;
     const qs = new URLSearchParams();
+    if(document.getElementById("includeCancelled").checked) qs.set("includeCancelled", "true");
     if(s) qs.append('search', s);
     if(f) qs.append('from', f);
     if(t) qs.append('to', t);
@@ -97,32 +99,40 @@ async function loadPurchases(){
     body.innerHTML = '<tr><td colspan="8" class="sl-empty">Loading…</td></tr>';
     try{
         const res = await fetch('/Purchase/GetPurchases?' + qs.toString());
+        if (!res.ok) throw new Error('Load failed');
         const payload = await res.json();
+        if (payload.success === false || !Array.isArray(payload.data)) throw new Error('Load failed');
         const data = payload.data || [];
         if(!data || data.length === 0){
-            body.innerHTML = '<tr><td colspan="8" class="sl-empty">No invoices found.</td></tr>';
+            const matching = !!(s || f || t);
+            PosListState.show(body, { columns:8,
+                title:matching ? 'No matching purchase invoices found' : 'No purchase invoices yet',
+                message:matching ? 'Try a different search or clear the date filters.' : 'Create a purchase invoice to get started.',
+                actionText:matching ? 'Clear filters' : 'Create purchase invoice',
+                onAction:matching ? clearFilters : undefined,
+                href:matching ? undefined : '/Purchase/Index' });
             return;
         }
         body.innerHTML = data.map(p => `
             <tr>
-                <td><strong>#${p.purchaseId}</strong></td>
+                <td>${p.isCancelled ? "<span>Cancelled</span> " : ""}<strong>#${p.purchaseId}</strong></td>
                 <td>${p.purchaseDate || '-'}</td>
-                <td>${p.vendorName || '-'}</td>
-                <td>${p.billNo || '-'}</td>
+                <td>${escapeHtml(p.vendorName || '-')}</td>
+                <td>${escapeHtml(p.billNo || '-')}</td>
                 <td><span class="sl-badge ${p.paymentMode==='Credit'?'b-credit':'b-paid'}">${p.paymentMode}</span></td>
                 <td class="sl-num">${p.itemCount}</td>
                 <td class="sl-num">${fmt(p.netAmount)}</td>
                 <td>
                     <div class="sl-actions">
                         <button class="sl-btn sl-view" onclick="viewPurchase(${p.purchaseId})">👁 View</button>
-                        <a class="sl-btn sl-edit" style="text-decoration:none;" href="/Purchase/Index?id=${p.purchaseId}">✏ Edit</a>
+                        <a class="sl-btn sl-edit" style="text-decoration:none;" href="${p.isCancelled ? "#" : `/Purchase/Index?id=${p.purchaseId}`}">✏ Edit</a>
                         <a class="sl-btn sl-print" style="text-decoration:none;" target="_blank" href="/Purchase/Print/${p.purchaseId}">🖨</a>
-                        <button class="sl-btn sl-del" onclick="deletePurchase(${p.purchaseId})">🗑</button>
+                        <button ${p.isCancelled ? "disabled" : ""} class="sl-btn sl-del" onclick="deletePurchase(${p.purchaseId})">Cancel</button>
                     </div>
                 </td>
             </tr>`).join('');
     }catch(e){
-        body.innerHTML = '<tr><td colspan="8" class="sl-empty" style="color:#dc2626;">Error loading invoices.</td></tr>';
+        PosListState.show(body, { columns:8, error:true, title:'Could not load purchase invoices', message:'Check your connection and try again.', actionText:'Try again', onAction:loadPurchases });
     }
 }
 
@@ -142,15 +152,15 @@ async function viewPurchase(id){
         document.getElementById('vmPrint').href = '/Purchase/Print/' + inv.purchaseId;
         document.getElementById('vmMeta').innerHTML = `
             <div><span>Date</span><b>${inv.purchaseDate||'-'}</b></div>
-            <div><span>Vendor</span><b>${inv.vendorName||'-'}</b></div>
-            <div><span>Bill No</span><b>${inv.billNo||'-'}</b></div>
+            <div><span>Vendor</span><b>${escapeHtml(inv.vendorName||'-')}</b></div>
+            <div><span>Bill No</span><b>${escapeHtml(inv.billNo||'-')}</b></div>
             <div><span>GST</span><b>${fmt(inv.gstAmount)}</b></div>
             <div><span>Discount</span><b>${fmt(inv.discount)}</b></div>
             <div><span>Net Amount</span><b>${fmt(inv.netAmount)}</b></div>`;
         document.getElementById('vmBody').innerHTML = (inv.items||[]).map((it,i)=>`
             <tr>
                 <td>${i+1}</td>
-                <td>${it.descr||('#'+it.itemid)}</td>
+                <td>${escapeHtml(it.descr||('#'+it.itemid))}</td>
                 <td class="sl-num">${fmt(it.quantity)}</td>
                 <td class="sl-num">${fmt(it.purPrice)}</td>
                 <td class="sl-num">${fmt(it.discAmt)}</td>
@@ -161,7 +171,7 @@ async function viewPurchase(id){
 function closeView(){ document.getElementById('viewModal').classList.remove('show'); }
 
 async function deletePurchase(id){
-    if(!(await confirmDialog(`Delete Purchase Invoice #${id}? This will reverse stock and its ledger entries.`, { danger: true }))) return;
+    if(!(await confirmDialog(`Cancel Purchase Invoice #${id}? This will reverse stock and its ledger entries.`, { danger: true }))) return;
     try{
         const res = await fetch('/Purchase/Delete?id=' + id, { method:'POST' });
         const data = await res.json();

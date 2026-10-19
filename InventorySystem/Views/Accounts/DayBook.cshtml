@@ -132,8 +132,8 @@
                 <td><span class="acc-code">${r.voucherNo}</span></td>
                 <td><span class="badge" style="background:${color};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">${typeLabels[r.voucherType] || r.voucherType}</span></td>
                 <td>${r.accountName}</td>
-                <td>${r.partyName || '—'}</td>
-                <td style="color:#6c757d;font-style:italic">${r.narration || '—'}</td>
+                <td>${escapeHtml(r.partyName || '—')}</td>
+                <td style="color:#6c757d;font-style:italic">${escapeHtml(r.narration || '—')}</td>
                 <td class="text-right">${r.debit > 0 ? fmt(r.debit) : '—'}</td>
                 <td class="text-right">${r.credit > 0 ? fmt(r.credit) : '—'}</td>
             </tr>`;

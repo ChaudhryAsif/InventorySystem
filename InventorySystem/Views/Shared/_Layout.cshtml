@@ -1,16 +1,27 @@
-﻿@using System.Security.Claims
+﻿@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@inject InventorySystem.Data.ApplicationDbContext PosDb
+@using System.Security.Claims
 @inject InventorySystem.Core.Services.IMenuService MenuService
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="multi-branch-enabled" content="@(BranchSettings.Value.MultiBranchEnabled ? "true" : "false")" />
+    <meta name="csrf-token" content="@Antiforgery.GetAndStoreTokens(Context).RequestToken" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@ViewData["Title"] - POS System</title>
+    <title>@ViewData["Title"] - Bright Packages</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/Admin.css" asp-append-version="true" />
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="~/js/confirm-dialog.js" asp-append-version="true"></script>
+    <script src="~/js/maintenance-feedback.js" asp-append-version="true"></script>
+    <script src="~/js/pos-safety.js" asp-append-version="true"></script>
+    <link rel="stylesheet" href="~/css/pos-improvements.css" asp-append-version="true" />
+
+    <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/list-states.css" asp-append-version="true" />
+    <script src="~/js/list-states.js" asp-append-version="true"></script>
 
     <style>
         .sidebar-submenu {
@@ -148,8 +159,8 @@
             <div class="header-left">
                 <button class="menu-toggle">☰</button>
                 <div class="header-logo">
-                    <span style="font-size: 1.8rem;">📦</span>
-                    <h1>POS System</h1>
+                    <partial name="_CompanyLogo" />
+                    <h1>Bright Packages</h1>
                 </div>
             </div>
 
@@ -160,6 +171,19 @@
                 var isSuperAdmin = role == "SuperAdmin";
                 var initials = string.Concat(fullName.Split(' ').Take(2).Select(w => w[0])).ToUpper();
 
+                @if (BranchSettings.Value.MultiBranchEnabled)
+                {
+                    <label class="branch-picker">Branch
+                        <select id="posBranch" class="branch-selector" aria-label="Current branch">
+                            @foreach (var branch in (PosDb.RestrictBranches ? PosDb.AllowedBranchIds : new[] { 1, 2, 3 }))
+                            { <option value="@branch">Branch @branch</option> }
+                        </select>
+                    </label>
+                }
+                else
+                {
+                    <input type="hidden" id="posBranch" value="1" />
+                }
                 <div class="header-user">
                     <div class="header-user-avatar">@initials</div>
                     <div>
@@ -198,8 +222,9 @@
                     if (item.Children != null && item.Children.Count > 0)
                     {
                         var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
-                        var isOpen = item.Children.Any(c => c.Controller == currentController);
-                        var menuIdSafe = System.Text.RegularExpressions.Regex.Replace(item.Name, @"[^\w]", "");
+                        var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
+                        var isOpen = item.Children.Any(c => c.Controller == currentController && c.Action == currentAction);
+                        var menuIdSafe = $"sidebar-menu-{item.Id}";
 
                         <li class="sidebar-item @(isOpen ? "open" : "")" id="@menuIdSafe">
                             <a href="#" class="sidebar-link"
@@ -236,8 +261,8 @@
                     }
                 }
 
-                <!-- Admin Panel link — visible to SuperAdmin only -->
-                @if (isSuperAdmin)
+                <!-- Match the AdminController access rule. -->
+                @if (User.IsInRole("SuperAdmin"))
                 {
                     <li class="sidebar-item" style="border-top: 1px solid #e0e0e0; margin-top: 1rem; padding-top: 1rem;">
                         <a asp-controller="Admin" asp-action="Dashboard"

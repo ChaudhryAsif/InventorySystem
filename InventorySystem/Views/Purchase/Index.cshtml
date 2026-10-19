@@ -1,3 +1,4 @@
+@{ ViewData["Title"] = "Purchase Invoices"; }
 @{
     Layout = "_Layout";
 }
@@ -8,8 +9,8 @@
 <div>
     <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
         <div>
-            <h2>Purchase Invoice</h2>
-            <p>Create and manage purchase orders from suppliers</p>
+            <h2>Purchase Invoices</h2>
+            <p>Create purchase invoices for goods received from suppliers</p>
         </div>
         <a href="/Purchase/List" class="btn btn-primary" style="text-decoration:none;align-self:flex-start;">📋 View Saved Invoices</a>
     </div>
@@ -25,13 +26,13 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Invoice No</label>
+                        <label class="form-label">Invoice No (provisional)</label>
                         <input type="text" class="form-control" id="invoiceNo" value="1" disabled>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Bill No</label>
-                        <input type="text" class="form-control" id="billNo" placeholder="Enter supplier bill number">
+                        <input type="text" class="form-control" id="billNo" maxlength="20" placeholder="Enter supplier bill number">
                     </div>
 
                     <div class="form-group">
@@ -39,14 +40,21 @@
                         <input type="date" class="form-control" id="invoiceDate" value="@DateTime.Now.ToString("yyyy-MM-dd")">
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">Branch</label>
-                        <select class="form-control" id="branch">
-                            <option value="1">Main Branch</option>
-                            <option value="2">Branch 2</option>
-                            <option value="3">Branch 3</option>
-                        </select>
-                    </div>
+                    @if (BranchSettings.Value.MultiBranchEnabled)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Branch</label>
+                            <select class="form-control" id="branch">
+                                <option value="1">Main Branch</option>
+                                <option value="2">Branch 2</option>
+                                <option value="3">Branch 3</option>
+                            </select>
+                        </div>
+                    }
+                    else
+                    {
+                        <input type="hidden" id="branch" value="1" />
+                    }
                 </div>
 
                 <div class="form-section">
@@ -112,7 +120,7 @@
                 <div class="form-section">
                     <div class="form-group">
                         <label class="form-label">Remarks</label>
-                        <textarea class="form-control" id="remarks" placeholder="Enter remarks..."></textarea>
+                        <textarea class="form-control" id="remarks" maxlength="500" placeholder="Enter remarks..."></textarea>
                     </div>
 
                @*      <div class="form-group">
@@ -296,4 +304,5 @@
 
 </div>
 
-<script src="~/js/purchaseinvoice.js"></script>
+<script src="~/js/purchaseinvoice.js" asp-append-version="true"></script>
+

@@ -33,13 +33,43 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public IActionResult List() => View();
 
+        [HttpGet]
+        public async Task<IActionResult> GetProductionOrders(int? saleId = null)
+        {
+            var orders = await _context.ProductionOrder.Where(o => o.Status == "Completed" && o.UsesEstimatedConsumption && o.AgreedUnitPrice > 0 &&
+                _context.Parties.Any(p => p.PartyId.ToString() == o.CustomerId && p.Status == "active" && (p.PartyType == "customer" || p.PartyType == "both")) &&
+                _context.Items.Any(i => i.ItemID == o.FinishedItemId && i.IsActive == true &&
+                    _context.ItemCategory.Any(c => c.CategoryId == i.CategoryID && c.IsActive == true)))
+                .OrderByDescending(o => o.ProductionOrderId)
+                .Select(o => new { o.ProductionOrderId, o.CustomerId, o.FinishedItemId, o.BranchId,
+                    o.ProductName, o.ProducedQty, o.AgreedUnitPrice, o.AgreedGstPercent, o.CustomerReference,
+                    CustomerName = _context.Parties.Where(p => p.PartyId.ToString() == o.CustomerId).Select(p => p.PartyName).FirstOrDefault(),
+                    ItemName = _context.Items.Where(i => i.ItemID == o.FinishedItemId).Select(i => i.ItemName).FirstOrDefault(),
+                    AvailableStock = _context.Stock.Where(s => s.ItemId == o.FinishedItemId && s.BranchId == o.BranchId).Sum(s => (decimal?)s.Quantity) ?? 0,
+                    Invoiced = (from b in _context.SaleInvoiceBody join s in _context.SaleInvoice on b.SaleId equals s.SaleId
+                        where s.ProductionOrderId == o.ProductionOrderId && (!saleId.HasValue || s.SaleId != saleId.Value) select b.Quantity ?? 0).Sum(),
+                    EditQuantity = (from b in _context.SaleInvoiceBody join s in _context.SaleInvoice on b.SaleId equals s.SaleId
+                        where saleId.HasValue && s.SaleId == saleId.Value && s.ProductionOrderId == o.ProductionOrderId select b.Quantity ?? 0).Sum()
+                }).ToListAsync();
+            return Json(new { success = true, orders = orders.Where(o => o.ProducedQty > o.Invoiced)
+                .Select(o => new { o.ProductionOrderId, o.CustomerId, o.CustomerName, o.FinishedItemId, o.ItemName, o.BranchId,
+                    o.AgreedUnitPrice, o.AgreedGstPercent, o.CustomerReference,
+                    remainingQuantity = o.ProducedQty - o.Invoiced, availableStock = o.AvailableStock + o.EditQuantity }) });
+        }
+
         [HttpPost]
         public async Task<IActionResult> Save([FromBody] SaleInvoiceViewModel model)
         {
             if (model == null || model.Items == null || !model.Items.Any())
                 return BadRequest("Invalid sale data.");
 
+            // Create cannot use another invoice's ID to exclude its billed quantity.
+            model.SaleId = null;
+            using var transaction = _context.Database.BeginAtomicTransaction();
             var branchId   = model.BranchID ?? 1;
+            try { await InvoiceValidation.Validate(_context, model); }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
+
             var validItems = model.Items.Where(i => i.ItemId != null && i.Quantity > 0).ToList();
 
             if (!validItems.Any())
@@ -51,7 +81,6 @@ namespace InventorySystem.Controllers
                 return Ok(new { success = false, message = stockError });
 
             // ── All checks passed — write inside a single transaction ─────────
-            using var transaction = _context.Database.BeginTransaction();
             try
             {
                 var invoice = new SaleInvoice
@@ -60,6 +89,7 @@ namespace InventorySystem.Controllers
                     CustomerID  = model.CustomerID,
                     BranchID    = model.BranchID,
                     PaymentMode = model.PaymentMode,
+                    ProductionOrderId = model.ProductionOrderId,
                     RefNo       = model.RefNo,
                     GSTPer      = model.GSTPer,
                     GSTAmount   = model.GSTAmount,
@@ -96,17 +126,23 @@ namespace InventorySystem.Controllers
             if (model.Items == null || !model.Items.Any())
                 return BadRequest("Invalid sale data.");
 
+            using var transaction = _context.Database.BeginAtomicTransaction();
             var branchId   = model.BranchID ?? 1;
+            try { await InvoiceValidation.Validate(_context, model); }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
+
             var validItems = model.Items.Where(i => i.ItemId != null && i.Quantity > 0).ToList();
             if (!validItems.Any())
                 return BadRequest("No valid items provided.");
 
-            using var transaction = _context.Database.BeginTransaction();
             try
             {
                 var invoice = _context.SaleInvoice.FirstOrDefault(s => s.SaleId == model.SaleId);
                 if (invoice == null)
                     return Ok(new { success = false, message = "Invoice not found." });
+
+                if (await _context.SaleReturn.AnyAsync(r => r.OriginalSaleId == invoice.SaleId))
+                    return BadRequest(new { success = false, message = "Cancel linked returns before editing or cancelling this invoice." });
 
                 var bodies = _context.SaleInvoiceBody.Where(b => b.SaleId == invoice.SaleId).ToList();
 
@@ -127,6 +163,7 @@ namespace InventorySystem.Controllers
                 invoice.CustomerID  = model.CustomerID;
                 invoice.BranchID    = model.BranchID;
                 invoice.PaymentMode = model.PaymentMode;
+                invoice.ProductionOrderId = model.ProductionOrderId;
                 invoice.RefNo       = model.RefNo;
                 invoice.GSTPer      = model.GSTPer;
                 invoice.GSTAmount   = model.GSTAmount;
@@ -154,21 +191,31 @@ namespace InventorySystem.Controllers
         [HttpPost]
         public async Task<IActionResult> Delete(int id)
         {
-            using var transaction = _context.Database.BeginTransaction();
+            var reason = Request.Headers["X-Operation-Reason"].ToString().Trim();
+            if (reason.Length < 3 || reason.Length > 500)
+                return BadRequest(new { success = false, message = "Enter a cancellation reason (3–500 characters)." });
+
+            using var transaction = _context.Database.BeginAtomicTransaction();
             try
             {
                 var invoice = _context.SaleInvoice.FirstOrDefault(s => s.SaleId == id);
                 if (invoice == null)
                     return Ok(new { success = false, message = "Invoice not found." });
 
+                if (await _context.SaleReturn.AnyAsync(r => r.OriginalSaleId == invoice.SaleId))
+                    return BadRequest(new { success = false, message = "Cancel linked returns before editing or cancelling this invoice." });
+
                 var bodies = _context.SaleInvoiceBody.Where(b => b.SaleId == id).ToList();
 
-                await ReverseInvoiceEffectsAsync(invoice, bodies);
-                _context.SaleInvoice.Remove(invoice);
+                await ReverseInvoiceEffectsAsync(invoice, bodies, keepBodies: true);
+                invoice.IsCancelled = true;
+                invoice.CancelledUtc = DateTime.UtcNow;
+                invoice.CancelledBy = User.Identity?.Name;
+                invoice.CancellationReason = reason;
                 _context.SaveChanges();
 
                 transaction.Commit();
-                return Ok(new { success = true, message = "Sale invoice deleted successfully." });
+                return Ok(new { success = true, message = "Sale invoice cancelled successfully." });
             }
             catch (Exception ex)
             {
@@ -179,18 +226,30 @@ namespace InventorySystem.Controllers
 
         // ── LIST data (with optional search + date range) ─────────────────────
         [HttpGet]
-        public IActionResult GetSales(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50)
+        public IActionResult GetSales(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50, bool includeCancelled = false)
         {
-            var query = _context.SaleInvoice.AsQueryable();
+            var query = includeCancelled
+                ? _context.SaleInvoice.IgnoreQueryFilters().Where(s => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(s.BranchID ?? 1))
+                : _context.SaleInvoice.AsQueryable();
+            page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim();
+                var parties = _context.Parties.Where(p => p.PartyName.Contains(term)).Select(p => p.PartyId.ToString());
+                query = query.Where(s => parties.Contains(s.CustomerID) || (s.RefNo != null && s.RefNo.Contains(term)) || s.SaleId.ToString().Contains(term));
+            }
+
 
             if (from.HasValue) query = query.Where(s => s.SaleDate >= from.Value.Date);
             if (to.HasValue)   query = query.Where(s => s.SaleDate < to.Value.Date.AddDays(1));
 
+            var totalCount = query.Count();
             var sales = query
                 .OrderByDescending(s => s.SaleId)
                 .Select(s => new
                 {
                     s.SaleId,
+                s.IsCancelled,
                     SaleDate = s.SaleDate,
                     s.CustomerID,
                     CustomerName = _context.Parties
@@ -202,11 +261,12 @@ namespace InventorySystem.Controllers
                     s.NetAmount,
                     ItemCount = _context.SaleInvoiceBody.Count(b => b.SaleId == s.SaleId)
                 })
-                .ToList();
+                .Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
             var result = sales.Select(s => new
             {
                 s.SaleId,
+                s.IsCancelled,
                 SaleDate = s.SaleDate.HasValue ? s.SaleDate.Value.ToString("yyyy-MM-dd") : "",
                 CustomerName = s.CustomerName ?? $"#{s.CustomerID}",
                 s.RefNo,
@@ -215,18 +275,7 @@ namespace InventorySystem.Controllers
                 s.ItemCount
             });
 
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var q = search.Trim().ToLower();
-                result = result.Where(s =>
-                    (s.CustomerName ?? "").ToLower().Contains(q) ||
-                    (s.RefNo ?? "").ToLower().Contains(q) ||
-                    s.SaleId.ToString().Contains(q));
-            }
-
-            var resultList = result.ToList();
-            var totalCount = resultList.Count;
-            var paged = resultList.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            var paged = result.ToList();
 
             return Json(new { data = paged, totalCount, page, pageSize });
         }
@@ -267,6 +316,7 @@ namespace InventorySystem.Controllers
             return Json(new
             {
                 invoice.SaleId,
+                invoice.ProductionOrderId,
                 SaleDate = invoice.SaleDate.HasValue ? invoice.SaleDate.Value.ToString("yyyy-MM-dd") : "",
                 invoice.CustomerID,
                 CustomerName = customerName ?? $"#{invoice.CustomerID}",
@@ -289,7 +339,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public IActionResult Print(int id)
         {
-            var invoice = _context.SaleInvoice
+            var invoice = _context.SaleInvoice.IgnoreQueryFilters().Where(s => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(s.BranchID ?? 1))
                 .Include(s => s.SaleInvoiceBodies)
                 .FirstOrDefault(s => s.SaleId == id);
             if (invoice == null) return NotFound();
@@ -306,7 +356,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public IActionResult GetNextInvoiceNumber()
         {
-            var nextId = (_context.SaleInvoice.Max(s => (int?)s.SaleId) ?? 0) + 1;
+            var nextId = (_context.SaleInvoice.IgnoreQueryFilters().Max(s => (int?)s.SaleId) ?? 0) + 1;
             return Json(new { invoiceNo = nextId });
         }
 
@@ -426,7 +476,7 @@ namespace InventorySystem.Controllers
         }
 
         /// <summary>Restores stock and removes all ledger/voucher/body rows tied to this invoice.</summary>
-        private async Task ReverseInvoiceEffectsAsync(SaleInvoice invoice, List<SaleInvoiceBody> bodies)
+        private async Task ReverseInvoiceEffectsAsync(SaleInvoice invoice, List<SaleInvoiceBody> bodies, bool keepBodies = false)
         {
             var branchId = invoice.BranchID ?? 1;
 
@@ -441,7 +491,7 @@ namespace InventorySystem.Controllers
             var saleLedgers = _context.AccountLedger
                 .Where(l => l.TransactionType == TransactionTypes.SaleInvoice && l.ReferenceId == invoice.SaleId)
                 .ToList();
-            _context.AccountLedger.RemoveRange(saleLedgers);
+            foreach (var historical in saleLedgers) historical.IsVoid = true;
 
             // Remove auto-receipt voucher(s) + their ledger rows
             var vouchers = _context.PaymentVoucher.Where(v => v.SaleId == invoice.SaleId).ToList();
@@ -450,9 +500,9 @@ namespace InventorySystem.Controllers
                 var receiptLedgers = _context.AccountLedger
                     .Where(l => l.TransactionType == TransactionTypes.Receipt && l.ReferenceId == v.VoucherId)
                     .ToList();
-                _context.AccountLedger.RemoveRange(receiptLedgers);
+                foreach (var historical in receiptLedgers) historical.IsVoid = true;
             }
-            _context.PaymentVoucher.RemoveRange(vouchers);
+            foreach (var historical in vouchers) historical.IsVoid = true;
 
             // Void the matching double-entry voucher, if one was posted
             if (_accountingOptions.PostToGeneralLedger && invoice.GLVoucherId != null)
@@ -462,7 +512,7 @@ namespace InventorySystem.Controllers
             }
 
             // Remove the old line items
-            _context.SaleInvoiceBody.RemoveRange(bodies);
+            if (!keepBodies) _context.SaleInvoiceBody.RemoveRange(bodies);
         }
 
         private static string GetPaymentModeLabel(int? mode) => mode switch

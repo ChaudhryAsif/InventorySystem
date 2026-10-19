@@ -59,10 +59,6 @@ namespace InventorySystem.Core.Services
         /// </summary>
         public async Task<bool> HasPermissionAsync(ClaimsPrincipal user, string permissionCode)
         {
-            // ── SuperAdmin bypass via claim ──
-            if (user.FindFirst(ClaimTypes.Role)?.Value == "SuperAdmin")
-                return true;
-
             var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdClaim?.Value, out int userId))
                 return false;

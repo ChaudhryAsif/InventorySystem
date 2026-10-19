@@ -1,7 +1,8 @@
-﻿using InventorySystem.Core.Models;
+using InventorySystem.Core.Models;
 using InventorySystem.Core.Services;
 using InventorySystem.Data;
 using InventorySystem.Models;
+using InventorySystem.Services.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -32,14 +33,16 @@ namespace InventorySystem.Controllers
                 {
                     o.ProductionOrderId,
                     o.ProductName,
+                    o.ProducedQty, o.UsesEstimatedConsumption,
                     o.OrderQty,
                     o.OrderDate,
                     o.DeliveryDate,
                     o.Status,
                     o.CostSheetId,
+                    o.AgreedUnitPrice, o.AgreedGstPercent, o.CustomerReference,
                     BoxStyle = o.CostSheet != null ? o.CostSheet.BoxStyle : null,
-                    FinalRate = o.CostSheet != null ? o.CostSheet.FinalRateWithGST : null,
-                    TotalValue = o.OrderQty * (o.CostSheet != null ? o.CostSheet.FinalRateWithGST ?? 0 : 0),
+                    FinalRate = (decimal?)(o.UsesEstimatedConsumption ? o.EstimatedRate : o.CostSheet != null ? o.CostSheet.FinalRateWithGST ?? 0 : 0),
+                    TotalValue = o.AgreedUnitPrice.HasValue ? (decimal?)OrderPricing.Total(o.OrderQty, o.AgreedUnitPrice.Value, o.AgreedGstPercent) : null,
                     CustomerName = _context.Parties
                         .Where(p => p.PartyId.ToString() == o.CustomerId)
                         .Select(p => p.PartyName)
@@ -65,8 +68,7 @@ namespace InventorySystem.Controllers
                     c.CostSheetId,
                     c.ItemName,
                     c.BoxStyle,
-                    c.FinalRateWithGST,
-                    c.CustomerId
+                    c.FinalRateWithGST
                 })
                 .ToListAsync();
 
@@ -88,11 +90,7 @@ namespace InventorySystem.Controllers
                     c.ItemName,
                     c.BoxStyle,
                     c.FinalRateWithGST,
-                    c.CustomerId,
-                    CustomerName = _context.Parties
-                        .Where(p => p.PartyId.ToString() == c.CustomerId)
-                        .Select(p => p.PartyName)
-                        .FirstOrDefault() ?? c.CustomerId
+                    c.FinalCostWOGST
                 })
                 .FirstOrDefaultAsync();
 
@@ -108,18 +106,26 @@ namespace InventorySystem.Controllers
         [HttpPost]
         public async Task<IActionResult> Save([FromBody] ProductionOrderViewModel model)
         {
-            if (model == null)
-                return BadRequest(new { success = false, message = "Invalid data." });
+            if (model == null || model.OrderQty <= 0 || model.OrderQty > 1000000 || model.OrderDate == default || model.DeliveryDate < model.OrderDate)
+                return BadRequest(new { success = false, message = "Enter valid quantities and order/delivery dates." });
 
-            using var tx = await _context.Database.BeginTransactionAsync();
+            if (OrderPricing.Validate(model) is { } pricingError)
+                return BadRequest(new { success = false, message = pricingError });
+            try { model.CustomerId = await EstimatedProductionService.ValidateCustomerAsync(_context, model.CustomerId); }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
+
+            if (model.OrderQty <= 0 || model.OrderQty > 1000000 || model.OrderDate == default)
+                return BadRequest(new { success = false, message = "Enter a valid order quantity and date." });
+            using var tx = await _context.Database.BeginAtomicTransactionAsync();
             try
             {
                 var sheet = await _context.CostSheet
                     .Include(c => c.Plies)
+                    .Include(c => c.Materials)
                     .FirstOrDefaultAsync(c => c.CostSheetId == model.CostSheetId);
 
-                if (sheet == null)
-                    return BadRequest(new { success = false, message = "Cost Sheet not found." });
+                if (sheet == null || sheet.Status != "Final" || sheet.FinishedItemId == null)
+                    return BadRequest(new { success = false, message = "Select a Final cost sheet linked to a finished-box item." });
 
                 var order = new ProductionOrder
                 {
@@ -131,6 +137,9 @@ namespace InventorySystem.Controllers
                     DeliveryDate = model.DeliveryDate,
                     Status = "Pending",
                     Remarks = model.Remarks,
+                    AgreedUnitPrice = model.AgreedUnitPrice,
+                    AgreedGstPercent = model.AgreedGstPercent,
+                    CustomerReference = model.CustomerReference?.Trim(),
                     CreatedDate = DateTime.Now
                 };
 
@@ -152,7 +161,7 @@ namespace InventorySystem.Controllers
             catch (Exception ex)
             {
                 await tx.RollbackAsync();
-                return StatusCode(500, new { success = false, message = ex.Message });
+                return BadRequest(new { success = false, message = ex is InvalidOperationException ? ex.Message : "The operation could not be saved. Refresh and retry." });
             }
         }
 
@@ -174,11 +183,14 @@ namespace InventorySystem.Controllers
                         .Select(p => p.PartyName)
                         .FirstOrDefault() ?? o.CustomerId,
                     o.ProductName,
+                    o.ProducedQty, o.UsesEstimatedConsumption,
                     o.OrderQty,
                     o.OrderDate,
                     o.DeliveryDate,
                     o.Status,
-                    o.Remarks
+                    o.Remarks, o.AgreedUnitPrice, o.AgreedGstPercent, o.CustomerReference,
+                    o.EstimatedRate,
+                    AgreedTotalValue = o.AgreedUnitPrice.HasValue ? (decimal?)OrderPricing.Total(o.OrderQty, o.AgreedUnitPrice.Value, o.AgreedGstPercent) : null
                 })
                 .FirstOrDefaultAsync();
 
@@ -205,8 +217,7 @@ namespace InventorySystem.Controllers
                     c.CostSheetId,
                     c.ItemName,
                     c.BoxStyle,
-                    c.FinalRateWithGST,
-                    c.CustomerId
+                    c.FinalRateWithGST
                 })
                 .ToListAsync();
 
@@ -220,10 +231,15 @@ namespace InventorySystem.Controllers
         [HttpPost]
         public async Task<IActionResult> Update([FromBody] ProductionOrderViewModel model)
         {
-            if (model == null)
-                return BadRequest(new { success = false, message = "Invalid data." });
+            if (model == null || model.OrderQty <= 0 || model.OrderQty > 1000000 || model.OrderDate == default || model.DeliveryDate < model.OrderDate)
+                return BadRequest(new { success = false, message = "Enter valid quantities and order/delivery dates." });
 
-            using var tx = await _context.Database.BeginTransactionAsync();
+            if (OrderPricing.Validate(model) is { } pricingError)
+                return BadRequest(new { success = false, message = pricingError });
+            try { model.CustomerId = await EstimatedProductionService.ValidateCustomerAsync(_context, model.CustomerId); }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
+
+            using var tx = await _context.Database.BeginAtomicTransactionAsync();
             try
             {
                 var order = await _context.ProductionOrder
@@ -236,11 +252,12 @@ namespace InventorySystem.Controllers
                     return Ok(new
                     {
                         success = false,
-                        message = "Cannot edit — production has already started or been completed/cancelled. Cancel this order and create a new one instead."
+                        message = "Only Pending orders can be edited. For completed production, reverse it first when eligible, then create a corrected order."
                     });
 
                 var sheet = await _context.CostSheet
                     .Include(c => c.Plies)
+                    .Include(c => c.Materials)
                     .FirstOrDefaultAsync(c => c.CostSheetId == model.CostSheetId);
 
                 if (sheet == null)
@@ -253,6 +270,9 @@ namespace InventorySystem.Controllers
                 order.OrderDate = model.OrderDate;
                 order.DeliveryDate = model.DeliveryDate;
                 order.Remarks = model.Remarks;
+                order.AgreedUnitPrice = model.AgreedUnitPrice;
+                order.AgreedGstPercent = model.AgreedGstPercent;
+                order.CustomerReference = model.CustomerReference?.Trim();
 
                 var oldMaterials = _context.ProductionMaterial.Where(m => m.ProductionOrderId == order.ProductionOrderId);
                 _context.ProductionMaterial.RemoveRange(oldMaterials);
@@ -273,7 +293,7 @@ namespace InventorySystem.Controllers
             catch (Exception ex)
             {
                 await tx.RollbackAsync();
-                return StatusCode(500, new { success = false, message = ex.Message });
+                return BadRequest(new { success = false, message = ex is InvalidOperationException ? ex.Message : "The operation could not be saved. Refresh and retry." });
             }
         }
 
@@ -299,44 +319,8 @@ namespace InventorySystem.Controllers
         }
 
         // ── Helper: auto-generate material requirements from cost sheet plies ──
-        private async Task GenerateMaterialsAsync(ProductionOrder order, CostSheet sheet)
-        {
-            if (sheet.Plies == null) return;
-
-            foreach (var ply in sheet.Plies.Where(p => p.ItemId.HasValue && p.KGs > 0))
-            {
-                var kgPerUnit = ply.KGs ?? 0;
-                var requiredKg = kgPerUnit * order.OrderQty;
-
-                var stock = await _context.Stock
-                    .FirstOrDefaultAsync(s => s.ItemId == ply.ItemId!.Value
-                                           && s.BranchId == (sheet.BranchID ?? 1));
-                var availableKg = stock?.Quantity ?? 0;
-                var shortfall = Math.Max(0, requiredKg - availableKg);
-
-                var itemName = await _context.Items
-                    .Where(i => i.ItemID == ply.ItemId!.Value)
-                    .Select(i => i.ItemName)
-                    .FirstOrDefaultAsync() ?? ply.PlyName;
-
-                string stockStatus = shortfall == 0 ? "OK"
-                                   : shortfall < requiredKg * 0.5m ? "Low"
-                                   : "Critical";
-
-                _context.ProductionMaterial.Add(new ProductionMaterial
-                {
-                    ProductionOrderId = order.ProductionOrderId,
-                    ItemId = ply.ItemId!.Value,
-                    ItemName = itemName,
-                    Specification = ply.Specification,
-                    KgPerUnit = kgPerUnit,
-                    RequiredKg = requiredKg,
-                    AvailableKg = availableKg,
-                    ShortfallKg = shortfall,
-                    StockStatus = stockStatus
-                });
-            }
-        }
+        private Task GenerateMaterialsAsync(ProductionOrder order, CostSheet sheet)
+            => new EstimatedProductionService(_context, _stock).SnapshotAsync(order, sheet);
 
         // ════════════════════════════════════════════════════════════════════════
         // MATERIALS — View + refresh material requirements
@@ -350,7 +334,7 @@ namespace InventorySystem.Controllers
                 .FirstOrDefaultAsync(o => o.ProductionOrderId == id);
 
             if (order == null) return NotFound();
-            int branchId = order.CostSheet?.BranchID ?? 1;
+            int branchId = order.UsesEstimatedConsumption ? order.BranchId : order.CostSheet?.BranchID ?? 1;
 
             // Refresh live stock values
             foreach (var mat in order.Materials ?? [])
@@ -370,7 +354,7 @@ namespace InventorySystem.Controllers
                 .Select(p => p.PartyName)
                 .FirstOrDefaultAsync() ?? order.CustomerId;
 
-            ViewBag.TotalOrderValue = order.OrderQty * (order.CostSheet?.FinalRateWithGST ?? 0);
+            ViewBag.TotalOrderValue = order.OrderQty * (order.UsesEstimatedConsumption ? order.EstimatedRate : order.CostSheet?.FinalRateWithGST ?? 0);
 
             return View(order);
         }
@@ -405,80 +389,34 @@ namespace InventorySystem.Controllers
         // SAVE CONSUMPTION — Record actual usage + deduct stock
         // ════════════════════════════════════════════════════════════════════════
         [HttpPost]
-        public async Task<IActionResult> SaveConsumption([FromBody] SaveConsumptionRequest model)
-        {
-            if (model == null || model.Items == null || !model.Items.Any())
-                return BadRequest(new { success = false, message = "No consumption data." });
+        public Task<IActionResult> SaveConsumption([FromBody] SaveConsumptionRequest model)
+            => Task.FromResult<IActionResult>(BadRequest(new { success = false, message = "Use Record Production: enter boxes produced; material consumption is estimated automatically." }));
 
-            using var tx = await _context.Database.BeginTransactionAsync();
+        [HttpPost]
+        public async Task<IActionResult> Record([FromBody] RecordProductionRequest model)
+        {
             try
             {
-                var order = await _context.ProductionOrder
-                    .Include(o => o.CostSheet)
-                    .FirstOrDefaultAsync(o => o.ProductionOrderId == model.ProductionOrderId);
-
-                if (order == null)
-                    return BadRequest(new { success = false, message = "Production Order not found." });
-
-                // Remove previous consumption if re-submitting
-                var existing = _context.ProductionConsumption
-                    .Where(c => c.ProductionOrderId == model.ProductionOrderId);
-                _context.ProductionConsumption.RemoveRange(existing);
-
-                int branchId = order.CostSheet?.BranchID ?? 1;
-
-                foreach (var item in model.Items)
-                {
-                    if (item.ActualKg <= 0) continue;
-
-                    // Deduct from Stock — never below zero, and only if a stock row exists (matches pre-refactor behavior)
-                    var currentStock = await _context.Stock.FirstOrDefaultAsync(s => s.ItemId == item.ItemId && s.BranchId == branchId);
-                    if (currentStock == null) continue;
-                    var deductQty = Math.Min(item.ActualKg, currentStock.Quantity);
-                    if (deductQty > 0)
-                        await _stock.AdjustAsync(item.ItemId, branchId, -deductQty);
-
-                    _context.ProductionConsumption.Add(new ProductionConsumption
-                    {
-                        ProductionOrderId = model.ProductionOrderId,
-                        ItemId = item.ItemId,
-                        ItemName = item.ItemName,
-                        PlannedKg = item.PlannedKg,
-                        ActualKg = item.ActualKg,
-                        VarianceKg = item.ActualKg - item.PlannedKg,
-                        ConsumedDate = DateTime.Now
-                    });
-                }
-
-                // Update order status to InProduction
-                order.Status = "InProduction";
-
-                await _context.SaveChangesAsync();
-                await tx.CommitAsync();
-
-                return Ok(new { success = true, message = "Consumption recorded. Stock updated." });
+                await new EstimatedProductionService(_context, _stock).RecordAsync(model.ProductionOrderId, model.ProducedQty);
+                return Ok(new { success = true, message = "Production recorded. Estimated materials deducted and finished boxes added to stock." });
             }
-            catch (Exception ex)
-            {
-                await tx.RollbackAsync();
-                return StatusCode(500, new { success = false, message = ex.Message });
-            }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
         }
 
-        // ════════════════════════════════════════════════════════════════════════
-        // COMPLETE — Mark production order as completed
-        // ════════════════════════════════════════════════════════════════════════
         [HttpPost]
-        public async Task<IActionResult> Complete(int id)
+        public async Task<IActionResult> Reverse([FromBody] RecordProductionRequest model)
         {
-            var order = await _context.ProductionOrder.FindAsync(id);
-            if (order == null) return NotFound();
-
-            order.Status = "Completed";
-            await _context.SaveChangesAsync();
-
-            return Ok(new { success = true, message = "Production Order marked as Completed." });
+            try
+            {
+                await new EstimatedProductionService(_context, _stock).ReverseAsync(model.ProductionOrderId, model.Reason);
+                return Ok(new { success = true, message = "Production reversed. Materials restored and finished boxes removed. Create a new order for corrected production." });
+            }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
         }
+
+        [HttpPost]
+        public IActionResult Complete(int id)
+            => BadRequest(new { success = false, message = "Use Record Production to complete the order and post stock together." });
 
         // ════════════════════════════════════════════════════════════════════════
         // CANCEL
@@ -489,6 +427,8 @@ namespace InventorySystem.Controllers
             var order = await _context.ProductionOrder.FindAsync(id);
             if (order == null) return NotFound();
 
+            if (order.Status != "Pending")
+                return BadRequest(new { success = false, message = "Only an unstarted order can be cancelled." });
             order.Status = "Cancelled";
             await _context.SaveChangesAsync();
 
@@ -508,6 +448,8 @@ namespace InventorySystem.Controllers
 
             if (order == null) return NotFound();
 
+            if (order.Status != "Pending" || order.Consumptions!.Any())
+                return BadRequest(new { success = false, message = "Started production cannot be deleted." });
             _context.ProductionMaterial.RemoveRange(order.Materials!);
             _context.ProductionConsumption.RemoveRange(order.Consumptions!);
             _context.ProductionOrder.Remove(order);

@@ -18,7 +18,7 @@ namespace InventorySystem.Controllers
             var role = User.FindFirst(ClaimTypes.Role)?.Value ?? "";
             ViewData["Title"] = "Dashboard";
 
-            if (role != "Admin")
+            if (!User.IsInRole("Admin") && !User.IsInRole("SuperAdmin"))
                 return View("GenericDashboard");
 
             var vm = await BuildDashboardAsync();
@@ -60,7 +60,7 @@ namespace InventorySystem.Controllers
             var today = DateTime.Today;
             var yesterday = today.AddDays(-1);
             var weekAgo = today.AddDays(-7);
-            var lowStockThreshold = 10m;
+
 
             // ── Stat Cards ────────────────────────────────────────────────────
             var todaySales = await _context.SaleInvoice
@@ -81,9 +81,12 @@ namespace InventorySystem.Controllers
 
             var totalItems = await _context.Items.CountAsync(i => i.IsActive == true);
 
-            var lowStockItems = await _context.Stock
-                .Where(s => s.Quantity <= lowStockThreshold)
-                .CountAsync();
+            var itemBalances = await _context.Items.Where(i => i.IsActive == true).Select(i => new
+            {
+                i.ItemID, i.ItemName, Category = i.Category.CategoryName, i.ReorderLevel,
+                Quantity = _context.Stock.Where(st => st.ItemId == i.ItemID).Sum(st => (decimal?)st.Quantity) ?? 0
+            }).ToListAsync();
+            var lowStockItems = itemBalances.Count(i => i.Quantity <= i.ReorderLevel);
 
             var pendingOrders = await _context.ProductionOrder
                 .CountAsync(p => p.Status == "Pending" || p.Status == "InProduction");
@@ -116,7 +119,7 @@ namespace InventorySystem.Controllers
 
             // ── Recent Activity ───────────────────────────────────────────────
             var recentSales = await _context.SaleInvoice
-                .OrderByDescending(s => s.SaleId)
+                .OrderByDescending(s => s.SaleDate).ThenByDescending(s => s.SaleId)
                 .Take(3)
                 .Select(s => new RecentActivityItem
                 {
@@ -127,7 +130,7 @@ namespace InventorySystem.Controllers
                 }).ToListAsync();
 
             var recentPurchases = await _context.PurchaseInvoice
-                .OrderByDescending(p => p.PurchaseId)
+                .OrderByDescending(p => p.PurchaseDate).ThenByDescending(p => p.PurchaseId)
                 .Take(3)
                 .Select(p => new RecentActivityItem
                 {
@@ -195,19 +198,8 @@ namespace InventorySystem.Controllers
             }
 
             // ── Low Stock Alerts ──────────────────────────────────────────────
-            var lowStock = await _context.Stock
-                .Where(s => s.Quantity <= lowStockThreshold)
-                .Include(s => s.Item)
-                    .ThenInclude(i => i.Category)
-                .OrderBy(s => s.Quantity)
-                .Take(5)
-                .Select(s => new LowStockAlert
-                {
-                    ItemId = s.ItemId,
-                    ItemName = s.Item != null ? s.Item.ItemName ?? "—" : "—",
-                    Category = s.Item != null && s.Item.Category != null ? s.Item.Category.CategoryName : "—",
-                    CurrentStock = s.Quantity
-                }).ToListAsync();
+            var lowStock = itemBalances.Where(i => i.Quantity <= i.ReorderLevel).OrderBy(i => i.Quantity).Take(5)
+                .Select(i => new LowStockAlert { ItemId = i.ItemID, ItemName = i.ItemName ?? "—", Category = i.Category, CurrentStock = i.Quantity }).ToList();
 
             // ── Top Customers (this month) ────────────────────────────────────
             var topCustomers = await _context.SaleInvoice

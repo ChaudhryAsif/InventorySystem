@@ -1,8 +1,8 @@
 ﻿@model InventorySystem.Core.Models.CostSheet
 @{
     Layout = "_Layout";
-    ViewData["Title"] = "Cost Sheet";
     bool isEdit = Model != null && Model.CostSheetId > 0;
+    ViewData["Title"] = isEdit ? "Edit Cost Sheet" : "Create Cost Sheet";
 }
 
 <link href="~/css/sale.css" rel="stylesheet" />
@@ -61,11 +61,6 @@
     /* Action bar */
     .cs-action-bar { display:flex; gap:.75rem; justify-content:flex-end; margin-top:1.2rem; }
 
-    /* Customer lookup */
-    .lookup-wrap { display:flex; gap:.4rem; }
-    .lookup-wrap input { flex:1; }
-    .btn-lookup { padding:.45rem .8rem; background:#1e3a5f; color:#fff; border:none; border-radius:7px; cursor:pointer; }
-
     /* Item lookup modal styles */
     .item-modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.6); z-index:1000; }
     .item-modal-dialog { background:#fff; border-radius:8px; max-width:800px; margin:2rem auto; padding:1.5rem; position:relative; }
@@ -87,13 +82,37 @@
     .item-empty-icon { font-size:2rem; margin-bottom:.5rem; }
     .btn-select-item { background:#059669; color:#fff; border:none; border-radius:7px; padding:.5rem 1rem;
                        font-size:.82rem; cursor:pointer; }
+
+    @@media screen and (max-width:1024px) {
+        .cs-grid-4, .cs-grid-5 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .cs-dimensions, .cs-cost-columns { grid-template-columns:minmax(0,1fr) !important; }
+    }
+    @@media screen and (max-width:600px) {
+        .cs-grid-2, .cs-grid-3, .cs-grid-4, .cs-grid-5 { grid-template-columns:minmax(0,1fr); }
+        .cs-fg { min-width:0; }
+        .cs-card { padding:1rem; min-width:0; }
+        .cs-action-bar, .item-search-filters { flex-wrap:wrap; }
+        .cs-action-bar > * { flex:1 1 auto; }
+        .item-modal-dialog { margin:1rem; padding:1rem; }
+        .cost-row { flex-wrap:wrap; gap:.35rem; }
+        .cost-label { flex-wrap:wrap; }
+    }
+    .mobile-table-scroll { overflow-x:auto; max-width:100%; }
+    .mobile-table-scroll .ply-table { min-width:760px; }
+
+    @@media screen and (max-width:768px) {
+        .mobile-page-header { flex-wrap:wrap; gap:1rem; }
+        .mobile-page-header > div { min-width:0; }
+        .mobile-page-header h2 { overflow-wrap:anywhere; }
+    }
+
 </style>
 
 <div class="cs-wrapper">
 
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+    <div class="mobile-page-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
         <div>
-            <h2>📦 @(isEdit ? "Edit Cost Sheet" : "New Cost Sheet")</h2>
+            <h2>📋 @(isEdit ? "Edit Cost Sheet" : "Create Cost Sheet")</h2>
             <p style="color:#666; margin:0;">Carton / Box product costing & rate calculation</p>
         </div>
         <div style="display:flex; gap:.5rem;">
@@ -121,32 +140,62 @@
                     <option value="Final">Final</option>
                 </select>
             </div>
-            <div class="cs-fg">
-                <label>Branch</label>
-                <select class="cs-input" id="branchId">
-                    <option value="1">Main Branch</option>
-                    <option value="2">Branch 2</option>
-                </select>
-            </div>
+            @if (BranchSettings.Value.MultiBranchEnabled)
+            {
+                <div class="cs-fg">
+                    <label>Branch</label>
+                    <select class="cs-input" id="branchId">
+                        <option value="1">Main Branch</option>
+                        <option value="2">Branch 2</option>
+                    </select>
+                </div>
+            }
+            else
+            {
+                <input type="hidden" id="branchId" value="1" />
+            }
         </div>
         <div class="cs-grid-2" style="margin-top:.75rem;">
+            <p class="cs-fg">Reusable box recipe: use this cost sheet for different customers. Choose the customer, quantity and agreed selling price when creating each production order.</p>
             <div class="cs-fg">
-                <label>Customer</label>
-                <div class="lookup-wrap">
-                    <input class="cs-input" id="customerName" readonly placeholder="Select customer...">
-                    <input type="hidden" id="customerId">
-                    <button type="button" class="btn-lookup" onclick="openCustomerModal()">👤</button>
-                </div>
-            </div>
-            <div class="cs-fg">
+                <label>Finished Box Item (pieces)</label>
+                <select class="cs-input" id="finishedItemId"><option value="">Select a finished-box item...</option></select>
+                <small>Create the finished item under Items first. Material weights below are kg per ONE box.</small>
                 <label>Item / Product Name</label>
                 <input class="cs-input" id="itemName" placeholder="e.g. Rice Dresser Set">
             </div>
         </div>
     </div>
 
+    <div class="cs-card">
+        <div class="cs-fg"><label for="costingMethod">Calculation method</label>
+            <select class="cs-input" id="costingMethod" onchange="applyCostingMethod(true)"><option value="Client">Client carton cost sheet</option><option value="Manual">Manual weights / existing method</option></select>
+        </div>
+        <div id="clientCostingPanel" style="margin-top:1rem">
+            <span class="cs-section-title">Client costing rates & allowances</span>
+            <p>Paper KG is calculated from sheet area, GSM and layer type. Operating charges = paper KG × rate per KG. GST uses base cost plus profit. Lamination No excludes the sheet, glue-lamination and lamination-chemical costs and stock quantities.</p>
+            <div class="cs-grid-4"><div class="cs-fg"><label for="client_widthAllowanceIn">Width allowance (in)</label><input id="client_widthAllowanceIn" data-client-option="widthAllowanceIn" type="number" min="0" step="0.000001" value="0.63" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_lengthAllowanceIn">Length allowance (in)</label><input id="client_lengthAllowanceIn" data-client-option="lengthAllowanceIn" type="number" min="0" step="0.000001" value="0.55" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_fluteFactor">Flute factor</label><input id="client_fluteFactor" data-client-option="fluteFactor" type="number" min="0" step="0.000001" value="1.55" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_deckelUp">Deckel up</label><input id="client_deckelUp" data-client-option="deckelUp" type="number" min="0" step="0.000001" value="2" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_printingRate">Printing rate / 1,000 sq.in / colour</label><input id="client_printingRate" data-client-option="printingRate" type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_laminationRate">Lamination sheet rate / sq.ft</label><input id="client_laminationRate" data-client-option="laminationRate" type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_pinRate">Rate per pin</label><input id="client_pinRate" data-client-option="pinRate" type="number" min="0" step="0.000001" value="1.25" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_woodRate">Wood rate / paper KG</label><input id="client_woodRate" data-client-option="woodRate" type="number" min="0" step="0.000001" value="4" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_starchRate">Starch & chemicals rate / paper KG</label><input id="client_starchRate" data-client-option="starchRate" type="number" min="0" step="0.000001" value="4.5" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_glueApplications">Glue applications</label><input id="client_glueApplications" data-client-option="glueApplications" type="number" min="0" step="0.000001" value="2" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_silicateApplications">Silicate applications</label><input id="client_silicateApplications" data-client-option="silicateApplications" type="number" min="0" step="0.000001" value="2" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_glueLaminationApplications">Glue lamination applications</label><input id="client_glueLaminationApplications" data-client-option="glueLaminationApplications" type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_laminationChemicalApplications">Lamination chemical applications</label><input id="client_laminationChemicalApplications" data-client-option="laminationChemicalApplications" type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_glueLaminationRate">Glue lamination rate / KG</label><input id="client_glueLaminationRate" data-client-option="glueLaminationRate" type="number" min="0" step="0.000001" value="640" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_laminationChemicalRate">Lamination chemical rate / KG</label><input id="client_laminationChemicalRate" data-client-option="laminationChemicalRate" type="number" min="0" step="0.000001" value="200" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_glueLaminationItemId">Glue Lamination Stock Item (kg)</label><select id="client_glueLaminationItemId" class="cs-input client-stock" data-client-stock="glueLaminationItemId" onchange="recalcAll()"><option value="">Select stock item</option></select></div><div class="cs-fg"><label for="client_laminationChemicalItemId">Lamination Chemicals Stock Item (kg)</label><select id="client_laminationChemicalItemId" class="cs-input client-stock" data-client-stock="laminationChemicalItemId" onchange="recalcAll()"><option value="">Select stock item</option></select></div></div><p>For Lamination Yes, select the lamination adhesive stock items before Final, or set unused applications to 0. Lamination No requires neither item and consumes neither material. Do not repeat these materials under Other Materials.</p>
+            <div class="cs-grid-4"><div class="cs-fg"><label>Paper weight / box (KG)</label><input id="client_paperWeightKg" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Deckel (in)</label><input id="client_deckelIn" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Wood cost</label><input id="client_woodCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Starch & chemical cost</label><input id="client_starchCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Glue lamination cost</label><input id="client_glueLaminationCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Lamination chemical cost</label><input id="client_laminationChemicalCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Operating costs incl. adhesives</label><input id="client_operatingCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>GST amount (cost + profit)</label><input id="client_gstAmount" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Additional tax amount</label><input id="client_additionalTaxAmount" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>W/H amount</label><input id="client_withholdingAmount" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Price after MOQ divisor</label><input id="client_pricePerUnit" class="cs-input calc" readonly value="0"></div></div><p>Commission A, commission B, profit and additional tax each use base cost × percentage ÷ 100. GST uses base cost plus profit. MOQ divides base cost + commissions + profit; GST, additional tax and withholding are added after division.</p>
+        </div>
+    </div>
+
     <!-- ── Row 2: Construction  +  Printing/Die ───────────────────────────── -->
-    <div style="display:grid; grid-template-columns:1fr auto; gap:1rem;">
+    <div class="cs-dimensions" style="display:grid; grid-template-columns:1fr auto; gap:1rem;">
 
         <!-- Construction -->
         <div class="cs-card">
@@ -197,7 +246,7 @@
             </div>
             <div class="cs-grid-4">
                 <div class="cs-fg">
-                    <label>Auto Flap Gap</label>
+                    <label>Both Flap Gap</label>
                     <input type="number" class="cs-input" id="autoFlapGap" value="0" oninput="recalcDimensions()">
                 </div>
                 <div class="cs-fg">
@@ -242,7 +291,7 @@
                 </div>
                 <div class="cs-fg" style="align-self:flex-end;">
                     <small style="color:#6b7280; font-size:.75rem;">
-                        💡 Dimension fields are auto-calculated but editable
+                        💡 Dimensions follow the selected calculation method
                     </small>
                 </div>
             </div>
@@ -264,7 +313,7 @@
                 </div>
                 <div class="cs-fg" style="margin-bottom:.5rem;">
                     <label>Colors</label>
-                    <input type="number" class="cs-input" id="printingColors" value="0" min="0">
+                    <input type="number" class="cs-input" id="printingColors" value="0" min="0" oninput="recalcAll()">
                 </div>
                 <div class="cs-fg">
                     <label>Cost</label>
@@ -273,9 +322,9 @@
                 </div>
             </div>
             <div class="cs-card">
-                <span class="cs-section-title">✂️ Die / Dickel</span>
+                <span class="cs-section-title">✂️ Die / Tooling</span>
                 <div class="cs-fg">
-                    <label>Dickel Cost</label>
+                    <label>Die / Tooling Cost</label>
                     <input type="number" class="cs-input" id="dickelCost" value="0" step="0.01"
                            oninput="recalcAll()">
                 </div>
@@ -289,22 +338,22 @@
             <span class="cs-section-title">📄 Ply / Paper Layers</span>
         </div>
 
-        <table class="ply-table">
+        <div class="mobile-table-scroll" role="region" aria-label="Ply details" tabindex="0"><table class="ply-table">
             <thead>
                 <tr>
                     <th style="width:35px;">#</th>
                     <th style="width:55px;">Item ID</th>
                     <th style="width:180px;">Item Name</th>
                     <th style="width:120px;">Specification</th>
-                    <th style="width:80px;">GSM</th>
+                    <th style="width:120px;">GSM / Layer Type</th>
                     <th style="width:110px;">Rate (per KG)</th>
-                    <th style="width:100px;">KGs Used</th>
+                    <th style="width:100px;">KG / Box</th>
                     <th style="width:100px;">Cost</th>
                     <th style="width:40px;"></th>
                 </tr>
             </thead>
             <tbody id="plyBody"></tbody>
-        </table>
+        </table></div>
         <button type="button" class="btn-add-ply" id="addPlyBtn">➕ Add Ply Layer</button>
 
         <!-- Glue / Silicate / Lamination row -->
@@ -322,18 +371,22 @@
                        oninput="recalcAll()">
             </div>
             <div class="cs-fg">
-                <label>Glue Rate</label>
-                <input type="number" class="cs-input" id="glueRate" value="0" step="0.01">
+                <label>Glue Stock Item</label><select class="cs-input" id="glueItemId"><option value="">No glue</option></select>
+                <label>Glue KG / Box</label><input type="number" class="cs-input" id="glueKgPerBox" min="0" step="0.000001" value="0" oninput="recalcAll()">
+                <label>Glue Rate / KG</label>
+                <input type="number" class="cs-input" id="glueRate" value="0" step="0.01" oninput="recalcAll()">
             </div>
             <div class="cs-fg">
-                <label>Silicate Rate</label>
-                <input type="number" class="cs-input" id="silicateRate" value="0" step="0.01">
+                <label>Silicate Stock Item</label><select class="cs-input" id="silicateItemId"><option value="">No silicate</option></select>
+                <label>Silicate KG / Box</label><input type="number" class="cs-input" id="silicateKgPerBox" min="0" step="0.000001" value="0" oninput="recalcAll()">
+                <label>Silicate Rate / KG</label>
+                <input type="number" class="cs-input" id="silicateRate" value="0" step="0.01" oninput="recalcAll()">
             </div>
         </div>
         <div class="cs-grid-3" style="margin-top:.75rem;">
             <div class="cs-fg">
-                <label>Glue + Silicate Total KGs</label>
-                <input type="number" class="cs-input" id="glueSilicateKg" value="0" step="0.01"
+                <label>Total Adhesive KG / Box (estimated)</label>
+                <input type="number" class="cs-input" id="glueSilicateKg" value="0" step="0.000001" readonly
                        oninput="recalcAll()">
             </div>
             <div class="cs-fg">
@@ -347,21 +400,49 @@
         </div>
     </div>
 
+    <!-- ── Other Materials (kg or pcs) ───────────────────────────────────── -->
+    <div class="cs-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem;">
+            <span class="cs-section-title">🧰 Other Materials (tape, labels, any raw material)</span>
+        </div>
+        <div class="mobile-table-scroll" role="region" aria-label="Other materials" tabindex="0"><table class="ply-table">
+            <thead>
+                <tr>
+                    <th style="width:35px;">#</th>
+                    <th style="width:240px;">Raw Material</th>
+                    <th style="width:70px;">Unit</th>
+                    <th style="width:120px;">Qty / Box</th>
+                    <th style="width:110px;">Rate (per unit)</th>
+                    <th style="width:100px;">Cost</th>
+                    <th style="width:40px;"></th>
+                </tr>
+            </thead>
+            <tbody id="matBody"></tbody>
+        </table></div>
+        <button type="button" class="btn-add-ply" id="addMatBtn">➕ Add Material</button>
+        <div class="cs-grid-3" style="margin-top:.75rem;">
+            <div class="cs-fg">
+                <label>Other Materials Cost (included in Paper Cost Total)</label>
+                <input type="number" class="cs-input calc" id="otherMaterialsCost" value="0" readonly>
+            </div>
+        </div>
+    </div>
+
     <!-- ── Row 4: Labour/Energy/Binding/Freight  +  Overheads  +  Final ──── -->
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+    <div class="cs-cost-columns" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
 
         <!-- Left: variable costs -->
         <div class="cs-card">
             <span class="cs-section-title">⚙️ Variable Costs</span>
             <div class="cost-panel">
                 <div class="cost-row">
-                    <span class="cost-label">Labour Rate</span>
+                    <span class="cost-label" data-client-weight-label="Labour">Labour Rate</span>
                     <input type="number" class="cost-pct" id="labourRate" value="0" step="0.01" oninput="recalcAll()">
                     <span style="font-size:.8rem; color:#6b7280;">→ Cost</span>
                     <input type="number" class="cost-val calc" id="labourCost" value="0" readonly>
                 </div>
                 <div class="cost-row">
-                    <span class="cost-label">Energy Rate</span>
+                    <span class="cost-label" data-client-weight-label="Energy">Energy Rate</span>
                     <input type="number" class="cost-pct" id="energyRate" value="0" step="0.01" oninput="recalcAll()">
                     <span style="font-size:.8rem; color:#6b7280;">→ Cost</span>
                     <input type="number" class="cost-val calc" id="energyCost" value="0" readonly>
@@ -380,7 +461,7 @@
                     <input type="number" class="cost-val calc" id="bindingCost" value="0" readonly>
                 </div>
                 <div class="cost-row">
-                    <span class="cost-label">Freight Rate</span>
+                    <span class="cost-label" data-client-weight-label="Freight">Freight Rate</span>
                     <input type="number" class="cost-pct" id="freightRate" value="0" step="0.01" oninput="recalcAll()">
                     <span style="font-size:.8rem; color:#6b7280;">→ Cost</span>
                     <input type="number" class="cost-val calc" id="freightCost" value="0" readonly>
@@ -395,37 +476,37 @@
             <span class="cs-section-title" style="margin-top:1rem; display:inline-block;">🏭 Overhead Costs</span>
             <div class="cost-panel">
                 <div class="cost-row">
-                    <span class="cost-label">Waste %</span>
+                    <span class="cost-label" data-client-rate-label="Waste">Waste %</span>
                     <input type="number" class="cost-pct" id="wastePct" value="0" step="0.01" oninput="recalcAll()">
                     <span style="font-size:.8rem; color:#6b7280;">→ Cost</span>
                     <input type="number" class="cost-val calc" id="wasteCost" value="0" readonly>
                 </div>
                 <div class="cost-row">
-                    <span class="cost-label">Admin Exp %</span>
+                    <span class="cost-label" data-client-rate-label="Admin Exp">Admin Exp %</span>
                     <input type="number" class="cost-pct" id="adminExpPct" value="0" step="0.01" oninput="recalcAll()">
                     <span style="font-size:.8rem; color:#6b7280;">→ Cost</span>
                     <input type="number" class="cost-val calc" id="adminExpCost" value="0" readonly>
                 </div>
                 <div class="cost-row">
-                    <span class="cost-label">Selling & Dist %</span>
+                    <span class="cost-label" data-client-rate-label="Selling & Dist">Selling & Dist %</span>
                     <input type="number" class="cost-pct" id="sellingDistPct" value="0" step="0.01" oninput="recalcAll()">
                     <span style="font-size:.8rem; color:#6b7280;">→ Cost</span>
                     <input type="number" class="cost-val calc" id="sellingDistCost" value="0" readonly>
                 </div>
                 <div class="cost-row">
-                    <span class="cost-label">Repair & Maint %</span>
+                    <span class="cost-label" data-client-rate-label="Repair & Maint">Repair & Maint %</span>
                     <input type="number" class="cost-pct" id="repairMaintPct" value="0" step="0.01" oninput="recalcAll()">
                     <span style="font-size:.8rem; color:#6b7280;">→ Cost</span>
                     <input type="number" class="cost-val calc" id="repairMaintCost" value="0" readonly>
                 </div>
                 <div class="cost-row">
-                    <span class="cost-label">Store & Spares %</span>
+                    <span class="cost-label" data-client-rate-label="Store & Spares">Store & Spares %</span>
                     <input type="number" class="cost-pct" id="storeSparesPct" value="0" step="0.01" oninput="recalcAll()">
                     <span style="font-size:.8rem; color:#6b7280;">→ Cost</span>
                     <input type="number" class="cost-val calc" id="storeSparesCost" value="0" readonly>
                 </div>
                 <div class="cost-row">
-                    <span class="cost-label">Mfg Cost %</span>
+                    <span class="cost-label" data-client-rate-label="Mfg Cost">Mfg Cost %</span>
                     <input type="number" class="cost-pct" id="mfgCostPct" value="0" step="0.01" oninput="recalcAll()">
                     <span style="font-size:.8rem; color:#6b7280;">→ Cost</span>
                     <input type="number" class="cost-val calc" id="mfgCostValue" value="0" readonly>
@@ -486,10 +567,10 @@
             <div class="cs-grid-2" style="margin-top:.75rem;">
                 <div class="cs-fg">
                     <label>Based on MOQ</label>
-                    <input type="number" class="cs-input" id="moq" value="0" min="0">
+                    <input type="number" class="cs-input" id="moq" value="1" min="1" oninput="recalcAll()">
                 </div>
                 <div class="cs-fg">
-                    <label>Tax % (on Final)</label>
+                    <label id="additionalTaxLabel">Tax % (on Final)</label>
                     <input type="number" class="cs-input" id="taxPct" value="0" step="0.01" oninput="recalcAll()">
                 </div>
             </div>
@@ -517,40 +598,6 @@
 </div><!-- cs-wrapper -->
 
 
-<!-- ── Customer Modal (reuse same pattern as sale invoice) ──────────────── -->
-<div class="modal customer-modal" id="customerModal">
-    <div class="customer-modal-dialog">
-        <div class="customer-modal-header">
-            <h3 class="customer-modal-title">Select Customer</h3>
-            <button class="customer-modal-close" onclick="closeCustomerModal()">&times;</button>
-        </div>
-        <div class="customer-modal-body">
-            <div class="customer-search-box">
-                <input type="text" class="customer-search-input" id="customerSearchInput"
-                       placeholder="🔍 Search customers..." onkeyup="searchCustomers()">
-            </div>
-            <div class="customer-table-container">
-                <table class="customer-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th><th>Name</th><th>Type</th>
-                            <th>Phone</th><th>Email</th>
-                        </tr>
-                    </thead>
-                    <tbody id="customerTableBody">
-                        <tr><td colspan="5" style="text-align:center;padding:2rem;">Loading...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <div class="customer-modal-footer">
-            <button class="btn btn-danger" onclick="closeCustomerModal()">✖ Cancel</button>
-            <button class="btn btn-select" id="selectCustomerBtn"
-                    onclick="selectCustomer()" disabled>✓ Select</button>
-        </div>
-    </div>
-</div>
-
 <!-- ── Ply Item Lookup Modal ──────────────────────────────────────────────── -->
 <div class="modal item-modal" id="plyItemModal">
     <div class="item-modal-dialog">
@@ -561,10 +608,10 @@
         <div class="item-modal-body">
             <div class="item-search-filters">
                 <input type="text" class="item-search-input" id="plyItemSearch"
-                       placeholder="🔍 Search by item name or category..."
+                       placeholder="🔍 Search by item name or group..."
                        oninput="filterPlyItems()">
                 <select class="item-filter-select" id="plyCategoryFilter" onchange="filterPlyItems()">
-                    <option value="">All Categories</option>
+                    <option value="">All Groups</option>
                 </select>
             </div>
             <div class="item-table-container">
@@ -573,7 +620,7 @@
                         <tr>
                             <th style="width:60px;">ID</th>
                             <th>Item Name</th>
-                            <th>Category</th>
+                            <th>Group Name</th>
                             <th style="width:110px;">Last Pur. Price</th>
                             <th style="width:100px;">Stock (KG)</th>
                         </tr>
@@ -585,7 +632,7 @@
             </div>
             <div id="plyItemEmptyState" class="item-empty-state" style="display:none;">
                 <div class="item-empty-icon">📦</div>
-                <p>No items found. Please add items via Item Management first.</p>
+                <p>No items found. Please add items via Items first.</p>
             </div>
         </div>
         <div class="item-modal-footer">
@@ -597,4 +644,5 @@
 </div>
 
 <input type="hidden" id="editCostSheetId" value="@(isEdit ? Model!.CostSheetId.ToString() : "0")">
-<script src="~/js/costsheet.js"></script>
+<script src="~/js/client-costing.js" asp-append-version="true"></script>
+<script src="~/js/costsheet.js" asp-append-version="true"></script>

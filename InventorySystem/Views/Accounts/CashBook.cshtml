@@ -1,4 +1,4 @@
-﻿@{
+@{
     Layout = "_Layout";
     ViewData["Title"] = "Cash Book";
 }
@@ -148,8 +148,8 @@
                     <td><span class="acc-code">${r.voucherNo}</span></td>
                     <td>${vtBadge(r.voucherType)}</td>
                     <td style="font-size:0.83rem;color:#555">${r.accountName}</td>
-                    <td>${r.partyName || '—'}</td>
-                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.narration)}">${r.narration || '—'}</td>
+                    <td>${escapeHtml(r.partyName || '—')}</td>
+                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.narration)}">${escapeHtml(r.narration || '—')}</td>
                     <td style="text-align:right;color:#155724;font-weight:600">${r.debit  > 0 ? fmt(r.debit)  : ''}</td>
                     <td style="text-align:right;color:#721c24;font-weight:600">${r.credit > 0 ? fmt(r.credit) : ''}</td>
                     <td style="text-align:right;font-weight:600" class="${r.balance >= 0 ? 'bal-positive' : 'bal-negative'}">${fmt(Math.abs(r.balance))} ${r.balance >= 0 ? 'Dr' : 'Cr'}</td>

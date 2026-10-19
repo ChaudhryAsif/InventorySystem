@@ -1,4 +1,5 @@
-﻿<link href="~/css/item.css" rel="stylesheet" />
+﻿@{ ViewData["Title"] = "Items"; }
+<link href="~/css/item.css" rel="stylesheet" />
 
 @{
     Layout = "_Layout";
@@ -8,7 +9,7 @@
 <div>
     <div class="page-header">
         <div class="page-title">
-            <h2>Item Management</h2>
+            <h2>Items</h2>
             <p>Manage all inventory items</p>
         </div>
         <button class="btn btn-success" onclick="showModal('itemModal')">
@@ -19,12 +20,14 @@
     <!-- Filters -->
     <div class="filter-section">
         <div class="filter-grid">
-            <input type="text" class="form-control" placeholder="🔍 Search items..." id="searchInput" onkeyup="searchTable()">
-            <select class="form-control" id="listCategoryDropdown" onchange="renderFilteredTable()">
-                <option>All Categories</option>
+            <input type="text" class="form-control" placeholder="🔍 Search items..." id="searchInput" oninput="renderFilteredTable()">
+            <select class="form-control" id="listItemTypeDropdown" aria-label="Filter by item type" onchange="renderFilteredTable()">
+                <option value="">All Item Types</option>
+                <option value="RawMaterial">Raw Material</option>
+                <option value="FinishedGoods">Finished Goods</option>
             </select>
 
-            <select class="form-control" onchange="renderFilteredTable()">
+            <select class="form-control" id="listStatusDropdown" aria-label="Filter by status" onchange="renderFilteredTable()">
                 <option>All Status</option>
                 <option>Active</option>
                 <option>Inactive</option>
@@ -41,7 +44,7 @@
                         @* <th style="width: 80px;">Item ID</th> *@
                         <th style="width: 80px;">Image</th>
                         <th>Item Name</th>
-                        <th>Category</th>
+                        <th>Group Name</th>
                       @*   <th>Barcode</th> *@
                         <th style="width: 120px;">Sale Price</th>
                         <th style="width: 100px;">Status</th>
@@ -66,7 +69,8 @@
                 <div class="modal-grid">
                     <!-- Left Side - Item Details -->
                     <div class="form-section">
-                        <input type="hidden" id="itemId">
+                        <input type="hidden" id="itemId" value="0">
+                        <input type="hidden" id="barcodeInput" value="">
 
                       @*   <div class="form-group">
                             <label class="form-label">Item ID</label>
@@ -75,9 +79,9 @@
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label class="form-label required">Category</label>
-                                <select class="form-control" id="categoryId" required>
-                                    <option value="">Select Category</option>
+                                <label class="form-label required" for="categoryId">Group Name</label>
+                                <select class="form-control" id="categoryId" onchange="applyGroupType()" required>
+                                    <option value="">Select Group</option>
                                     <option value="1">Electronics</option>
                                     <option value="2">Accessories</option>
                                     <option value="3">Clothing</option>
@@ -101,7 +105,13 @@
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label required">Sale Price</label>
+                            <label class="form-label">Item Type</label>
+                            <select id="itemType" class="form-control" onchange="if(this.value==='FinishedGoods')document.getElementById('stockUnit').value='pcs'">
+                                <option value="RawMaterial" selected>Raw Material (bought: paper, glue, tape)</option><option value="FinishedGoods">Finished Goods (made: boxes)</option>
+                            </select>
+                            <label class="form-label">Stock Unit</label>
+                            <select id="stockUnit" class="form-control"><option value="kg" selected>Kilograms</option><option value="pcs">Pieces</option></select>
+                            <label class="form-label">Sale Price</label>
                             <input type="number" class="form-control" id="salePrice" value="0" step="0.01" required>
                         </div>
 
@@ -139,6 +149,8 @@
                             </div>
                         </div>
 
+                        <label for="reorderLevel">Low stock threshold</label>
+                        <input type="number" id="reorderLevel" min="0" step="0.01" value="50" class="form-control" />
                         <!-- Barcode Management -->
                        @*  <div class="form-group">
                             <label class="form-label">Barcode</label>
@@ -176,97 +188,67 @@
     const NO_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23e2e8f0'/%3E%3Ccircle cx='38' cy='36' r='8' fill='%23ffffff'/%3E%3Cpath d='M20 78 L42 50 L58 68 L72 48 L90 78 Z' fill='%23ffffff'/%3E%3C/svg%3E";
 
     let isEditMode = false;
+    let itemSaveInProgress = false;
+    let itemLoadVersion = 0;
+    let allItems = [];
+    let itemListLoaded = false;
+    let itemGroups = [];
+    let canDeleteItems = false;
+    let itemListRequestVersion = 0;
 
         document.addEventListener('DOMContentLoaded', function() {
         loadItemList();
-            loadCategories(null, "listCategoryDropdown");
+
     });
 
-            async function loadItemListtest() {
-        try {
-            const response = await fetch('/Item/GetList');
-            const payload = await response.json();
-            const items = payload.data || [];
-
-            const tableBody = document.getElementById('itemTableBody');
-            tableBody.innerHTML = ''; // clear old rows
-
-            if (!items || items.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No items found.</td></tr>';
-                return;
-            }
-
-
-            // <td>${item.itemID}</td>
-                 //<td>0000${item.itemID}</td>
-            items.forEach(item => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                        <td><img src="${item.imagePath || NO_IMAGE_PLACEHOLDER}" class="item-image-thumb" alt="Item"></td>
-                    <td>${item.itemName}</td>
-                    <td>${item.categoryName || ''}</td>
-                   
-                    <td>${item.salePrice?.toFixed(2) ?? '0.00'}</td>
-                    <td>
-                        <span class="badge ${item.isActive ? 'badge-success' : 'badge-danger'}">
-                            ${item.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                    </td>
-                    <td>
-                        <div class="action-buttons">
-                            <button class="btn btn-primary btn-sm" onclick="editItem(${item.itemID})">✏️ Edit</button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteItem(${item.itemID})">🗑️ Delete</button>
-                        </div>
-                    </td>
-                `;
-                tableBody.appendChild(row);
-            });
-        } catch (err) {
-            console.error('Error loading items:', err);
-        }
-    }
-
     async function loadItemList() {
+    const requestVersion = ++itemListRequestVersion;
+    const params = new URLSearchParams();
+    const type = document.getElementById('listItemTypeDropdown').value;
+    const search = document.getElementById('searchInput').value.trim();
+    const status = document.getElementById('listStatusDropdown').value;
+    if (type) params.set('itemType', type);
+    if (search) params.set('search', search);
+    if (status !== 'All Status') params.set('status', status);
     try {
-        const response = await fetch('/Item/GetList');
+        const response = await fetch('/Item/GetList?' + params);
+        if (requestVersion !== itemListRequestVersion) return;
+        if (!response.ok) throw new Error('Load failed');
         const payload = await response.json();
+        if (requestVersion !== itemListRequestVersion) return;
+        if (payload.success === false || !Array.isArray(payload.data)) throw new Error('Load failed');
         const items = payload.data || [];
 
-        allItems = items; // ✅ store globally
-        renderFilteredTable(); // render based on filters
+        allItems = items;
+        canDeleteItems = payload.canDelete === true;
+        itemListLoaded = true;
+        renderItemRows();
     } catch (err) {
-        console.error('Error loading items:', err);
+        if (requestVersion !== itemListRequestVersion) return;
+        itemListLoaded = false;
+        PosListState.show(document.getElementById('itemTableBody'), { columns:6, error:true, title:'Items could not be loaded', message:'Check your connection and try again.', actionText:'Try again', onAction:loadItemList });
     }
 }
 
 
-        function renderFilteredTable() {
-        const search = document.getElementById('searchInput').value.toLowerCase();
-        const category = document.getElementById('listCategoryDropdown').value;
-        const status = document.querySelector('.filter-grid select:nth-of-type(2)').value;
+    function renderFilteredTable() { return loadItemList(); }
 
+    function renderItemRows() {
+        if (!itemListLoaded) return;
+        const search = document.getElementById('searchInput').value.trim();
+        const type = document.getElementById('listItemTypeDropdown').value;
+        const status = document.getElementById('listStatusDropdown').value;
         const tableBody = document.getElementById('itemTableBody');
         tableBody.innerHTML = '';
-
-        // Filter items
-        const filtered = allItems.filter(item => {
-            const matchesSearch =
-                item.itemName?.toLowerCase().includes(search) ||
-                item.categoryName?.toLowerCase().includes(search);
-
-            const matchesCategory =
-                !category || category === 'All Categories' || item.categoryId == category;
-
-            const matchesStatus =
-                status === 'All Status' ||
-                (status === 'Active' && item.isActive) ||
-                (status === 'Inactive' && !item.isActive);
-
-            return matchesSearch && matchesCategory && matchesStatus;
-        });
+        const filtered = allItems;
 
         if (filtered.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No items found.</td></tr>';
+            const matching = !!search || !!type || status !== 'All Status';
+            PosListState.show(tableBody, { columns:6,
+                title:matching ? 'No matching items found' : 'No items yet',
+                message:matching ? 'Try a different search or clear the filters.' : 'Add your first inventory item. Create a group first if needed.',
+                actionText:matching ? 'Clear filters' : '+ Add Item',
+                onAction:matching ? () => { document.getElementById('searchInput').value=''; document.getElementById('listItemTypeDropdown').selectedIndex=0; document.getElementById('listStatusDropdown').selectedIndex=0; renderFilteredTable(); } : () => showModal('itemModal') });
             return;
         }
 
@@ -276,8 +258,8 @@
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td><img src="${item.imagePath || NO_IMAGE_PLACEHOLDER}" class="item-image-thumb" alt="Item"></td>
-                <td>${item.itemName}</td>
-                <td>${item.categoryName || ''}</td>
+                <td>${escapeHtml(item.itemName)}</td>
+                <td>${escapeHtml(item.categoryName || '')}</td>
                
                 <td>${item.salePrice?.toFixed(2) ?? '0.00'}</td>
                 <td>
@@ -288,7 +270,7 @@
                 <td>
                     <div class="action-buttons">
                         <button class="btn btn-primary btn-sm" onclick="editItem(${item.itemID})">✏️ Edit</button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteItem(${item.itemID})">🗑️ Delete</button>
+                        ${canDeleteItems ? `<button class="btn btn-danger btn-sm" onclick="deleteItem(${item.itemID})">🗑️ Delete</button>` : ''}
                     </div>
                 </td>
             `;
@@ -296,38 +278,54 @@
         });
     }
 
-function saveItem(event) {
+async function saveItem(event) {
         event.preventDefault();
-
-        const formData = new FormData();
-        formData.append("ItemId", $("#itemId").val());
-        formData.append("ItemName", $("#itemName").val());
-        formData.append("CategoryId", $("#categoryId").val());
-        formData.append("SalePrice", $("#salePrice").val());
-        formData.append("Description", $("#itemDescription").val());
-        formData.append("Size", $("#size").val());
-        formData.append("IsActive", $("#isActive").is(":checked"));
-
-        const file = $("#fileInput")[0].files[0];
-        if (file) {
-            formData.append("File", file);
+        if (itemSaveInProgress) return;
+        const form = document.getElementById('itemForm');
+        if (!form.reportValidity()) return;
+        const rawId = document.getElementById('itemId').value.trim();
+        const itemId = rawId === '' ? 0 : Number(rawId);
+        if (!/^\d*$/.test(rawId) || !Number.isSafeInteger(itemId) || itemId < 0) {
+            await alertDialog('The item reference is invalid. Close this form and open the item again.', { type:'error' });
+            return;
         }
-
-        $.ajax({
-            url: '/Item/Save',
-            type: 'POST',
-            data: formData,
-            contentType: false,  // don't override
-            processData: false,  // don't stringify
-            success: function (res) {
-                    closeModal('itemModal');
-                    loadItemList();
-            },
-            error: async function (xhr) {
-                console.error("❌ Error saving item:", xhr);
-                await alertDialog("Error: " + xhr.statusText);
+        const formData = new FormData();
+        // The server binds ItemID to a non-nullable integer. New items must send 0.
+        formData.append('ItemID', String(itemId));
+        formData.append('ItemName', $('#itemName').val());
+        formData.append('CategoryID', $('#categoryId').val());
+        formData.append('ItemType', $('#itemType').val());
+        formData.append('StockUnit', $('#stockUnit').val());
+        formData.append('SalePrice', $('#salePrice').val());
+        formData.append('Description', $('#itemDescription').val());
+        formData.append('Barcode', $('#barcodeInput').val() || '');
+        formData.append('ReorderLevel', $('#reorderLevel').val());
+        formData.append('Size', $('#size').val());
+        formData.append('IsActive', $('#isActive').is(':checked'));
+        const file = $('#fileInput')[0].files[0];
+        if (file) formData.append('File', file);
+        const button = form.querySelector('button[type="submit"]');
+        const originalText = button.textContent;
+        itemSaveInProgress = true; button.disabled = true; button.textContent = 'Saving...';
+        try {
+            const result = await $.ajax({ url:'/Item/Save', type:'POST', data:formData, contentType:false, processData:false });
+            if (result.success !== true) {
+                await alertDialog(result.message || 'Item could not be saved. Review the details and try again.', { type:'error' });
+                return;
             }
-        });
+            closeModal('itemModal');
+            await loadItemList();
+        } catch (xhr) {
+            const result = xhr.responseJSON;
+            let message = typeof result?.message === 'string' ? result.message : 'Item could not be saved. Check your connection and try again.';
+            if (Array.isArray(result?.errors) && result.errors.length) {
+                const labels = { ItemID:'item reference', CategoryID:'group', ItemName:'item name', SalePrice:'sale price', ReorderLevel:'low stock threshold', ItemType:'item type', StockUnit:'stock unit' };
+                message += ' Please check: ' + result.errors.map(key => labels[key] || key).join(', ') + '.';
+            }
+            await alertDialog(message, { type:'error' });
+        } finally {
+            itemSaveInProgress = false; button.disabled = false; button.textContent = originalText;
+        }
     }
 
     // Delete Item
@@ -356,10 +354,13 @@ function saveItem(event) {
 
         try {
             const response = await fetch('/Category/GetList');
+            if (!response.ok) throw new Error('Groups could not be loaded.');
             const payload = await response.json();
-            const data = payload.data || [];
+            if (payload.success === false || !Array.isArray(payload.data)) throw new Error('Groups could not be loaded.');
+            const data = payload.data;
+            if (dropdownId === 'categoryId') itemGroups = data;
 
-            dropdown.innerHTML = '<option value="">Select Category</option>';
+            dropdown.innerHTML = '<option value="">Select Group</option>';
 
             data.forEach(cat => {
                 const option = document.createElement("option");
@@ -372,20 +373,38 @@ function saveItem(event) {
                 // ✅ Use the dropdownId dynamically, not hardcoded 'categoryId'
                 $(`#${dropdownId}`).val(categoryId).trigger('change');
             }
+            if (dropdownId === 'categoryId') applyGroupType();
+            return true;
         } catch (error) {
             console.error("Error loading categories:", error);
-            dropdown.innerHTML = '<option value="">Error loading categories</option>';
+            dropdown.innerHTML = '<option value="">Groups could not be loaded</option>';
+            return false;
         }
     }
 
 
 
  
+        function applyGroupType() {
+            const group = itemGroups.find(g => String(g.categoryId) === document.getElementById('categoryId').value);
+            const type = document.getElementById('itemType');
+            const classified = group?.groupType === 'RawMaterial' || group?.groupType === 'FinishedGoods';
+            type.disabled = classified;
+            if (classified) type.value = group.groupType;
+            if (type.value === 'FinishedGoods') document.getElementById('stockUnit').value = 'pcs';
+        }
+
         function showModal(id) {
+            itemLoadVersion++;
             const modal = document.getElementById(id);
             if (modal) {
-                             loadCategories(null, "categoryId");
-                     document.getElementById('itemForm').reset();
+                document.getElementById('itemForm').reset();
+                document.getElementById('itemId').value = '0';
+                document.getElementById('modalTitle').textContent = 'Add New Item';
+                document.getElementById('imagePreview').src = NO_IMAGE_PLACEHOLDER;
+                isEditMode = false;
+                document.getElementById('itemType').disabled = false;
+                loadCategories(null, 'categoryId');
                 modal.style.display = 'flex';
                 modal.classList.add('show');
                 document.body.style.overflow = 'hidden';
@@ -402,6 +421,7 @@ function saveItem(event) {
         }
 
               function closeModal(id) {
+                itemLoadVersion++;
                 const modal = document.getElementById(id);
                 if (modal) {
                     modal.style.display = 'none';
@@ -412,54 +432,38 @@ function saveItem(event) {
 
         // 🔹 Opens modal and populates data from controller
     async function editItem(itemId) {
+        closeModal('itemModal');
+        const version = ++itemLoadVersion;
         try {
-                document.getElementById('itemForm').reset();
-            // Fetch item from controller
-            const response = await fetch(`/Item/GetItemById?id=${itemId}`);
-            if (!response.ok) throw new Error('Failed to fetch item data');
+            const response = await fetch(`/Item/GetItemById?id=${encodeURIComponent(itemId)}`);
+            if (!response.ok) throw new Error(response.status === 404
+                ? 'This item no longer exists. Refresh the list and try again.'
+                : 'The item could not be loaded. Refresh the list and try again.');
             const item = await response.json();
-                 openModal('itemModal');
-                        loadCategories(item.categoryID, "categoryId");
-         
-            // --- Populate modal fields ---
-            document.getElementById('modalTitle').innerText = 'Edit Item';
+            if (version !== itemLoadVersion) return;
+            document.getElementById('itemForm').reset();
+            if (!await loadCategories(item.categoryID, 'categoryId'))
+                throw new Error('Groups could not be loaded. Check your connection and try again.');
+            if (version !== itemLoadVersion) return;
             document.getElementById('itemId').value = item.itemID;
-            // document.getElementById('itemIdDisplay').value = item.itemID;
-            //document.getElementById('categoryId').value = item.categoryID;
-            document.getElementById('size').value = item.size || 'Select Size';
-            document.getElementById('itemName').value = item.itemName;
-            document.getElementById('salePrice').value = item.salePrice;
+            document.getElementById('barcodeInput').value = item.barcode || '';
+            document.getElementById('reorderLevel').value = item.reorderLevel ?? 50;
+            document.getElementById('size').value = item.size || '';
+            document.getElementById('itemName').value = item.itemName || '';
+            document.getElementById('itemType').value = item.itemType === 'FinishedGoods' ? 'FinishedGoods' : 'RawMaterial';
+            document.getElementById('stockUnit').value = item.stockUnit || 'pcs';
+            document.getElementById('salePrice').value = item.salePrice ?? 0;
             document.getElementById('itemDescription').value = item.description || '';
-            document.getElementById('isActive').checked = item.isActive;
-
-            // --- Image Preview ---
-            const imagePreview = document.getElementById('imagePreview');
-            if (item.imagePath)
-                imagePreview.src = `${item.imagePath}`;
-            else
-                imagePreview.src = 'https://placehold.co/200x200';
-
-            // --- Populate Barcode List ---
-            // const barcodeList = document.getElementById('barcodeList');
-            // barcodeList.innerHTML = ''; // clear previous barcodes
-            // if (item.barcodes && item.barcodes.length > 0) {
-            //     item.barcodes.forEach(code => {
-            //         const div = document.createElement('div');
-            //         div.className = 'barcode-item';
-            //         div.innerHTML = `
-            //             <span style="font-weight: 500;">${code}</span>
-            //             <button type="button" class="barcode-remove" onclick="this.parentElement.remove()">×</button>
-            //         `;
-            //         barcodeList.appendChild(div);
-            //     });
-            // }
-
-            // --- Finally, open the modal ---
-               
-
+            document.getElementById('isActive').checked = item.isActive === true;
+            document.getElementById('imagePreview').src = item.imagePath || NO_IMAGE_PLACEHOLDER;
+            document.getElementById('modalTitle').textContent = 'Edit Item';
+            isEditMode = true;
+            applyGroupType();
+            openModal('itemModal');
         } catch (error) {
+            if (version !== itemLoadVersion) return;
             console.error(error);
-            await alertDialog('Unable to load item data.');
+            await alertDialog(error.message || 'The item could not be loaded. Please try again.', { type:'error' });
         }
     }
 
@@ -473,7 +477,7 @@ function saveItem(event) {
             <tr>
                
                 <td><img src="${NO_IMAGE_PLACEHOLDER}" class="item-image-thumb" alt="Item"></td>
-                <td>${itemData.itemName}</td>
+                <td>${escapeHtml(itemData.itemName)}</td>
                 <td>Electronics</td>
                
                 <td>${parseFloat(itemData.salePrice).toFixed(2)}</td>
@@ -569,3 +573,4 @@ function saveItem(event) {
         }
     });
 </script>
+

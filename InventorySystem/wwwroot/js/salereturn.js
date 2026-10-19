@@ -172,6 +172,7 @@ function loadNextReturnNumber() {
 
 // ── Reset form ──────────────────────────────────────────────────────────────
 function resetForm() {
+    if (window.posMarkSaved) window.posMarkSaved();
     editId = null;
     const header = document.querySelector('.page-header h2');
     if (header) header.textContent = '↩️ Sale Return';
@@ -236,7 +237,7 @@ document.getElementById('saleReturnForm').addEventListener('submit', async funct
         ReturnDate:     document.getElementById('returnDate').value,
         CustomerID:     document.getElementById('hftxtCustomerId').value,
         OriginalSaleId: originalId,
-        BranchID:       1,
+        BranchID:       Number(document.getElementById("posBranch")?.value || 1),
         PaymentMode:    parseInt(document.getElementById('paymentMode').value),
         Remarks:        document.getElementById('remarks').value || null,
         TotalAmount:    parseFloat(document.getElementById('invoiceTotal').value) || 0,
@@ -253,6 +254,7 @@ document.getElementById('saleReturnForm').addEventListener('submit', async funct
         .then(res => res.json())
         .then(async data => {
             if (data.success) {
+                if (window.posMarkSaved) window.posMarkSaved();
                 await alertDialog('✅ ' + data.message);
                 if (editId) {
                     window.location.href = '/SaleReturn/List';
@@ -316,11 +318,11 @@ function displayCustomers(customers) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${c.partyId}</td>
-            <td>${c.partyName}</td>
+            <td>${escapeHtml(c.partyName)}</td>
             <td>${c.partyType}</td>
-            <td>${c.contactPerson || '-'}</td>
-            <td>${c.phone}</td>
-            <td>${c.email || '-'}</td>
+            <td>${escapeHtml(c.contactPerson || '-')}</td>
+            <td>${escapeHtml(c.phone)}</td>
+            <td>${escapeHtml(c.email || '-')}</td>
             <td>${parseFloat(c.openingBalance || 0).toFixed(2)}</td>
         `;
         row.addEventListener('click', () => selectCustomerRow(row, c));
@@ -345,9 +347,9 @@ function selectCustomer() {
     document.getElementById('hftxtCustomerId').value  = selectedCustomer.partyId;
     document.getElementById('customerAccount').value  = selectedCustomer.partyName;
     document.getElementById('customerDetails').value  =
-        [selectedCustomer.contactPerson ? `Contact: ${selectedCustomer.contactPerson}` : '',
-         selectedCustomer.phone         ? `Phone: ${selectedCustomer.phone}`           : '',
-         selectedCustomer.email         ? `Email: ${selectedCustomer.email}`           : '']
+        [selectedCustomer.contactPerson ? `Contact: ${escapeHtml(selectedCustomer.contactPerson)}` : '',
+         selectedCustomer.phone         ? `Phone: ${escapeHtml(selectedCustomer.phone)}`           : '',
+         selectedCustomer.email         ? `Email: ${escapeHtml(selectedCustomer.email)}`           : '']
         .filter(Boolean).join('\n');
     closeCustomerModal();
 }
@@ -389,7 +391,11 @@ function loadItems() {
         .then(res => res.json())
         .then(data => {
             if (data.success && data.items?.length > 0) {
-                allItems = data.items;
+                allItems = data.items.map(item => ({
+                    ...item,
+                    itemId: item.itemID ?? item.itemId,
+                    stock: item.currentStock ?? item.stock ?? 0
+                }));
                 displayItems(allItems);
                 loadCategories(data.items);
             } else {
@@ -422,8 +428,8 @@ function displayItems(items) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${item.itemId}</td>
-            <td>${item.itemName}</td>
-            <td>${item.categoryName || '-'}</td>
+            <td>${escapeHtml(item.itemName)}</td>
+            <td>${escapeHtml(item.categoryName || '-')}</td>
             <td>${parseFloat(item.salePrice || 0).toFixed(2)}</td>
             <td>${parseFloat(item.stock || 0).toFixed(0)}</td>
         `;

@@ -19,33 +19,63 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public IActionResult StockReport() => View();
 
+        // Same report, pre-filtered by item type.
         [HttpGet]
-        public async Task<IActionResult> GetStockData(int branchId = 0, int categoryId = 0, string? status = null)
+        public IActionResult RawMaterialStock() { ViewBag.ItemType = "RawMaterial"; return View("StockReport"); }
+
+        [HttpGet]
+        public IActionResult FinishedGoodsStock() { ViewBag.ItemType = "FinishedGoods"; return View("StockReport"); }
+
+        [HttpGet]
+        public async Task<IActionResult> GetStockData(int branchId = 0, int categoryId = 0, string? status = null, string? itemType = null,
+            string? search = null, decimal? minQty = null, decimal? maxQty = null, DateTime? updatedFrom = null, DateTime? updatedTo = null,
+            string? sortBy = null, string? sortDir = null)
         {
             try
             {
-                var rawData = await _context.Stock
-                    .Join(_context.Items, s => s.ItemId, i => i.ItemID, (s, i) => new { s, i })
-                    .Join(_context.ItemCategory, si => si.i.CategoryID, c => c.CategoryId, (si, c) => new
-                    {
-                        itemId       = si.i.ItemID,
-                        itemName     = si.i.ItemName ?? "",
-                        categoryName = c.CategoryName,
-                        categoryId   = si.i.CategoryID,
-                        branchId     = si.s.BranchId,
-                        quantity     = si.s.Quantity,
-                        lastUpdated  = si.s.LastUpdated
-                    })
-                    .Where(x => branchId == 0 || x.branchId == branchId)
-                    .Where(x => categoryId == 0 || x.categoryId == categoryId)
-                    .ToListAsync();
+                var branches = branchId > 0 ? new[] { branchId } : _context.RestrictBranches
+                    ? _context.AllowedBranchIds : (await _context.Stock.Select(s => s.BranchId).Distinct().ToListAsync()).Append(1).Distinct().ToArray();
+                var rawData = new List<StockReportRow>();
+                foreach (var branch in branches)
+                {
+                    var rows = await (from item in _context.Items
+                                      join category in _context.ItemCategory on item.CategoryID equals category.CategoryId
+                                      join stock in _context.Stock.Where(s => s.BranchId == branch) on item.ItemID equals stock.ItemId into stocks
+                                      from stock in stocks.DefaultIfEmpty()
+                                      where item.IsActive == true && (categoryId == 0 || item.CategoryID == categoryId)
+                                          && (string.IsNullOrEmpty(itemType) || item.ItemType == itemType)
+                                          && (string.IsNullOrWhiteSpace(search) || (item.ItemName ?? "").Contains(search.Trim()) || (item.Barcode ?? "").Contains(search.Trim()))
+                                      select new StockReportRow
+                                      {
+                                          itemId = item.ItemID, itemName = item.ItemName ?? "", categoryName = category.CategoryName,
+                                          itemType = item.ItemType,
+                                          branchId = branch, quantity = stock == null ? 0 : stock.Quantity,
+                                          reorderLevel = item.ReorderLevel, lastUpdated = stock == null ? null : stock.LastUpdated
+                                      }).ToListAsync();
+                    rawData.AddRange(rows);
+                }
+
+                if (minQty.HasValue) rawData = rawData.Where(x => x.quantity >= minQty.Value).ToList();
+                if (maxQty.HasValue) rawData = rawData.Where(x => x.quantity <= maxQty.Value).ToList();
+                if (updatedFrom.HasValue) rawData = rawData.Where(x => x.lastUpdated >= updatedFrom.Value.Date).ToList();
+                if (updatedTo.HasValue) rawData = rawData.Where(x => x.lastUpdated <= updatedTo.Value.Date.AddDays(1).AddTicks(-1)).ToList();
 
                 var filtered = status switch
                 {
-                    "instock"    => rawData.Where(x => x.quantity > 50).ToList(),
-                    "lowstock"   => rawData.Where(x => x.quantity > 0 && x.quantity <= 50).ToList(),
-                    "outofstock" => rawData.Where(x => x.quantity <= 0).ToList(),
-                    _            => rawData
+                    "instock"      => rawData.Where(x => x.quantity > x.reorderLevel).ToList(),
+                    "lowstock"     => rawData.Where(x => x.quantity > 0 && x.quantity <= x.reorderLevel).ToList(),
+                    "outofstock"   => rawData.Where(x => x.quantity <= 0).ToList(),
+                    "neverstocked" => rawData.Where(x => x.lastUpdated == null).ToList(),
+                    _              => rawData
+                };
+
+                var desc = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
+                filtered = sortBy switch
+                {
+                    "quantity" => OrderBy(filtered, x => x.quantity, desc),
+                    "updated"  => OrderBy(filtered, x => x.lastUpdated ?? DateTime.MinValue, desc),
+                    "category" => OrderBy(filtered, x => x.categoryName, desc),
+                    _          => OrderBy(filtered, x => x.itemName, desc)
                 };
 
                 return Json(new
@@ -56,16 +86,18 @@ namespace InventorySystem.Controllers
                         x.itemId,
                         x.itemName,
                         x.categoryName,
+                        x.itemType,
                         branchName  = GetBranchName(x.branchId),
                         x.quantity,
-                        stockStatus = GetStockStatus(x.quantity),
-                        lastUpdated = x.lastUpdated.ToString("yyyy-MM-dd HH:mm")
+                        stockStatus = GetStockStatus(x.quantity, x.reorderLevel),
+                        lastUpdated = x.lastUpdated?.ToString("yyyy-MM-dd HH:mm") ?? "Never stocked"
                     }),
                     summary = new
                     {
+                        shown      = filtered.Count,
                         total      = rawData.Count,
-                        inStock    = rawData.Count(x => x.quantity > 50),
-                        lowStock   = rawData.Count(x => x.quantity > 0 && x.quantity <= 50),
+                        inStock    = rawData.Count(x => x.quantity > x.reorderLevel),
+                        lowStock   = rawData.Count(x => x.quantity > 0 && x.quantity <= x.reorderLevel),
                         outOfStock = rawData.Count(x => x.quantity <= 0)
                     }
                 });
@@ -85,12 +117,18 @@ namespace InventorySystem.Controllers
             DateTime? from, DateTime? to,
             string? vendorId = null,
             int? invoiceNo = null,
-            int page = 1, int pageSize = 50)
+            int page = 1, int pageSize = 50,
+            int? branchId = null, int? paymentMode = null, string? billNo = null,
+            long? itemId = null, int? categoryId = null,
+            decimal? minAmount = null, decimal? maxAmount = null,
+            string? balance = null, string? sortBy = null, string? sortDir = null)
         {
             try
             {
                 var fromDate = from ?? DateTime.Now.AddMonths(-1);
                 var toDate   = (to ?? DateTime.Now).Date.AddDays(1).AddTicks(-1);
+                if (page < 1) page = 1;
+                pageSize = Math.Clamp(pageSize, 1, 500);
 
                 var query = _context.PurchaseInvoice
                     .Where(p => p.PurchaseDate >= fromDate && p.PurchaseDate <= toDate);
@@ -100,6 +138,18 @@ namespace InventorySystem.Controllers
 
                 if (invoiceNo.HasValue && invoiceNo.Value > 0)
                     query = query.Where(p => p.PurchaseId == invoiceNo.Value);
+
+                if (branchId > 0) query = query.Where(p => (p.BranchID ?? 1) == branchId);
+                if (paymentMode.HasValue) query = query.Where(p => p.PaymentMode == paymentMode);
+                if (!string.IsNullOrWhiteSpace(billNo)) query = query.Where(p => p.BillNo != null && p.BillNo.Contains(billNo.Trim()));
+                if (minAmount.HasValue) query = query.Where(p => (p.AmountPaid ?? p.TotalAmount ?? 0) >= minAmount.Value);
+                if (maxAmount.HasValue) query = query.Where(p => (p.AmountPaid ?? p.TotalAmount ?? 0) <= maxAmount.Value);
+                if (balance == "due") query = query.Where(p => (p.PaymentMode ?? 0) == 0 && (p.AmountPaid ?? p.TotalAmount ?? 0) > 0);
+                if (balance == "paid") query = query.Where(p => (p.PaymentMode ?? 0) > 0);
+                if (itemId > 0 || categoryId > 0)
+                    query = query.Where(p => _context.PurchaseInvoiceBody.Any(b => b.PurchaseId == p.PurchaseId
+                        && (!(itemId > 0) || b.Itemid == itemId)
+                        && (!(categoryId > 0) || _context.Items.Any(i => i.ItemID == b.Itemid && i.CategoryID == categoryId))));
 
                 var invoices = await query
                     .OrderByDescending(p => p.PurchaseDate)
@@ -111,8 +161,9 @@ namespace InventorySystem.Controllers
                         p.BillNo,
                         p.BranchID,
                         p.PaymentMode,
-                        p.TotalAmount,
-                        NetAmount  = p.AmountPaid,
+                        // AmountPaid stores the invoice net value, not a settlement amount.
+                        TotalAmount = p.AmountPaid ?? p.TotalAmount ?? 0,
+                        NetAmount = (p.PaymentMode ?? 0) > 0 ? (p.AmountPaid ?? p.TotalAmount ?? 0) : 0,
                         p.Remarks,
                         VendorName = _context.Parties
                             .Where(party => party.PartyId.ToString() == p.VendorID)
@@ -120,6 +171,16 @@ namespace InventorySystem.Controllers
                             .FirstOrDefault() ?? p.VendorID
                     })
                     .ToListAsync();
+
+                var descP = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
+                var ascP = string.Equals(sortDir, "asc", StringComparison.OrdinalIgnoreCase);
+                invoices = sortBy switch
+                {
+                    "amount"  => OrderBy(invoices, x => x.TotalAmount, descP),
+                    "party"   => OrderBy(invoices, x => x.VendorName ?? "", descP),
+                    "invoice" => OrderBy(invoices, x => x.PurchaseId, descP),
+                    _         => ascP ? OrderBy(invoices, x => x.PurchaseDate ?? DateTime.MinValue, false) : invoices
+                };
 
                 var totalCount = invoices.Count;
                 var pagedInvoices = invoices.Skip((page - 1) * pageSize).Take(pageSize).ToList();
@@ -164,8 +225,9 @@ namespace InventorySystem.Controllers
                         billNo       = p.BillNo ?? "-",
                         branchName   = GetBranchName(p.BranchID ?? 1),
                         paymentMode  = GetPaymentModeLabel(p.PaymentMode),
-                        totalAmount  = p.TotalAmount ?? 0,
-                        netAmount    = p.NetAmount ?? 0,
+                        totalAmount  = p.TotalAmount,
+                        netAmount    = p.NetAmount,
+                        balanceDue   = Math.Max(0, (p.TotalAmount) - (p.NetAmount)),
                         remarks      = p.Remarks ?? "",
                         items        = itemsByInvoice.TryGetValue(p.PurchaseId, out var its)
                             ? its.Select(i => new
@@ -184,8 +246,9 @@ namespace InventorySystem.Controllers
                     summary = new
                     {
                         totalInvoices = invoices.Count,
-                        totalAmount   = invoices.Sum(p => p.TotalAmount ?? 0),
-                        netAmount     = invoices.Sum(p => p.NetAmount ?? 0)
+                        totalAmount   = invoices.Sum(p => p.TotalAmount),
+                        netAmount     = invoices.Sum(p => p.NetAmount),
+                        balanceDue    = invoices.Sum(p => Math.Max(0, (p.TotalAmount) - (p.NetAmount)))
                     }
                 });
             }
@@ -204,12 +267,18 @@ namespace InventorySystem.Controllers
             DateTime? from, DateTime? to,
             string? customerId = null,
             int? invoiceNo = null,
-            int page = 1, int pageSize = 50)
+            int page = 1, int pageSize = 50,
+            int? branchId = null, int? paymentMode = null, string? refNo = null,
+            long? itemId = null, int? categoryId = null,
+            decimal? minAmount = null, decimal? maxAmount = null,
+            string? sortBy = null, string? sortDir = null)
         {
             try
             {
                 var fromDate = from ?? DateTime.Now.AddMonths(-1);
                 var toDate   = (to ?? DateTime.Now).Date.AddDays(1).AddTicks(-1);
+                if (page < 1) page = 1;
+                pageSize = Math.Clamp(pageSize, 1, 500);
 
                 var query = _context.SaleInvoice
                     .Where(s => s.SaleDate >= fromDate && s.SaleDate <= toDate);
@@ -219,6 +288,16 @@ namespace InventorySystem.Controllers
 
                 if (invoiceNo.HasValue && invoiceNo.Value > 0)
                     query = query.Where(s => s.SaleId == invoiceNo.Value);
+
+                if (branchId > 0) query = query.Where(s => (s.BranchID ?? 1) == branchId);
+                if (paymentMode.HasValue) query = query.Where(s => s.PaymentMode == paymentMode);
+                if (!string.IsNullOrWhiteSpace(refNo)) query = query.Where(s => s.RefNo != null && s.RefNo.Contains(refNo.Trim()));
+                if (minAmount.HasValue) query = query.Where(s => (s.TotalAmount ?? 0) >= minAmount.Value);
+                if (maxAmount.HasValue) query = query.Where(s => (s.TotalAmount ?? 0) <= maxAmount.Value);
+                if (itemId > 0 || categoryId > 0)
+                    query = query.Where(s => _context.SaleInvoiceBody.Any(b => b.SaleId == s.SaleId
+                        && (!(itemId > 0) || b.ItemId == itemId)
+                        && (!(categoryId > 0) || _context.Items.Any(i => i.ItemID == b.ItemId && i.CategoryID == categoryId))));
 
                 var invoices = await query
                     .OrderByDescending(s => s.SaleDate)
@@ -239,6 +318,16 @@ namespace InventorySystem.Controllers
                             .FirstOrDefault() ?? s.CustomerID
                     })
                     .ToListAsync();
+
+                var descS = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
+                var ascS = string.Equals(sortDir, "asc", StringComparison.OrdinalIgnoreCase);
+                invoices = sortBy switch
+                {
+                    "amount"   => OrderBy(invoices, x => x.TotalAmount ?? 0, descS),
+                    "customer" => OrderBy(invoices, x => x.CustomerName ?? "", descS),
+                    "invoice"  => OrderBy(invoices, x => x.SaleId, descS),
+                    _          => ascS ? OrderBy(invoices, x => x.SaleDate ?? DateTime.MinValue, false) : invoices
+                };
 
                 var totalCount = invoices.Count;
                 var pagedInvoices = invoices.Skip((page - 1) * pageSize).Take(pageSize).ToList();
@@ -313,6 +402,20 @@ namespace InventorySystem.Controllers
         }
 
         // ── Dropdown helpers ────────────────────────────────────────────────────
+        // Active items for the report item filter.
+        [HttpGet]
+        public async Task<IActionResult> GetItemList()
+        {
+            var items = await _context.Items.Where(i => i.IsActive == true)
+                .OrderBy(i => i.ItemName)
+                .Select(i => new { value = i.ItemID.ToString(), text = i.ItemName ?? "" })
+                .ToListAsync();
+            return Json(items);
+        }
+
+        private static List<T> OrderBy<T, K>(IEnumerable<T> source, Func<T, K> key, bool desc) =>
+            (desc ? source.OrderByDescending(key) : source.OrderBy(key)).ToList();
+
         [HttpGet]
         public async Task<IActionResult> GetSupplierList()
         {
@@ -351,12 +454,18 @@ namespace InventorySystem.Controllers
             _ => $"Branch {id}"
         };
 
-        private static string GetStockStatus(decimal qty) => qty switch
+        private sealed class StockReportRow
         {
-            > 50 => "In Stock",
-            > 0  => "Low Stock",
-            _    => "Out of Stock"
-        };
+            public long itemId { get; set; }
+            public string itemName { get; set; } = "";
+            public string categoryName { get; set; } = "";
+            public string itemType { get; set; } = "";
+            public int branchId { get; set; }
+            public decimal quantity { get; set; }
+            public decimal reorderLevel { get; set; }
+            public DateTime? lastUpdated { get; set; }
+        }
+        private static string GetStockStatus(decimal qty, decimal threshold) => qty <= 0 ? "Out of Stock" : qty <= threshold ? "Low Stock" : "In Stock";
 
         private static string GetPaymentModeLabel(int? mode) => mode switch
         {

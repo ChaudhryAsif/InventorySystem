@@ -1,4 +1,4 @@
-using InventorySystem.Core.Models;
+﻿using InventorySystem.Core.Models;
 using InventorySystem.Core.Services;
 using InventorySystem.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -137,6 +137,18 @@ namespace InventorySystem.Controllers
             if (model == null || model.Details == null || !model.Details.Any())
                 return BadRequest("Invalid adjustment data.");
 
+            if (model.BranchId <= 0 || model.Status is not ("Draft" or "Posted") ||
+                model.Details.Any(d => d.ItemId <= 0 || d.Quantity <= 0 || d.Direction is not ("Increase" or "Decrease") || d.UnitCost < 0))
+                return BadRequest(new { success = false, message = "Invalid adjustment lines, branch, or status." });
+            if (model.AdjustmentDate.Year < 2000 || model.AdjustmentDate.Date > DateTime.Today.AddDays(1))
+                return BadRequest(new { success = false, message = "Enter a valid adjustment date." });
+            var itemIds = model.Details.Select(d => d.ItemId).Distinct().ToArray();
+            var items = await _context.Items.Where(i => itemIds.Contains(i.ItemID) && i.IsActive == true)
+                .Select(i => new { i.ItemID, i.StockUnit }).ToDictionaryAsync(i => i.ItemID);
+            if (items.Count != itemIds.Length || model.Details.Any(d => d.Quantity > 1000000 ||
+                d.Quantity != decimal.Round(d.Quantity, 3) ||
+                items[d.ItemId].StockUnit == "pcs" && d.Quantity != decimal.Truncate(d.Quantity)))
+                return BadRequest(new { success = false, message = "Select active items and enter whole pieces, or kilograms to at most three decimal places." });
             try
             {
                 var adjustment = new StockAdjustment
@@ -245,8 +257,8 @@ namespace InventorySystem.Controllers
             if (adjustment == null)
                 return NotFound();
 
-            if (adjustment.Status == "Posted")
-                return BadRequest("Adjustment already posted.");
+            if (adjustment.Status != "Draft")
+                return BadRequest("Only a draft adjustment can be posted.");
 
             // Update stock for each detail (single source of truth)
             foreach (var detail in adjustment.Details!)

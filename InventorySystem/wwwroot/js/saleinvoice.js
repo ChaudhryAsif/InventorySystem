@@ -22,16 +22,22 @@ let selectedItem  = null;
 let allItems      = [];
 let currentRow    = null;
 let editId        = null;   // set when editing an existing invoice (?id=)
+let productionOrders = [];
+let linkedProductionOrder = null;
+let savedProductionOrderId = null;
+let orderSelectionVersion = 0;
 
 // ── Init ────────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', function () {
+window.addEventListener('DOMContentLoaded', async function () {
     const id = new URLSearchParams(window.location.search).get('id');
     if (id) {
         editId = parseInt(id);
-        loadInvoiceForEdit(editId);
+        await loadInvoiceForEdit(editId);
+        await loadProductionOrders(savedProductionOrderId, true);
     } else {
         addNewRow();
         loadNextInvoiceNumber();
+        await loadProductionOrders(new URLSearchParams(location.search).get('productionOrderId'));
     }
 });
 
@@ -41,6 +47,7 @@ async function loadInvoiceForEdit(id) {
         const res = await fetch('/Sale/GetSaleById?id=' + id);
         if (!res.ok) { await alertDialog('Invoice not found.', { type: 'error' }); window.location.href = '/Sale/List'; return; }
         const inv = await res.json();
+        savedProductionOrderId = inv.productionOrderId || null;
 
         const header = document.querySelector('.page-header h2');
         if (header) header.textContent = '✏️ Edit Sale Invoice #' + inv.saleId;
@@ -48,6 +55,7 @@ async function loadInvoiceForEdit(id) {
         document.getElementById('invoiceNo').value   = inv.saleId;
         document.getElementById('refNo').value        = inv.refNo || '';
         if (inv.saleDate) document.getElementById('invoiceDate').value = inv.saleDate;
+        if (document.getElementById("posBranch")) document.getElementById("posBranch").value = inv.branchID || 1;
         document.getElementById('paymentMode').value  = (inv.paymentMode ?? 0).toString();
 
         document.getElementById('hftxtCustomerId').value = inv.customerID || '';
@@ -93,6 +101,7 @@ async function loadInvoiceForEdit(id) {
 document.getElementById('addRowBtn').addEventListener('click', addNewRow);
 
 function addNewRow() {
+    if (linkedProductionOrder && document.getElementById('itemsBody').rows.length > 0) return;
     rowCounter++;
     const tbody = document.getElementById('itemsBody');
     const newRow = document.createElement('tr');
@@ -219,7 +228,15 @@ function loadNextInvoiceNumber() {
 
 // ── Reset form ──────────────────────────────────────────────────────────────
 function resetForm() {
+    if (window.posMarkSaved) window.posMarkSaved();
     editId = null;
+    savedProductionOrderId = null;
+    linkedProductionOrder = null;
+    document.querySelector('#saleForm button[type="submit"]').disabled = false;
+    document.getElementById('productionOrderSelect').disabled = false;
+    document.getElementById('productionOrderSelect').value = '';
+    document.getElementById('productionOrderInfo').textContent = 'Normal sale. Select an order to load agreed pricing.';
+    setOrderLocks(false);
     const header = document.querySelector('.page-header h2');
     if (header) header.textContent = '🛒 Sale Invoice';
     document.getElementById('refNo').value           = '';
@@ -242,6 +259,92 @@ function resetForm() {
     document.getElementById('discPercent').value = '0';
     calculateTotals();
     loadNextInvoiceNumber();
+    loadProductionOrders();
+}
+
+async function loadProductionOrders(selectedId = null, preserveLines = false) {
+    const version = ++orderSelectionVersion;
+    const select = document.getElementById('productionOrderSelect');
+    select.disabled = true;
+    try {
+        const response = await fetch('/Sale/GetProductionOrders' + (editId ? '?saleId=' + editId : ''));
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error('Orders could not be loaded.');
+        if (version !== orderSelectionVersion) return;
+        productionOrders = data.orders || [];
+        select.replaceChildren(new Option('Normal sale — no production order', ''));
+        for (const order of productionOrders) {
+            select.add(new Option(`#${order.productionOrderId} — ${order.customerName} — ${order.itemName} — ${order.remainingQuantity} boxes remaining`, order.productionOrderId));
+        }
+        if (selectedId) {
+            select.value = String(selectedId);
+            if (!select.value) throw new Error('This order is unavailable or fully invoiced. Review its status and remaining quantity.');
+            await selectProductionOrder(preserveLines);
+        }
+    } catch (error) {
+        document.getElementById('productionOrderInfo').textContent = error.message + ' Refresh the page before invoicing an order.';
+        // Preserve the stored link even if lookup fails; never silently convert an edit into a normal sale.
+        if (savedProductionOrderId) document.querySelector('#saleForm button[type="submit"]').disabled = true;
+    } finally {
+        if (version === orderSelectionVersion) select.disabled = !!savedProductionOrderId;
+    }
+}
+
+function setOrderLocks(locked) {
+    document.getElementById('btnCustomerAccount').disabled = locked;
+    document.getElementById('addRowBtn').disabled = locked;
+    document.getElementById('scanInput').disabled = locked;
+    for (const id of ['gstPercent','freight','otherExp','discPercent']) document.getElementById(id).readOnly = locked;
+    document.querySelectorAll('#itemsBody .item-lookup-icon, #itemsBody .btn-remove').forEach(b => b.disabled = locked);
+    document.querySelectorAll('#itemsBody input[data-field="price"], #itemsBody input[data-field="disc"]').forEach(i => i.readOnly = locked);
+}
+
+async function selectProductionOrder(preserveLines = false) {
+    const select = document.getElementById('productionOrderSelect');
+    const order = productionOrders.find(o => String(o.productionOrderId) === select.value);
+    const previous = linkedProductionOrder;
+    const hasItems = [...document.querySelectorAll('#itemsBody tr')].some(row => row.cells[1].querySelector('input').value);
+    if (!preserveLines && hasItems && previous?.productionOrderId !== order?.productionOrderId) {
+        if (!await confirmDialog('Changing the production order will replace the customer, items, quantities and pricing in this unsaved invoice. Continue?')) {
+            select.value = previous ? String(previous.productionOrderId) : ''; return;
+        }
+    }
+    linkedProductionOrder = order || null;
+    if (!order) {
+        setOrderLocks(false);
+        document.getElementById('productionOrderInfo').textContent = 'Normal sale. Select an order to load agreed pricing.';
+        if (!preserveLines) {
+            document.getElementById('itemsBody').replaceChildren(); rowCounter = 0; addNewRow();
+            document.getElementById('hftxtCustomerId').value = '';
+            document.getElementById('customerAccount').value = '';
+            document.getElementById('customerDetails').value = '';
+            for (const id of ['gstPercent','freight','otherExp','discPercent']) document.getElementById(id).value = 0;
+            calculateTotals();
+        }
+        return;
+    }
+    document.getElementById('hftxtCustomerId').value = order.customerId;
+    document.getElementById('customerAccount').value = order.customerName || '';
+    document.getElementById('customerDetails').value = order.customerReference ? 'Customer reference: ' + order.customerReference : '';
+    if (document.getElementById('posBranch')) document.getElementById('posBranch').value = order.branchId;
+    document.getElementById('gstPercent').value = order.agreedGstPercent;
+    for (const id of ['freight','otherExp','discPercent']) document.getElementById(id).value = 0;
+    if (!preserveLines) {
+        document.getElementById('itemsBody').replaceChildren(); rowCounter = 0; addNewRow();
+        const row = document.querySelector('#itemsBody tr');
+        row.cells[1].querySelector('input').value = order.finishedItemId;
+        row.cells[2].querySelector('input').value = order.itemName;
+        row.cells[3].querySelector('input').value = order.availableStock;
+        const qty = row.cells[4].querySelector('input');
+        qty.value = Math.max(0, Math.min(order.remainingQuantity, order.availableStock));
+        qty.max = order.remainingQuantity; qty.step = '1';
+        row.cells[5].querySelector('input').value = Number(order.agreedUnitPrice).toFixed(2);
+        row.cells[6].querySelector('input').value = 0;
+        calculateRowTotal(row);
+    }
+    document.getElementById('productionOrderInfo').textContent = `Order #${order.productionOrderId}: agreed price ${Number(order.agreedUnitPrice).toFixed(2)} per box before GST; GST ${order.agreedGstPercent}%; ${order.remainingQuantity} boxes remaining to invoice. Customer reference: ${order.customerReference || '—'}. Price, customer and item are fixed for this order-linked sale.`;
+    setOrderLocks(true);
+    calculateTotals();
 }
 
 // ── New invoice ─────────────────────────────────────────────────────────────
@@ -308,9 +411,10 @@ document.getElementById('saleForm').addEventListener('submit', async function (e
 
     const payload = {
         SaleId:      editId,
+        ProductionOrderId: linkedProductionOrder?.productionOrderId || savedProductionOrderId || null,
         SaleDate:    document.getElementById('invoiceDate').value,
         CustomerID:  customerId,
-        BranchID:    1,
+        BranchID:    Number(document.getElementById("posBranch")?.value || 1),
         PaymentMode: parseInt(document.getElementById('paymentMode').value),
         RefNo:       document.getElementById('refNo').value || null,
         Remarks:     document.getElementById('remarks').value || null,
@@ -333,6 +437,7 @@ document.getElementById('saleForm').addEventListener('submit', async function (e
         .then(res => res.json())
         .then(async data => {
             if (data.success) {
+                if (window.posMarkSaved) window.posMarkSaved();
                 await alertDialog('✅ ' + data.message);
                 if (editId) {
                     window.location.href = '/Sale/List';
@@ -401,11 +506,11 @@ function displayCustomers(customers) {
         row.setAttribute('data-customer-id', customer.partyId);
         row.innerHTML = `
             <td>${customer.partyId}</td>
-            <td>${customer.partyName}</td>
+            <td>${escapeHtml(customer.partyName)}</td>
             <td><span class="party-badge party-badge-${customer.partyType}">${formatPartyType(customer.partyType)}</span></td>
-            <td>${customer.contactPerson || '-'}</td>
-            <td>${customer.phone || '-'}</td>
-            <td>${customer.email || '-'}</td>
+            <td>${escapeHtml(customer.contactPerson || '-')}</td>
+            <td>${escapeHtml(customer.phone || '-')}</td>
+            <td>${escapeHtml(customer.email || '-')}</td>
             <td>${parseFloat(customer.openingBalance || 0).toFixed(2)}</td>
         `;
         row.addEventListener('click', function () {
@@ -535,9 +640,9 @@ function displayItems(items) {
         row.innerHTML = `
             <td>${item.itemID}</td>
             <td><img src="${item.imageUrl || NO_IMAGE_PLACEHOLDER}" class="item-image-thumb" alt="Item"></td>
-            <td>${item.itemName}</td>
-            <td>${item.categoryName}</td>
-            <td>${item.barcode || '-'}</td>
+            <td>${escapeHtml(item.itemName)}</td>
+            <td>${escapeHtml(item.categoryName)}</td>
+            <td>${escapeHtml(item.barcode || '-')}</td>
             <td>${parseFloat(item.salePrice).toFixed(2)}</td>
             <td>${stockBadge}</td>
         `;
@@ -569,7 +674,7 @@ async function selectItem() {
         if (row !== currentRow) {
             const existingId = row.cells[1].querySelector('input').value;
             if (existingId && existingId == selectedItem.itemID) {
-                await alertDialog(`⚠️ "${selectedItem.itemName}" is already added in row ${row.cells[0].textContent}.\nPlease update the quantity in that row instead.`);
+                await alertDialog(`⚠️ "${escapeHtml(selectedItem.itemName)}" is already added in row ${row.cells[0].textContent}.\nPlease update the quantity in that row instead.`);
                 closeItemModal();
                 return;
             }
@@ -587,10 +692,12 @@ async function selectItem() {
 
     // Set hard limit on the qty input
     qtyInput.max = avail;
+    if (Number(qtyInput.value) === 0 && avail >= 1) qtyInput.value = 1;
     qtyInput.title = `Max available: ${avail}`;
 
     calculateRowTotal(currentRow);
     closeItemModal();
+    document.getElementById("scanInput")?.focus();
 }
 
 function filterItems() {
@@ -634,3 +741,37 @@ document.addEventListener('keydown', function (e) {
     if (document.getElementById('customerModal').classList.contains('show')) closeCustomerModal();
     if (document.getElementById('itemModal').classList.contains('show'))     closeItemModal();
 });
+document.getElementById('scanInput')?.addEventListener('keydown', async e => {
+    if (e.key !== 'Enter') return; e.preventDefault();
+    const code = e.target.value.trim(); if (!code) return;
+    const result = await fetch('/Item/GetItems?search=' + encodeURIComponent(code));
+    if (!result.ok) return;
+    const data = await result.json(); const item = data.items?.find(i => i.barcode === code);
+    if (!item) { await alertDialog('Barcode not found.', {type:'warning'}); return; }
+    if (item.currentStock < 1) { await alertDialog('Item is out of stock.', {type:'warning'}); return; }
+    const existing = [...document.querySelectorAll('#itemsBody tr')].find(r => r.cells[1].querySelector('input').value == item.itemID);
+    if (existing) {
+        const qty = existing.cells[4].querySelector('input');
+        if (Number(qty.value) + 1 > item.currentStock) { await alertDialog('Insufficient stock.', {type:'warning'}); return; }
+        qty.value = Number(qty.value) + 1; calculateRowTotal(existing);
+    } else {
+        let row = [...document.querySelectorAll('#itemsBody tr')].find(r => !r.cells[1].querySelector('input').value);
+        if (!row) { addNewRow(); row = document.querySelector('#itemsBody tr:last-child'); }
+        currentRow = row; selectedItem = item; await selectItem();
+    }
+    e.target.value = ''; e.target.dispatchEvent(new Event('input', {bubbles:true})); e.target.focus();
+});
+document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); document.getElementById('saleForm').requestSubmit(); }
+    if (e.altKey && e.key.toLowerCase() === 'a') { e.preventDefault(); addNewRow(); }
+});
+
+function updateCashChange() {
+    const cash = document.getElementById('cashTender'); if (!cash) return;
+    cash.hidden = document.getElementById('paymentMode').value !== '1';
+    const received = Number(document.getElementById('cashReceived').value || 0);
+    const total = Number(document.getElementById('netAmount').textContent || 0);
+    document.getElementById('cashChange').textContent = Math.max(0, received - total).toFixed(2);
+}
+document.getElementById('paymentMode').addEventListener('change', updateCashChange);
+document.getElementById('saleForm').addEventListener('input', updateCashChange);

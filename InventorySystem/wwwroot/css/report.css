@@ -1,4 +1,4 @@
-/* ── Page Header ─────────────────────────────────────────────── */
+﻿/* ── Page Header ─────────────────────────────────────────────── */
 .rpt-page-header {
     display: flex;
     justify-content: space-between;
@@ -470,3 +470,24 @@
         display: none;
     }
 }
+
+@media screen and (max-width:600px) {
+    .rpt-page-header { flex-direction:column; gap:1rem; }
+    .rpt-header-actions, .rpt-filter-actions { flex-wrap:wrap; }
+    .rpt-filter-panel { padding:1rem; }
+    .rpt-filter-group { flex-basis:100%; min-width:0; }
+    .rpt-summary-grid { grid-template-columns:minmax(0,1fr); }
+}
+
+/* ── Advanced filters, summary line, quick dates, pager ───────── */
+.rpt-advanced { margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 0.75rem; }
+.rpt-advanced > summary { cursor: pointer; font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 0.75rem; }
+.rpt-advanced .rpt-filter-grid { margin-top: 0.5rem; }
+.rpt-quick-dates { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.75rem; }
+.rpt-quick-dates .rpt-btn { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+.rpt-range { display: flex; gap: 0.4rem; }
+.rpt-range .rpt-filter-input { min-width: 0; width: 100%; }
+.rpt-filter-summary { background: #f1f5f9; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.5rem 0.75rem; margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-secondary); }
+.rpt-filter-summary strong { color: var(--text-primary); }
+.rpt-pager { display: flex; gap: 0.75rem; align-items: center; justify-content: center; margin: 1rem 0; font-size: 0.85rem; }
+@media print { .rpt-pager, .rpt-quick-dates { display: none !important; } }

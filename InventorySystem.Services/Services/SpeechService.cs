@@ -1,4 +1,4 @@
-﻿using InventorySystem.Services.Services;
+using InventorySystem.Services.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
@@ -25,8 +25,7 @@ namespace InventorySystem.Core.Services
 
         public SpeechService(IConfiguration config, IHttpClientFactory httpClientFactory, ILogger<SpeechService> logger)
         {
-            _groqApiKey = config["Groq:ApiKey"]
-                ?? throw new Exception("Groq API Key missing in appsettings.json");
+            _groqApiKey = config["Groq:ApiKey"] ?? "";
             _httpClientFactory = httpClientFactory;
             _logger = logger;
         }
@@ -35,6 +34,8 @@ namespace InventorySystem.Core.Services
         // Returns empty string on any failure — caller decides how to handle that.
         public async Task<string> SpeechToTextAsync(Stream audioStream)
         {
+            if (string.IsNullOrWhiteSpace(_groqApiKey))
+            { _logger.LogWarning("Speech transcription is unavailable: API key is not configured."); return ""; }
             try
             {
                 using var ms = new MemoryStream();

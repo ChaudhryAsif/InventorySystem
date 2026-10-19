@@ -7,7 +7,8 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Sale Return #@Model.SaleReturnId</title>
+    <title>Sale Return #@Model.SaleReturnId — Bright Packages</title>
+    <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
     <style>
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:2rem; }
@@ -30,8 +31,17 @@
     </style>
 </head>
 <body>
+@if (Model.IsCancelled)
+{
+    <div style="padding:1rem;border:2px solid #dc2626;color:#dc2626;margin-bottom:1rem;">
+        <strong>CANCELLED — historical copy</strong><br />
+        @Model.CancellationReason · @Model.CancelledBy · @Model.CancelledUtc?.ToString("yyyy-MM-dd HH:mm") UTC
+    </div>
+}
+
     <div class="actions"><button onclick="window.print()">🖨 Print</button></div>
     <div class="inv">
+        <partial name="_CompanyPrintHeader" />
         <div class="inv-head">
             <div>
                 <h1>SALE RETURN</h1>

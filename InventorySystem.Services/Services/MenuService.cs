@@ -1,4 +1,4 @@
-using InventorySystem.Core.Models;
+﻿using InventorySystem.Core.Models;
 using InventorySystem.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,15 +28,8 @@ namespace InventorySystem.Core.Services
         /// </summary>
         public async Task<List<MenuItem>> GetMenuForUserAsync(int userId)
         {
-            // PermissionService returns ALL codes for SuperAdmin automatically
             var userPermissions = await _permissionService.GetUserPermissionsAsync(userId);
-
-            var menuItems = await _context.MenuItems
-                .Where(m => m.IsActive && userPermissions.Contains(m.RequiredPermission))
-                .OrderBy(m => m.SortOrder)
-                .ToListAsync();
-
-            return BuildMenuHierarchy(menuItems);
+            return BuildMenuHierarchy(await LoadActiveItemsAsync(), new HashSet<string>(userPermissions));
         }
 
         /// <summary>
@@ -46,14 +39,7 @@ namespace InventorySystem.Core.Services
         public async Task<List<MenuItem>> GetMenuForUserAsync(int userId, bool isSuperAdmin)
         {
             if (isSuperAdmin)
-            {
-                var allItems = await _context.MenuItems
-                    .Where(m => m.IsActive)
-                    .OrderBy(m => m.SortOrder)
-                    .ToListAsync();
-
-                return BuildMenuHierarchy(allItems);
-            }
+                return BuildMenuHierarchy(await LoadActiveItemsAsync(), null);
 
             return await GetMenuForUserAsync(userId);
         }
@@ -61,34 +47,51 @@ namespace InventorySystem.Core.Services
         public async Task<List<MenuItem>> GetMenuForRoleAsync(int roleId)
         {
             var rolePermissions = await _permissionService.GetRolePermissionsAsync(roleId);
-
-            var menuItems = await _context.MenuItems
-                .Where(m => m.IsActive && rolePermissions.Contains(m.RequiredPermission))
-                .OrderBy(m => m.SortOrder)
-                .ToListAsync();
-
-            return BuildMenuHierarchy(menuItems);
+            return BuildMenuHierarchy(await LoadActiveItemsAsync(), new HashSet<string>(rolePermissions));
         }
 
         public async Task<List<MenuItem>> GetMainMenuItemsAsync()
         {
             return await _context.MenuItems
+                .Where(m => m.Controller != "Consume" && !(m.Controller == "Report" && m.Action == "ConsumeReport"))
                 .Where(m => m.IsActive && m.ParentId == null)
                 .OrderBy(m => m.SortOrder)
                 .ToListAsync();
         }
 
-        private List<MenuItem> BuildMenuHierarchy(List<MenuItem> items)
+        private Task<List<MenuItem>> LoadActiveItemsAsync()
         {
-            var hierarchy = new List<MenuItem>();
-            var mainItems = items.Where(i => i.ParentId == null).OrderBy(i => i.SortOrder).ToList();
+            return _context.MenuItems
+                .Where(m => m.Controller != "Consume" && !(m.Controller == "Report" && m.Action == "ConsumeReport"))
+                .Where(m => m.IsActive)
+                .OrderBy(m => m.SortOrder)
+                .ToListAsync();
+        }
 
-            foreach (var mainItem in mainItems)
+        // permissions null = no filtering; a group shows only if one of its pages is visible.
+        private static List<MenuItem> BuildMenuHierarchy(List<MenuItem> items, HashSet<string>? permissions)
+        {
+            bool CanSee(MenuItem i) => permissions == null || permissions.Contains(i.RequiredPermission);
+            bool IsGroup(MenuItem i) => string.IsNullOrEmpty(i.Controller);
+
+            var hierarchy = new List<MenuItem>();
+            foreach (var mainItem in items.Where(i => i.ParentId == null).OrderBy(i => i.SortOrder))
             {
-                mainItem.Children = items
-                    .Where(i => i.ParentId == mainItem.Id)
+                var children = items
+                    .Where(i => i.ParentId == mainItem.Id && CanSee(i))
                     .OrderBy(i => i.SortOrder)
                     .ToList();
+
+                if (IsGroup(mainItem))
+                {
+                    if (children.Count == 0) continue;
+                }
+                else if (!CanSee(mainItem))
+                {
+                    continue;
+                }
+
+                mainItem.Children = children;
                 hierarchy.Add(mainItem);
             }
 

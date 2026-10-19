@@ -1,0 +1,46 @@
+﻿#posPager { display:flex; justify-content:center; align-items:center; gap:1rem; margin:1rem 0; flex-wrap:wrap; }
+#posPager button { padding:.5rem 1rem; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer; }
+#posPager button:disabled { opacity:.5; cursor:default; }
+.branch-selector { max-width:110px; padding:.35rem; }
+@media (max-width:768px) {
+    .sidebar { transform:translateX(-100%); transition:transform .2s ease; z-index:999; }
+    .sidebar.active { transform:translateX(0); }
+    .main-wrapper { margin-left:0 !important; padding:1rem; }
+}
+@media (max-width:600px) {
+    .main-header { padding:0 .5rem; }
+    .header-left, .header-actions { gap:.35rem; }
+    .header-logo h1 { font-size:1rem; white-space:nowrap; }
+    .header-logo > span { display:none; }
+    .header-user-avatar { display:none; }
+    .btn-logout { padding:.35rem .45rem !important; }
+    .header-user-name, .header-user-role { display:none; }
+    .header-content, .header-container, header { min-width:0; }
+    .header-user { min-width:0; gap:.3rem; }
+    .logo, .brand { font-size:1rem; }
+    .form-grid { grid-template-columns:1fr !important; }
+    #itemsBody input { min-width:75px; }
+    #itemsBody td:nth-child(3) input { min-width:130px; }
+    .totals-section, .invoice-totals { position:relative; }
+}
+
+/* Keep wide lists inside their own scroll region, without widening the page. */
+.responsive-list-scroll { width:100%; max-width:100%; overflow-x:auto; border-radius:10px; }
+@media screen and (max-width:768px) {
+    .main-wrapper .dashboard-grid { grid-template-columns:minmax(0,1fr) !important; }
+    .main-wrapper .chart-card, .main-wrapper .activity-content { min-width:0; }
+    .main-wrapper .dashboard-grid .chart-card { overflow-x:auto; }
+    .main-wrapper .chart-card canvas { max-width:100%; }
+    .main-wrapper .activity-title { overflow-wrap:anywhere; }
+    .main-wrapper .cs-index-header, .main-wrapper .sa-list-header { flex-wrap:wrap; gap:1rem; }
+    .main-wrapper .cs-index-header > div:last-child { flex-wrap:wrap; }
+}
+@media screen and (max-width:600px) {
+    .main-wrapper .page-header { flex-wrap:wrap; gap:1rem; }
+    .main-wrapper .page-title { min-width:0; }
+    .main-wrapper .tabs { flex-wrap:wrap; }
+}
+
+.cs-index-header .btn { display:inline-flex; align-items:center; gap:.35rem; padding:.55rem .8rem; border-radius:6px; text-decoration:none; font-weight:600; }
+.cs-index-header .btn-primary { color:#fff; background:#1e3a5f; }
+.cs-index-header .btn-info { color:#1e3a5f; background:#e0eef8; }

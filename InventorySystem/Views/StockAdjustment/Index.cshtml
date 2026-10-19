@@ -1,4 +1,4 @@
-@{
+﻿@{
     Layout = "_Layout";
     ViewData["Title"] = "Stock Adjustments";
 }
@@ -217,12 +217,12 @@
 </style>
 
 <div class="sa-list-wrapper">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div class="sa-list-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
         <h2>📦 Stock Adjustments</h2>
         <a href="/StockAdjustment/Create" class="btn btn-primary">➕ New Adjustment</a>
     </div>
 
-    <table class="sa-list-table">
+    <div class="responsive-list-scroll" role="region" aria-label="Stock adjustments" tabindex="0"><table class="sa-list-table">
         <thead>
             <tr>
                 <th>Adjustment No</th>
@@ -238,7 +238,7 @@
         <tbody id="adjustmentsTableBody">
             <tr><td colspan="8" style="text-align: center; padding: 2rem;">Loading...</td></tr>
         </tbody>
-    </table>
+    </table></div>
 </div>
 
 <!-- Details Modal -->

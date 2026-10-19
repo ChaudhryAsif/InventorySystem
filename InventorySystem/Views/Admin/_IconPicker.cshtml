@@ -1,0 +1,51 @@
+@model string
+@* Model = id of the icon text input to fill. *@
+@{
+    var icons = new[]
+    {
+        "📁","📄","📦","🧱","🏭","🏷️","💰","💵","💳","🏦","🧾","📝","📋","📒","📓","📖",
+        "📊","📈","📉","👥","👤","🛒","🚚","📥","📤","🔧","⚙️","🧪","🤖","💬","📅","🔓",
+        "⚖️","💧","🏠","⭐","🔔","🔍","🖨️","📌"
+    };
+    var pid = "iconPicker_" + Model;
+}
+
+<span class="ip-wrap" id="@pid">
+    <button type="button" class="admin-btn admin-btn-secondary ip-toggle" aria-haspopup="true" aria-expanded="false">🙂 Pick icon</button>
+    <div class="ip-grid" hidden>
+        @foreach (var icon in icons)
+        {
+            <button type="button" class="ip-item" data-icon="@icon">@icon</button>
+        }
+    </div>
+</span>
+
+<style>
+    .ip-wrap { position: relative; display: inline-block; }
+    .ip-grid { position: absolute; z-index: 50; top: 100%; left: 0; margin-top: 4px; display: grid; grid-template-columns: repeat(8, 38px); gap: 4px; padding: 8px; background: #fff; border: 1px solid var(--border-color, #cbd5e1); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.15); }
+    .ip-grid[hidden] { display: none; }
+    .ip-item { width: 38px; height: 38px; font-size: 1.3rem; background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+    .ip-item:hover { background: #f1f5f9; border-color: var(--border-color, #cbd5e1); }
+    @@media (max-width: 480px) {
+        .ip-grid { position: fixed; top: 25%; left: 50%; transform: translateX(-50%); grid-template-columns: repeat(6, 38px); }
+    }
+</style>
+
+<script>
+    (() => {
+        const wrap = document.getElementById('@pid');
+        const grid = wrap.querySelector('.ip-grid');
+        const toggle = wrap.querySelector('.ip-toggle');
+        const close = () => { grid.hidden = true; toggle.setAttribute('aria-expanded', 'false'); };
+        toggle.addEventListener('click', e => { e.stopPropagation(); grid.hidden = !grid.hidden; toggle.setAttribute('aria-expanded', String(!grid.hidden)); });
+        grid.addEventListener('click', e => {
+            const b = e.target.closest('.ip-item');
+            if (!b) return;
+            const input = document.getElementById('@Model');
+            input.value = b.dataset.icon;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            close();
+        });
+        document.addEventListener('click', e => { if (!wrap.contains(e.target)) close(); });
+    })();
+</script>

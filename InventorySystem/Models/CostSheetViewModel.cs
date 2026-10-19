@@ -3,10 +3,16 @@
     public class CostSheetViewModel
     {
         public int CostSheetId { get; set; }
+        public InventorySystem.Core.Models.ClientCostingOptions? ClientCosting { get; set; }
         public DateTime? SheetDate { get; set; }
         public string? CustomerId { get; set; }
         public string? CustomerName { get; set; }
         public string? ItemName { get; set; }
+        public long? FinishedItemId { get; set; }
+        public long? GlueItemId { get; set; }
+        public long? SilicateItemId { get; set; }
+        public decimal? GlueKgPerBox { get; set; }
+        public decimal? SilicateKgPerBox { get; set; }
         public int? BranchID { get; set; }
         public string? Status { get; set; }
 
@@ -93,6 +99,17 @@
 
         public string? Remarks { get; set; }
         public List<CostSheetPlyViewModel> Plies { get; set; } = [];
+        public List<CostSheetMaterialViewModel> Materials { get; set; } = [];
+    }
+
+    public class CostSheetMaterialViewModel
+    {
+        public int SrNo { get; set; }
+        public long? ItemId { get; set; }
+        public string? Unit { get; set; }
+        public decimal? Quantity { get; set; }   // per box, in the item's unit
+        public decimal? Rate { get; set; }
+        public decimal? Cost { get; set; }
     }
 
     public class CostSheetPlyViewModel

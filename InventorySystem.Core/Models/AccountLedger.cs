@@ -11,6 +11,7 @@ namespace InventorySystem.Core.Models
     [Table("AccountLedger")]
     public class AccountLedger
     {
+
         [Key]
         public long LedgerId { get; set; }
 

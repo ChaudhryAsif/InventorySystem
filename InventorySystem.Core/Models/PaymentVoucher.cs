@@ -11,6 +11,7 @@ namespace InventorySystem.Core.Models
     [Table("PaymentVoucher")]
     public class PaymentVoucher
     {
+
         [Key]
         public int VoucherId { get; set; }
 

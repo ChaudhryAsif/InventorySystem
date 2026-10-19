@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -30,6 +30,10 @@ namespace InventorySystem.Core.Models
         public string? WHCOGS { get; set; }
         public DateTime? CreatedDate { get; set; }
         public string? ImagePath { get; set; }
+        [MaxLength(100)] public string? Barcode { get; set; }
+        [MaxLength(20)] public string ItemType { get; set; } = "RawMaterial";
+        [MaxLength(10)] public string StockUnit { get; set; } = "pcs";
+        public decimal ReorderLevel { get; set; } = 50;
 
         public ItemCategory Category { get; set; }
     }

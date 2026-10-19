@@ -304,14 +304,14 @@ function addLine(d = {}) {
         tr.innerHTML = `
             <td><select class="form-control a-sel" onchange="recalcSimple()">${acctOptions(d.accountHeadId)}</select></td>
             <td><select class="form-control p-sel">${partyOptions(d.partyId)}</select></td>
-            <td><input class="form-control n-inp" value="${d.narration||''}"></td>
+            <td><input class="form-control n-inp" value="${escapeHtml(d.narration||'')}"></td>
             <td><input type="number" class="form-control amt-inp" style="text-align:right" value="${d.amount||''}" min="0" step="0.01" oninput="recalcSimple()"></td>
             <td style="text-align:center"><button class="btn-icon" onclick="removeLine(${id})">🗑️</button></td>`;
     } else {
         tr.innerHTML = `
             <td><select class="form-control a-sel" onchange="recalcJV()">${acctOptions(d.accountHeadId)}</select></td>
             <td><select class="form-control p-sel">${partyOptions(d.partyId)}</select></td>
-            <td><input class="form-control n-inp" value="${d.narration||''}"></td>
+            <td><input class="form-control n-inp" value="${escapeHtml(d.narration||'')}"></td>
             <td><input type="number" class="form-control d-inp" style="text-align:right" value="${d.debit||''}" min="0" step="0.01" oninput="recalcJV()"></td>
             <td><input type="number" class="form-control c-inp" style="text-align:right" value="${d.credit||''}" min="0" step="0.01" oninput="recalcJV()"></td>
             <td style="text-align:center"><button class="btn-icon" onclick="removeLine(${id})">🗑️</button></td>`;
@@ -459,6 +459,7 @@ async function saveVoucher(status) {
 
     const payload = {
         voucherId:   0,
+        voucherNo:   document.getElementById('voucherNo').value,
         voucherType: VTYPE,
         voucherDate: document.getElementById('voucherDate').value,
         partyId:    +document.getElementById('partyId').value || null,
@@ -488,7 +489,9 @@ async function clearForm() {
         addLine();
     }
     await loadVoucherNo();
-    recalcSimple?.();
+    if (VTYPE === 'CV') recalcCV();
+    else if (IS_SIMPLE) recalcSimple();
+    else recalcJV();
     updateAutoPreview?.();
 }
 

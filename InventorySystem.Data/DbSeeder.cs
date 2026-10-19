@@ -8,7 +8,7 @@ namespace InventorySystem.Data
     /// </summary>
     public static class DbSeeder
     {
-        public static async Task SeedSuperAdminAsync(ApplicationDbContext db)
+        public static async Task SeedSuperAdminAsync(ApplicationDbContext db, string? bootstrapPassword = null)
         {
             // ── 1. Ensure SuperAdmin role exists ─────────────────────────────────
             var superAdminRole = await db.Roles
@@ -33,8 +33,10 @@ namespace InventorySystem.Data
 
             if (superAdminUser == null)
             {
-                // Default credentials → username: superadmin | password: SuperAdmin@123
-                var passwordHash = BCrypt.Net.BCrypt.HashPassword("SuperAdmin@123", workFactor: 11);
+                // Bootstrap is opt-in; never create a privileged account with a public default password.
+                if (string.IsNullOrWhiteSpace(bootstrapPassword)) return;
+                if (bootstrapPassword.Length < 12) throw new InvalidOperationException("Bootstrap password must be at least 12 characters.");
+                var passwordHash = BCrypt.Net.BCrypt.HashPassword(bootstrapPassword, workFactor: 11);
 
                 superAdminUser = new AppUser
                 {

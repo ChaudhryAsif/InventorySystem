@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -21,6 +21,9 @@ namespace InventorySystem.Core.Models
         [MaxLength(50)]
         [Obsolete("Use Roles collection instead", false)]
         public string Role { get; set; } = "Admin"; // Keep for backward compatibility
+
+        [MaxLength(200)]
+        public string BranchIds { get; set; } = "1";
 
         public bool IsActive { get; set; } = true;
 

@@ -12,6 +12,12 @@ namespace InventorySystem.Core.Models
         public DateTime? SheetDate { get; set; }
         public string? CustomerId { get; set; }   // FK → Party.PartyId (string)
         public string? ItemName { get; set; }
+        public string? ClientCostingJson { get; set; }
+        public long? FinishedItemId { get; set; }
+        public long? GlueItemId { get; set; }
+        public long? SilicateItemId { get; set; }
+        public decimal? GlueKgPerBox { get; set; }
+        public decimal? SilicateKgPerBox { get; set; }
         public int? BranchID { get; set; }
 
         [StringLength(20)]
@@ -126,5 +132,6 @@ namespace InventorySystem.Core.Models
         public DateTime? CreatedDate { get; set; }
 
         public ICollection<CostSheetPly>? Plies { get; set; }
+        public ICollection<CostSheetMaterial>? Materials { get; set; }
     }
 }

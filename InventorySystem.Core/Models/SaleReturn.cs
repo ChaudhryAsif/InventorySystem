@@ -5,6 +5,11 @@ namespace InventorySystem.Core.Models
     [System.ComponentModel.DataAnnotations.Schema.Table("SaleReturn")]
     public class SaleReturn
     {
+        public bool IsCancelled { get; set; }
+        public DateTime? CancelledUtc { get; set; }
+        public string? CancelledBy { get; set; }
+        [System.ComponentModel.DataAnnotations.MaxLength(500)] public string? CancellationReason { get; set; }
+
         [Key]
         public int SaleReturnId { get; set; }
 

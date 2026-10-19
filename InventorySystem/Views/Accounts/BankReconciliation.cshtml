@@ -129,7 +129,7 @@
                 <td>${formatDate(r.date)}</td>
                 <td><span class="acc-code">${r.voucherNo}</span></td>
                 <td>${r.voucherType}</td>
-                <td style="color:#6c757d;font-style:italic">${r.narration || '—'}</td>
+                <td style="color:#6c757d;font-style:italic">${escapeHtml(r.narration || '—')}</td>
                 <td class="text-right">${r.debit  > 0 ? fmt(r.debit)  : '—'}</td>
                 <td class="text-right">${r.credit > 0 ? fmt(r.credit) : '—'}</td>
                 <td>

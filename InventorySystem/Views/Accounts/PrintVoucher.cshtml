@@ -28,7 +28,8 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@typeFull — @Model.VoucherNo</title>
+    <title>@typeFull — @Model.VoucherNo — Bright Packages</title>
+    <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -267,6 +268,7 @@
         /* ── Print media query ── */
         @@media print {
             body { background: #fff; }
+            .voucher-header { background: #fff; color: #111; border-bottom: 2px solid @typeColor; }
             .print-wrapper { margin: 0; border: none; border-radius: 0; }
             .screen-controls { display: none; }
         }
@@ -276,16 +278,16 @@
 
 <div class="print-wrapper">
 
-    {{-- ── Header ── --}}
+    @* ── Header ── *@
     <div class="voucher-header">
-        <div class="company-name">Inventory System</div>
+        <partial name="_CompanyPrintHeader" />
         <div class="voucher-meta">
             <div class="voucher-type">@typeFull</div>
             <div class="voucher-no">Voucher #: @Model.VoucherNo</div>
         </div>
     </div>
 
-    {{-- ── Info grid ── --}}
+    @* ── Info grid ── *@
     <div class="info-section">
         <div class="info-grid">
             <div class="info-item">
@@ -321,7 +323,7 @@
         </div>
     </div>
 
-    {{-- ── Narration ── --}}
+    @* ── Narration ── *@
     @if (!string.IsNullOrWhiteSpace(Model.Narration))
     {
         <div class="narration-section">
@@ -330,7 +332,7 @@
         </div>
     }
 
-    {{-- ── Details table ── --}}
+    @* ── Details table ── *@
     <div class="details-section">
         <div class="section-title">Transaction Details</div>
         <table class="details-table">
@@ -380,7 +382,7 @@
         </table>
     </div>
 
-    {{-- ── Signatures ── --}}
+    @* ── Signatures ── *@
     <div class="signature-section">
         <div class="sig-box">
             <div class="sig-line"></div>
@@ -396,7 +398,7 @@
         </div>
     </div>
 
-    {{-- ── Screen controls (hidden on print) ── --}}
+    @* ── Screen controls (hidden on print) ── *@
     <div class="screen-controls">
         <button class="btn-print" onclick="window.print()">🖨️ Print</button>
         <button class="btn-close-win" onclick="window.close()">✖ Close</button>

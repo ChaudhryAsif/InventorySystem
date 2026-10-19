@@ -1,4 +1,4 @@
-﻿@{
+@{
     Layout = "_Layout";
     ViewData["Title"] = "Production Orders";
     var orders = Model as IEnumerable<dynamic> ?? new List<dynamic>();
@@ -7,7 +7,7 @@
     int completed = orders.Count(o => (string)o.Status == "Completed");
     int urgent    = orders.Count(o => (int)o.DaysLeft <= 2
                                    && (string)o.Status != "Completed"
-                                   && (string)o.Status != "Cancelled");
+                                   && (string)o.Status != "Cancelled" && (string)o.Status != "Reversed");
 }
 
 <style>
@@ -36,9 +36,25 @@
     .prod-table th { background:#1e3a5f; color:#fff; padding:.7rem .9rem; text-align:left; font-weight:600; white-space:nowrap; }
     .prod-table td { padding:.65rem .9rem; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
     .prod-table tbody tr:hover { background:#f8fafc; }
+
+    .prod-table-wrap { overflow-x:auto; }
+    .prod-table { min-width:900px; }
+    @@media screen and (max-width:768px) {
+        .summary-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+    @@media screen and (max-width:400px) {
+        .summary-cards { grid-template-columns:minmax(0,1fr); }
+    }
+
+    @@media screen and (max-width:768px) {
+        .mobile-page-header { flex-wrap:wrap; gap:1rem; }
+        .mobile-page-header > div { min-width:0; }
+        .mobile-page-header h2 { overflow-wrap:anywhere; }
+    }
+
 </style>
 
-<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem;">
+<div class="mobile-page-header" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem;">
     <div>
         <h2 style="font-size:1.6rem;font-weight:700;color:#1e3a5f;margin:0;">🏭 Production Orders</h2>
         <p style="color:#6b7280;margin:.2rem 0 0;font-size:.9rem;">Manufacturing orders linked to approved cost sheets</p>
@@ -77,9 +93,9 @@
                 <th>Customer</th>
                 <th>Product / Item</th>
                 <th>Box Style</th>
-                <th>Qty</th>
-                <th>Rate/Box</th>
-                <th>Total Value</th>
+                <th>Ordered / Produced</th>
+                <th>Agreed / Box (before GST)</th>
+                <th>Agreed Value (incl. GST)</th>
                 <th>Order Date</th>
                 <th>Delivery Date</th>
                 <th>Days Left</th>
@@ -95,7 +111,7 @@
                 int    daysLeft  = (int)o.DaysLeft;
                 string daysClass = daysLeft <= 1 ? "days-urgent" : daysLeft <= 3 ? "days-warn" : "days-ok";
                 string daysText  = daysLeft < 0  ? "Overdue!" : daysLeft == 0 ? "Today!" : $"{daysLeft}d";
-                decimal fRate    = (decimal)(o.FinalRate ?? 0m);
+                decimal? fRate   = (decimal?)o.AgreedUnitPrice;
                 decimal tVal     = (decimal)(o.TotalValue ?? 0m);
                 int     orderId  = (int)o.ProductionOrderId;
 
@@ -105,9 +121,9 @@
                     <td>@o.CustomerName</td>
                     <td>@o.ProductName</td>
                     <td><span style="font-size:.78rem;color:#6b7280">@o.BoxStyle</span></td>
-                    <td>@((int)o.OrderQty)</td>
-                    <td>@fRate.ToString("N2")</td>
-                    <td><strong>@tVal.ToString("N0")</strong></td>
+                    <td>@((int)o.OrderQty) / @((int)o.ProducedQty)</td>
+                    <td>@(fRate?.ToString("N2") ?? "Not recorded")<small style="display:block;">GST @(((decimal)o.AgreedGstPercent).ToString("0.##"))%</small></td>
+                    <td><strong>@(fRate.HasValue ? tVal.ToString("N2") : "Not recorded")</strong></td>
                     <td>@(((DateTime)o.OrderDate).ToString("dd-MMM-yyyy"))</td>
                     <td>@(((DateTime)o.DeliveryDate).ToString("dd-MMM-yyyy"))</td>
                     <td><span class="@daysClass">@daysText</span></td>
@@ -133,18 +149,22 @@
                             {
                                 <button class="btn-consume"
                                         onclick="location.href='/Production/Consume/@orderId'">
-                                    🏭 Consume
+                                    📦 Record Production
                                 </button>
                             }
-                            @if (status == "InProduction")
+                            @if (status == "Completed" && (bool)o.UsesEstimatedConsumption)
                             {
-                                <button class="btn-complete" onclick="completeOrder(@orderId)">✅ Complete</button>
+                                @if (fRate.HasValue)
+                                {
+                                    <a class="btn-materials" href="/Sale/Index?productionOrderId=@orderId">Create Sale</a>
+                                }
+                                <button class="btn-cancel" onclick="reverseOrder(@orderId)">Reverse Production</button>
                             }
                             @if (status == "Pending")
                             {
                                 <button class="btn-cancel" onclick="cancelOrder(@orderId)">✖ Cancel</button>
                             }
-                            @if (status == "Cancelled" || status == "Completed")
+                            @if (status == "Pending")
                             {
                                 <button class="btn-delete" onclick="deleteOrder(@orderId)">🗑 Delete</button>
                             }
@@ -154,23 +174,20 @@
             }
             @if (!orders.Any())
             {
-                <tr>
-                    <td colspan="13" style="text-align:center;padding:3rem;color:#9ca3af;">
-                        No production orders yet.
-                        <a href="/Production/Create" style="color:#1e40af;">Create one from a Final Cost Sheet.</a>
-                    </td>
-                </tr>
+                <partial name="_ListEmptyState" model='new InventorySystem.Models.ListEmptyState(13, "No production orders yet", "Create a production order from a Final cost sheet to plan your finished goods.", "+ Create Production Order", "/Production/Create")' />
             }
         </tbody>
     </table>
 </div>
 
 <script>
-async function completeOrder(id) {
-    if (!(await confirmDialog('Mark this production order as Completed?'))) return;
-    fetch(`/Production/Complete/${id}`, { method: 'POST' })
-        .then(r => r.json())
-        .then(async d => { if (d.success) location.reload(); else await alertDialog(d.message); });
+async function reverseOrder(id) {
+    const reason = await requestOperationReason('Production reversal reason', 'Confirm reason');
+    if (!reason || reason.trim().length < 3) return;
+    if (!(await confirmDialog('Remove the produced boxes and restore their estimated materials?', {danger:true}))) return;
+    const response = await fetch('/Production/Reverse', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({productionOrderId:id, reason})});
+    const data = await response.json();
+    if (data.success) location.reload(); else await alertDialog(data.message || 'Reversal failed.');
 }
 async function cancelOrder(id) {
     if (!(await confirmDialog('Cancel this production order?', { danger: true }))) return;

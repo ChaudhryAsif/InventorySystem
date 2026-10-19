@@ -172,6 +172,7 @@ function loadNextReturnNumber() {
 
 // ── Reset form ──────────────────────────────────────────────────────────────
 function resetForm() {
+    if (window.posMarkSaved) window.posMarkSaved();
     editId = null;
     const header = document.querySelector('.page-header h2');
     if (header) header.textContent = '↩️ Purchase Return';
@@ -236,7 +237,7 @@ document.getElementById('purchaseReturnForm').addEventListener('submit', async f
         ReturnDate:         document.getElementById('returnDate').value,
         VendorID:           document.getElementById('hftxtSupplierId').value,
         OriginalPurchaseId: originalId,
-        BranchID:           1,
+        BranchID:           Number(document.getElementById("posBranch")?.value || 1),
         PaymentMode:        parseInt(document.getElementById('paymentMode').value),
         Remarks:            document.getElementById('remarks').value || null,
         TotalAmount:        parseFloat(document.getElementById('invoiceTotal').value) || 0,
@@ -253,6 +254,7 @@ document.getElementById('purchaseReturnForm').addEventListener('submit', async f
         .then(res => res.json())
         .then(async data => {
             if (data.success) {
+                if (window.posMarkSaved) window.posMarkSaved();
                 await alertDialog('✅ ' + data.message);
                 if (editId) {
                     window.location.href = '/PurchaseReturn/List';
@@ -316,11 +318,11 @@ function displaySuppliers(suppliers) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${s.partyId}</td>
-            <td>${s.partyName}</td>
+            <td>${escapeHtml(s.partyName)}</td>
             <td>${s.partyType}</td>
-            <td>${s.contactPerson || '-'}</td>
-            <td>${s.phone}</td>
-            <td>${s.email || '-'}</td>
+            <td>${escapeHtml(s.contactPerson || '-')}</td>
+            <td>${escapeHtml(s.phone)}</td>
+            <td>${escapeHtml(s.email || '-')}</td>
             <td>${parseFloat(s.openingBalance || 0).toFixed(2)}</td>
         `;
         row.addEventListener('click', () => selectSupplierRow(row, s));
@@ -345,9 +347,9 @@ function selectSupplier() {
     document.getElementById('hftxtSupplierId').value  = selectedSupplier.partyId;
     document.getElementById('supplierAccount').value  = selectedSupplier.partyName;
     document.getElementById('supplierDetails').value  =
-        [selectedSupplier.contactPerson ? `Contact: ${selectedSupplier.contactPerson}` : '',
-         selectedSupplier.phone         ? `Phone: ${selectedSupplier.phone}`           : '',
-         selectedSupplier.email         ? `Email: ${selectedSupplier.email}`           : '']
+        [selectedSupplier.contactPerson ? `Contact: ${escapeHtml(selectedSupplier.contactPerson)}` : '',
+         selectedSupplier.phone         ? `Phone: ${escapeHtml(selectedSupplier.phone)}`           : '',
+         selectedSupplier.email         ? `Email: ${escapeHtml(selectedSupplier.email)}`           : '']
         .filter(Boolean).join('\n');
     closeSupplierModal();
 }
@@ -389,7 +391,11 @@ function loadItems() {
         .then(res => res.json())
         .then(data => {
             if (data.success && data.items?.length > 0) {
-                allItems = data.items;
+                allItems = data.items.map(item => ({
+                    ...item,
+                    itemId: item.itemID ?? item.itemId,
+                    stock: item.currentStock ?? item.stock ?? 0
+                }));
                 displayItems(allItems);
                 loadCategories(data.items);
             } else {
@@ -422,8 +428,8 @@ function displayItems(items) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${item.itemId}</td>
-            <td>${item.itemName}</td>
-            <td>${item.categoryName || '-'}</td>
+            <td>${escapeHtml(item.itemName)}</td>
+            <td>${escapeHtml(item.categoryName || '-')}</td>
             <td>${parseFloat(item.purchasePrice || 0).toFixed(2)}</td>
             <td>${parseFloat(item.salePrice || 0).toFixed(2)}</td>
             <td>${parseFloat(item.stock || 0).toFixed(0)}</td>

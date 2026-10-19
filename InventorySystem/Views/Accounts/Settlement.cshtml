@@ -1,0 +1,65 @@
+@model string
+@{ Layout="_Layout"; var receipt=Model=="Receipt"; ViewData["Title"]=receipt?"Receive Money":"Pay Money"; }
+<link href="~/css/accounts.css" rel="stylesheet" />
+<div class="ac-page"><h2>@ViewData["Title"]</h2>
+    <p>@(receipt?"Receive a customer payment or a refund from a supplier.":"Pay a supplier or refund a customer.")</p>
+    <form id="paymentForm" style="max-width:600px;display:grid;gap:1rem">
+        <label>Customer / Supplier<select id="paymentParty" class="ac-select" required onchange="loadBalance()"><option value="">Select party...</option></select></label>
+        <p id="paymentBalance" role="status">Select a party to see the payment or refund due.</p>
+        <label>Amount<input class="ac-input" id="paymentAmount" type="number" min="0.01" step="0.01" required /></label>
+        <label>Date<input class="ac-input" id="paymentDate" type="date" required value="@DateTime.Today.ToString("yyyy-MM-dd")" /></label>
+        <label>Method<select class="ac-select" id="paymentMode"><option>Cash</option><option>Bank Transfer</option></select></label>
+        <label>Reference / Note<input class="ac-input" id="paymentReference" maxlength="100" /></label>
+        <button class="ac-btn ac-btn-primary" id="paymentSave" disabled>@(receipt?"Receive Money":"Pay Money")</button>
+    </form><p><a href="/Accounts/PartyLedger">Party Ledger</a> · <a href="/Accounts/OutstandingReport">Payments &amp; Refunds Due</a> · <a href="/Accounts/VoucherList">Voucher History</a></p>
+</div>
+<script>
+let outstanding=0, balanceRequest=0, balanceReady=false;
+const receiveMoney=@(receipt?"true":"false");
+const partySelect=document.getElementById('paymentParty');
+const amountInput=document.getElementById('paymentAmount');
+const saveButton=document.getElementById('paymentSave');
+const message=document.getElementById('paymentBalance');
+async function loadParties() {
+    try {
+        const response=await fetch('/Accounts/GetParties'); if(!response.ok)throw new Error('Unable to load parties. Refresh and retry.');
+        const data=await response.json();
+        for(const p of data.data || []) {
+            const option=document.createElement('option');option.value=p.value;option.textContent=p.text+' ('+p.partyType+')';partySelect.appendChild(option);
+        }
+        const selected=new URLSearchParams(location.search).get('partyId');
+        if(selected && [...partySelect.options].some(o=>o.value===selected)){partySelect.value=selected;await loadBalance();}
+    } catch(error){message.textContent=error.message;}
+}
+async function loadBalance() {
+    const request=++balanceRequest, id=Number(partySelect.value);
+    outstanding=0;balanceReady=false;saveButton.disabled=true;amountInput.value='';amountInput.removeAttribute('max');
+    if(!id){message.textContent='Select a party to see the payment or refund due.';return;}
+    message.textContent='Loading balance...';
+    try {
+        const response=await fetch('/Accounts/GetLedger?partyId='+id);const data=await response.json();
+        if(request!==balanceRequest)return;
+        if(!response.ok || !data.success)throw new Error(data.message || 'Could not load the balance.');
+        const summary=data.summary;
+        if(summary.balance===0){message.textContent='Cleared — no payment or refund is due.';return;}
+        const rightDirection=summary.balanceType===(receiveMoney?'Receivable':'Payable');
+        message.textContent=summary.balanceDescription+': Rs. '+Number(summary.balance).toFixed(2);
+        if(!rightDirection){message.textContent+=' — open '+(receiveMoney?'Pay Money':'Receive Money')+' to settle this balance.';return;}
+        outstanding=Number(summary.balance);balanceReady=true;amountInput.value=outstanding.toFixed(2);amountInput.max=outstanding.toFixed(2);saveButton.disabled=false;
+    } catch(error){if(request===balanceRequest)message.textContent=error.message;}
+}
+document.getElementById('paymentForm').addEventListener('submit',async e=>{
+    e.preventDefault();const amount=Number(amountInput.value);
+    if(!balanceReady || !Number.isFinite(amount) || amount<=0 || amount>outstanding){await alertDialog('Enter an amount up to the payment or refund due.');return;}
+    saveButton.disabled=true;partySelect.disabled=true;
+    try {
+        const response=await fetch('/Accounts/SavePayment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+            partyId:Number(partySelect.value),direction:'@Model',amount,
+            date:document.getElementById('paymentDate').value,mode:document.getElementById('paymentMode').value,
+            reference:document.getElementById('paymentReference').value,branchId:Number(document.getElementById('posBranch')?.value || 1)})});
+        const data=await response.json();if(!response.ok || !data.success)throw new Error(data.message || 'Payment or refund failed.');
+        await alertDialog(data.message);
+    }catch(error){await alertDialog(error.message);}finally{partySelect.disabled=false;await loadBalance();}
+});
+loadParties();
+</script>

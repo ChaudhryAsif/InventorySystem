@@ -39,11 +39,7 @@ namespace InventorySystem.Controllers
                     c.BoxStyle,
                     c.Status,
                     c.FinalCostWOGST,
-                    c.FinalRateWithGST,
-                    CustomerName = _context.Parties
-                        .Where(p => p.PartyId.ToString() == c.CustomerId)
-                        .Select(p => p.PartyName)
-                        .FirstOrDefault() ?? c.CustomerId
+                    c.FinalRateWithGST
                 })
                 .ToListAsync();
 
@@ -69,6 +65,7 @@ namespace InventorySystem.Controllers
 
             var sheet = await _context.CostSheet
                 .Include(c => c.Plies)
+                .Include(c => c.Materials)
                 .FirstOrDefaultAsync(c => c.CostSheetId == id);
 
             if (sheet == null) return NotFound();
@@ -82,7 +79,9 @@ namespace InventorySystem.Controllers
             if (model == null)
                 return BadRequest("Invalid data.");
 
-            using var tx = await _context.Database.BeginTransactionAsync();
+            try { await CostSheetCalculation.ValidateAndCalculateAsync(_context, model); }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
+            using var tx = await _context.Database.BeginAtomicTransactionAsync();
             try
             {
                 CostSheet sheet;
@@ -92,11 +91,13 @@ namespace InventorySystem.Controllers
                     // ── Update existing ──────────────────────────────────────
                     sheet = await _context.CostSheet
                         .Include(c => c.Plies)
+                        .Include(c => c.Materials)
                         .FirstOrDefaultAsync(c => c.CostSheetId == model.CostSheetId)
                         ?? throw new Exception("Cost sheet not found.");
 
-                    // Remove old plies
+                    // Remove old plies and other materials
                     _context.CostSheetPly.RemoveRange(sheet.Plies!);
+                    _context.CostSheetMaterial.RemoveRange(sheet.Materials!);
                 }
                 else
                 {
@@ -154,6 +155,21 @@ namespace InventorySystem.Controllers
                     }
                 }
 
+                int matNo = 1;
+                foreach (var other in model.Materials)
+                {
+                    _context.CostSheetMaterial.Add(new CostSheetMaterial
+                    {
+                        CostSheetId = sheet.CostSheetId,
+                        SrNo        = matNo++,
+                        ItemId      = other.ItemId!.Value,
+                        Unit        = other.Unit ?? "pcs",
+                        Quantity    = other.Quantity ?? 0,
+                        Rate        = other.Rate ?? 0,
+                        Cost        = other.Cost ?? 0
+                    });
+                }
+
                 await _context.SaveChangesAsync();
                 await tx.CommitAsync();
 
@@ -172,11 +188,15 @@ namespace InventorySystem.Controllers
         {
             var sheet = await _context.CostSheet
                 .Include(c => c.Plies)
+                .Include(c => c.Materials)
                 .FirstOrDefaultAsync(c => c.CostSheetId == id);
 
             if (sheet == null) return NotFound();
 
+            if (await _context.ProductionOrder.AnyAsync(o => o.CostSheetId == id))
+                return BadRequest(new { success = false, message = "A cost sheet used by production cannot be deleted. Keep its history." });
             _context.CostSheetPly.RemoveRange(sheet.Plies!);
+            _context.CostSheetMaterial.RemoveRange(sheet.Materials!);
             _context.CostSheet.Remove(sheet);
             await _context.SaveChangesAsync();
 
@@ -221,6 +241,11 @@ namespace InventorySystem.Controllers
         [HttpPost]
         public async Task<IActionResult> SaveSettings([FromBody] CostSheetSettingsViewModel model)
         {
+            if (model == null || new[] { model.LabourRate, model.EnergyRate, model.DefaultFreightRate }.Any(v => v < 0 || v > 100000000) ||
+                new[] { model.WastePercentage, model.AdminExpPercentage, model.SellingDistPercentage,
+                    model.RepairMaintenancePercentage, model.StoreSparesPercentage,
+                    model.ManufacturingCostPercentage, model.DefaultProfitPct }.Any(v => v < 0 || v > 100))
+                return BadRequest(new { success = false, message = "Enter nonnegative rates and percentages between 0 and 100." });
             var s = await _context.CostSheetSettings.FirstOrDefaultAsync();
 
             if (s == null)
@@ -251,6 +276,7 @@ namespace InventorySystem.Controllers
         {
             var sheet = await _context.CostSheet
                 .Include(c => c.Plies!.OrderBy(p => p.SrNo))
+                .Include(c => c.Materials!.OrderBy(p => p.SrNo))
                 .FirstOrDefaultAsync(c => c.CostSheetId == id);
 
             if (sheet == null) return NotFound();
@@ -265,6 +291,8 @@ namespace InventorySystem.Controllers
                     sheetDate        = sheet.SheetDate?.ToString("yyyy-MM-dd"),
                     sheet.CustomerId,
                     sheet.ItemName,
+                    clientCosting = string.IsNullOrEmpty(sheet.ClientCostingJson) ? null : System.Text.Json.JsonSerializer.Deserialize<ClientCostingOptions>(sheet.ClientCostingJson),
+                    sheet.FinishedItemId, sheet.GlueItemId, sheet.SilicateItemId, sheet.GlueKgPerBox, sheet.SilicateKgPerBox,
                     sheet.BranchID,
                     sheet.Status,
                     sheet.BoxStyle,
@@ -314,6 +342,10 @@ namespace InventorySystem.Controllers
                         p.Rate,
                         kGs  = p.KGs,
                         p.Cost
+                    }).ToList(),
+                    materials = sheet.Materials!.Select(x => new
+                    {
+                        x.ItemId, x.Unit, x.Quantity, x.Rate, x.Cost
                     }).ToList()
                 }
             });
@@ -325,14 +357,15 @@ namespace InventorySystem.Controllers
         {
             var sheet = await _context.CostSheet
                 .Include(c => c.Plies)
+                .Include(c => c.Materials)
                 .FirstOrDefaultAsync(c => c.CostSheetId == id);
 
             if (sheet == null) return NotFound();
 
-            ViewBag.CustomerName = await _context.Parties
-                .Where(p => p.PartyId.ToString() == sheet.CustomerId)
-                .Select(p => p.PartyName)
-                .FirstOrDefaultAsync() ?? sheet.CustomerId;
+            var materialIds = sheet.Materials!.Select(x => x.ItemId).ToList();
+            ViewBag.MaterialNames = await _context.Items
+                .Where(i => materialIds.Contains(i.ItemID))
+                .ToDictionaryAsync(i => i.ItemID, i => i.ItemName ?? "");
 
             return View(sheet);
         }
@@ -374,7 +407,7 @@ namespace InventorySystem.Controllers
         {
             try
             {
-                var items = await _context.Items
+                var items = await _context.Items.Where(i => i.IsActive == true && i.ItemType == "RawMaterial" && i.StockUnit == "kg")
                     .Select(i => new
                     {
                         itemId       = i.ItemID,
@@ -410,7 +443,7 @@ namespace InventorySystem.Controllers
 
         // ── Generic Calculation Guide (GET) ─────────────────────────────────────────
         [HttpGet]
-        [AllowAnonymous]  // Allow clients to view without login if needed
+
         public IActionResult CalculationGuide()
         {
             var settings = _context.CostSheetSettings.FirstOrDefault()
@@ -431,11 +464,23 @@ namespace InventorySystem.Controllers
             return View(settings);
         }
 
+        [HttpGet]
+        public async Task<IActionResult> GetMaterialOptions()
+        {
+            var items = await _context.Items.Where(i => i.IsActive == true && (i.ItemType == "RawMaterial" || i.ItemType == "FinishedGoods"))
+                .OrderBy(i => i.ItemName).Select(i => new { id = i.ItemID, name = i.ItemName, type = i.ItemType, unit = i.StockUnit }).ToListAsync();
+            return Json(new { success = true, items });
+        }
+
         // ── Helper: map ViewModel → Entity ─────────────────────────────────────
         private static void MapToEntity(CostSheetViewModel m, CostSheet e)
         {
+            e.ClientCostingJson = m.ClientCosting == null ? null : System.Text.Json.JsonSerializer.Serialize(m.ClientCosting);
+            e.FinishedItemId = m.FinishedItemId; e.GlueItemId = m.GlueItemId; e.SilicateItemId = m.SilicateItemId;
+            e.GlueKgPerBox = m.GlueKgPerBox; e.SilicateKgPerBox = m.SilicateKgPerBox;
             e.SheetDate = m.SheetDate;
-            e.CustomerId = m.CustomerId;
+            // Reusable recipe: customer is selected on each production order.
+            // Preserve legacy customer metadata on existing sheets; do not assign it on new sheets.
             e.ItemName = m.ItemName;
             e.BranchID = m.BranchID ?? 1;
             e.Status = m.Status ?? "Draft";

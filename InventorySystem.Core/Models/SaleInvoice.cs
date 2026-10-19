@@ -5,8 +5,15 @@ namespace InventorySystem.Core.Models
     [System.ComponentModel.DataAnnotations.Schema.Table("SaleInvoice")]
     public class SaleInvoice
     {
+        public bool IsCancelled { get; set; }
+        public DateTime? CancelledUtc { get; set; }
+        public string? CancelledBy { get; set; }
+        [System.ComponentModel.DataAnnotations.MaxLength(500)] public string? CancellationReason { get; set; }
+
         [Key]
         public int SaleId { get; set; }
+        public int? ProductionOrderId { get; set; }
+        public ProductionOrder? ProductionOrder { get; set; }
 
         public DateTime? SaleDate { get; set; }
 

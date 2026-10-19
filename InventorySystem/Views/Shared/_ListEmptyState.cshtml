@@ -1,0 +1,17 @@
+@model InventorySystem.Models.ListEmptyState
+<tr data-list-state="empty">
+    <td colspan="@Model.Columns" class="pos-list-state-cell">
+        <div class="pos-list-state" role="status">
+            <strong class="pos-list-state-title">@Model.Title</strong>
+            <p>@Model.Message</p>
+            @if (Model.Href != null)
+            {
+                <a class="pos-list-state-action" href="@Model.Href">@Model.ActionText</a>
+            }
+            else if (Model.ActionId != null)
+            {
+                <button type="button" class="pos-list-state-action" id="@Model.ActionId">@Model.ActionText</button>
+            }
+        </div>
+    </td>
+</tr>

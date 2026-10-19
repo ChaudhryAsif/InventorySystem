@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InventorySystem.Controllers
 {
-    //[Authorize]
+    [Authorize]
     public class WhatsAppController : Controller
     {
         private readonly ApplicationDbContext _db;
@@ -119,11 +119,18 @@ namespace InventorySystem.Controllers
         }
 
         [AllowAnonymous]
+        [IgnoreAntiforgeryToken]
         [HttpPost("/WhatsApp/Webhook")]
         public async Task<IActionResult> WebhookPost()
         {
             using var reader = new StreamReader(Request.Body);
             var body = await reader.ReadToEndAsync();
+            var signature = Request.Headers["X-Hub-Signature-256"].ToString();
+            var secrets = await _db.WhatsAppChannels.Where(c => c.IsActive && c.MetaAppSecret != null && c.MetaAppSecret != "")
+                .Select(c => c.MetaAppSecret).ToListAsync();
+            if (!secrets.Any(secret => InventorySystem.Authorization.WebhookSignature.IsValid(body, signature, secret!)))
+                return Unauthorized();
+
 
             try
             {

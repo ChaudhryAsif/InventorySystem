@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════════════════
+﻿// ═══════════════════════════════════════════════════════════════════════════
 //  costsheet.js  —  Cost Sheet full calculation engine
 //
 //  Column map for ply table rows:
@@ -14,15 +14,17 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 let plyCounter = 0;
-let selectedCustomer = null;
-let allCustomers = [];
 let settings = {};
+let settingsLoaded = false;
+let legacyAdhesiveReview = false;
+let materialOptions = [];
 
 // ════════════════════════════════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async function () {
-    await loadSettings();
+    if (!(await loadSettings())) return;
+    await loadMaterialOptions();
 
     const editId = parseInt(document.getElementById('editCostSheetId').value) || 0;
 
@@ -31,6 +33,7 @@ window.addEventListener('DOMContentLoaded', async function () {
     } else {
         loadNextSheetNumber();
         applySettingsToForm();
+        applyCostingMethod(true);
         // Start with 3 blank rows — user uses 🔍 to pick items from purchase
         addPlyRow();
         addPlyRow();
@@ -38,6 +41,7 @@ window.addEventListener('DOMContentLoaded', async function () {
     }
 
     document.getElementById('addPlyBtn').addEventListener('click', () => addPlyRow());
+    document.getElementById('addMatBtn').addEventListener('click', () => addMatRow());
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -46,15 +50,26 @@ window.addEventListener('DOMContentLoaded', async function () {
 async function loadSettings() {
     try {
         const res = await fetch('/CostSheet/GetSettings');
-        settings = await res.json();
+        if (!res.ok) throw new Error('Settings unavailable');
+        settings = await res.json(); settingsLoaded = true; return true;
     } catch {
-        settings = {
-            labourRate: 5, energyRate: 5.08,
-            wastePercentage: 6, adminExpPercentage: 1.52,
-            sellingDistPercentage: 1, repairMaintenancePercentage: 1.5,
-            storeSparesPercentage: 1.5, manufacturingCostPercentage: 1.72,
-            defaultFreightRate: 0.5, defaultProfitPct: 11
-        };
+        await alertDialog('Saved costing rates could not be loaded. Refresh or contact the administrator; saving is disabled until rates load.', {type:'warning'});
+        return false;
+    }
+}
+
+async function loadMaterialOptions() {
+    const res = await fetch('/CostSheet/GetMaterialOptions');
+    if (!res.ok) throw new Error('Material options unavailable');
+    const data = await res.json();
+    materialOptions = data.items.filter(i => i.type === 'RawMaterial');
+    for (const id of ['finishedItemId','glueItemId','silicateItemId']) {
+        const select = document.getElementById(id);
+        const type = id === 'finishedItemId' ? 'FinishedGoods' : 'RawMaterial';
+        for (const item of data.items.filter(i => i.type === type)) {
+            const option = document.createElement('option'); option.value = item.id;
+            option.textContent = item.name + ' (' + item.unit + ')'; select.appendChild(option);
+        }
     }
 }
 
@@ -85,7 +100,7 @@ function loadNextSheetNumber() {
 // ════════════════════════════════════════════════════════════════════════════
 // PLY TABLE
 // ════════════════════════════════════════════════════════════════════════════
-function addPlyRow(plyName = '', spec = '', gsm = '', rate = '', kgs = '', itemId = '') {
+function addPlyRow(plyName = '', spec = '', gsm = '', rate = '', kgs = '', itemId = '', fluted = null) {
     plyCounter++;
     const tbody = document.getElementById('plyBody');
     const tr = document.createElement('tr');
@@ -109,7 +124,11 @@ function addPlyRow(plyName = '', spec = '', gsm = '', rate = '', kgs = '', itemI
                    value="${escAttr(spec)}"></td>
         <td><input type="number" class="ply-input" placeholder="e.g. 250"
                    value="${gsm}" step="0.01" min="0"
-                   title="GSM = paper quality (grams/m²) — informational only"></td>
+                   title="Paper GSM" oninput="calcPlyRow(this)">
+            <select class="ply-input ply-fluted" style="display:${isClientCosting() ? '' : 'none'}" aria-label="Layer type" onchange="recalcAll()">
+                <option value="false"${(fluted ?? (plyCounter % 2 === 0)) ? '' : ' selected'}>Plain</option>
+                <option value="true"${(fluted ?? (plyCounter % 2 === 0)) ? ' selected' : ''}>Fluted</option>
+            </select></td>
         <td><input type="number" class="ply-input" placeholder="0.00"
                    value="${rate}" step="0.01" min="0"
                    oninput="calcPlyRow(this)"
@@ -126,6 +145,7 @@ function addPlyRow(plyName = '', spec = '', gsm = '', rate = '', kgs = '', itemI
     `;
 
     tbody.appendChild(tr);
+    if (isClientCosting()) recalcClientCosting();
 
     if (rate !== '' || kgs !== '') {
         calcPlyRow(tr.cells[5].querySelector('input'));
@@ -133,6 +153,7 @@ function addPlyRow(plyName = '', spec = '', gsm = '', rate = '', kgs = '', itemI
 }
 
 function calcPlyRow(input) {
+    if (isClientCosting()) { recalcClientCosting(); return; }
     const row = input.closest('tr');
     const rate = parseFloat(row.cells[5].querySelector('input').value) || 0;
     const kgs = parseFloat(row.cells[6].querySelector('input').value) || 0;
@@ -163,6 +184,7 @@ function rebuildPlyNumbers() {
 // DIMENSIONS
 // ════════════════════════════════════════════════════════════════════════════
 function recalcDimensions() {
+    if (isClientCosting()) { recalcClientCosting(); return; }
     const unit = getVal('sizeUnit');
     const L = parseFloat(getVal('dimL')) || 0;
     const W = parseFloat(getVal('dimW')) || 0;
@@ -205,7 +227,53 @@ function recalcDimensions() {
 // ════════════════════════════════════════════════════════════════════════════
 // MAIN CALCULATION ENGINE
 // ════════════════════════════════════════════════════════════════════════════
+// ── Other materials table (kg or pcs, cost only) ──
+function addMatRow(itemId = '', qty = '', rate = '') {
+    const tr = document.createElement('tr');
+    const options = materialOptions.map(i =>
+        `<option value="${i.id}" data-unit="${escAttr(i.unit)}"${String(i.id) === String(itemId) ? ' selected' : ''}>${escHtml(i.name)} (${escHtml(i.unit)})</option>`).join('');
+    tr.innerHTML = `
+        <td></td>
+        <td><select class="ply-input mat-item" style="width:100%;" onchange="calcMatRow(this)"><option value="">Select raw material</option>${options}</select></td>
+        <td class="mat-unit"></td>
+        <td><input type="number" class="ply-input mat-qty" min="0" step="0.000001" value="${qty}" oninput="calcMatRow(this)"></td>
+        <td><input type="number" class="ply-input mat-rate" min="0" step="0.01" value="${rate}" oninput="calcMatRow(this)"></td>
+        <td><input type="number" class="ply-input calc mat-cost" value="0" readonly></td>
+        <td><button type="button" class="btn-remove-ply" onclick="removeMatRow(this)">✖</button></td>`;
+    document.getElementById('matBody').appendChild(tr);
+    rebuildMatNumbers();
+    calcMatRow(tr.querySelector('.mat-item'));
+}
+
+function calcMatRow(el) {
+    const row = el.closest('tr');
+    const sel = row.querySelector('.mat-item');
+    row.querySelector('.mat-unit').textContent = sel.selectedOptions[0]?.dataset.unit || '';
+    const qty = parseFloat(row.querySelector('.mat-qty').value) || 0;
+    const rate = parseFloat(row.querySelector('.mat-rate').value) || 0;
+    row.querySelector('.mat-cost').value = (qty * rate).toFixed(2);
+    recalcAll();
+}
+
+function removeMatRow(btn) {
+    btn.closest('tr').remove();
+    rebuildMatNumbers();
+    recalcAll();
+}
+
+function rebuildMatNumbers() {
+    document.querySelectorAll('#matBody tr').forEach((r, i) => { r.cells[0].textContent = i + 1; });
+}
+
 function recalcAll() {
+    if (!isClientCosting()) document.querySelectorAll('#plyBody tr').forEach(r => { r.cells[6].querySelector('input').readOnly=false; r.querySelector('.ply-fluted').style.display='none'; });
+    if (isClientCosting()) { recalcClientCosting(); return; }
+    if (getVal('hasLamination') !== 'true') setVal('laminationCost', 0);
+
+    // 0. Other materials cost (not part of box weight)
+    let matCostTotal = 0;
+    document.querySelectorAll('#matBody .mat-cost').forEach(c => { matCostTotal += parseFloat(c.value) || 0; });
+    setVal('otherMaterialsCost', matCostTotal.toFixed(2));
 
     // 1. Ply cost total
     let plyCostTotal = 0;
@@ -218,8 +286,11 @@ function recalcAll() {
     // 2. Glue + Silicate
     const glueRate = parseFloat(getVal('glueRate')) || 0;
     const silicateRate = parseFloat(getVal('silicateRate')) || 0;
-    const glueSilKg = parseFloat(getVal('glueSilicateKg')) || 0;
-    const glueSilCost = glueSilKg * (glueRate + silicateRate);
+    const glueKg = parseFloat(getVal('glueKgPerBox')) || 0;
+    const silicateKg = parseFloat(getVal('silicateKgPerBox')) || 0;
+    const glueSilKg = glueKg + silicateKg;
+    setVal('glueSilicateKg', glueSilKg);
+    const glueSilCost = glueKg * glueRate + silicateKg * silicateRate;
     setVal('glueSilicateCost', glueSilCost.toFixed(2));
     totalKg += glueSilKg;
 
@@ -233,11 +304,11 @@ function recalcAll() {
     const printingCost = parseFloat(getVal('printingCost')) || 0;
 
     // 5. Paper Cost Total
-    const paperCost = plyCostTotal + glueSilCost + laminCost + dickelCost + printingCost;
+    const paperCost = plyCostTotal + matCostTotal + glueSilCost + laminCost + dickelCost + printingCost;
     setVal('paperCost', paperCost.toFixed(2));
 
     // 6. Variable costs
-    const weight = totalKg > 0 ? totalKg : 1;
+    const weight = totalKg;
     const labourRate = parseFloat(getVal('labourRate')) || 0;
     const energyRate = parseFloat(getVal('energyRate')) || 0;
     const freightRate = parseFloat(getVal('freightRate')) || 0;
@@ -324,6 +395,9 @@ function saveDraft() { doSave('Draft'); }
 function saveFinal() { doSave('Final'); }
 
 async function doSave(status) {
+    if (!settingsLoaded) { await alertDialog('Refresh to load saved costing rates first.'); return; }
+    if (legacyAdhesiveReview && !(n('glueKgPerBox') > 0 || n('silicateKgPerBox') > 0)) { await alertDialog('This older sheet has a combined adhesive estimate. Enter separate glue/silicate kg per box and select their stock items.'); return; }
+    recalcAll();
     document.getElementById('status').value = status;
 
     if (!getVal('itemName')) {
@@ -355,10 +429,24 @@ async function doSave(status) {
         });
     });
 
+    const materials = [];
+    document.querySelectorAll('#matBody tr').forEach((row, i) => {
+        materials.push({
+            SrNo: i + 1,
+            ItemId: parseInt(row.querySelector('.mat-item').value) || null,
+            Quantity: parseFloat(row.querySelector('.mat-qty').value) || null,
+            Rate: parseFloat(row.querySelector('.mat-rate').value) || null,
+            Cost: parseFloat(row.querySelector('.mat-cost').value) || null
+        });
+    });
+
     const payload = {
+        ClientCosting: isClientCosting() ? getClientOptions() : null,
         CostSheetId: parseInt(getVal('editCostSheetId')) || 0,
         SheetDate: getVal('sheetDate') || null,
-        CustomerId: getVal('customerId') || null,
+        FinishedItemId: parseInt(getVal('finishedItemId')) || null,
+        GlueItemId: parseInt(getVal('glueItemId')) || null, SilicateItemId: parseInt(getVal('silicateItemId')) || null,
+        GlueKgPerBox: n('glueKgPerBox'), SilicateKgPerBox: n('silicateKgPerBox'),
         ItemName: getVal('itemName') || null,
         BranchID: parseInt(getVal('branchId')) || 1,
         Status: status,
@@ -418,7 +506,8 @@ async function doSave(status) {
         FinalRateWithGST: n('finalRateWithGST'),
         Remarks: getVal('remarks') || null,
 
-        Plies: plies
+        Plies: plies,
+        Materials: materials
     };
 
     const btnDraft = document.querySelector('[onclick="saveDraft()"]');
@@ -467,8 +556,6 @@ async function loadExistingSheet(id) {
         setVal('sheetDate', d.sheetDate ? d.sheetDate.split('T')[0] : '');
         setSelect('status', d.status || 'Draft');
         setSelect('branchId', d.branchID || 1);
-        setVal('customerId', d.customerId || '');
-        setVal('customerName', d.customerId ? await getCustomerName(d.customerId) : '');
         setVal('itemName', d.itemName || '');
 
         setSelect('boxStyle', d.boxStyle || '');
@@ -496,6 +583,10 @@ async function loadExistingSheet(id) {
 
         setSelect('hasLamination', d.hasLamination ? 'true' : 'false');
         setVal('laminationCost', d.laminationCost ?? 0);
+        setSelect('finishedItemId', d.finishedItemId); setSelect('glueItemId', d.glueItemId); setSelect('silicateItemId', d.silicateItemId);
+        setVal('glueKgPerBox', d.glueKgPerBox ?? 0); setVal('silicateKgPerBox', d.silicateKgPerBox ?? 0);
+        legacyAdhesiveReview = d.glueSilicateKg > 0 && d.glueKgPerBox == null && d.silicateKgPerBox == null;
+        if (legacyAdhesiveReview) await alertDialog('Review this older sheet: separate its combined adhesive weight into glue and silicate KG per box before saving.');
         setVal('glueRate', d.glueRate ?? 0);
         setVal('silicateRate', d.silicateRate ?? 0);
         setVal('glueSilicateKg', d.glueSilicateKg ?? 0);
@@ -524,21 +615,29 @@ async function loadExistingSheet(id) {
         setVal('taxPct', d.taxPct ?? 0);
         setVal('remarks', d.remarks || '');
 
+        setSelect('costingMethod', d.clientCosting ? 'Client' : 'Manual');
+        applyCostingMethod(false);
+        if (d.clientCosting) restoreClientOptions(d.clientCosting);
         // Plies — restore from saved data including itemId
         if (d.plies && d.plies.length > 0) {
-            d.plies.forEach(p =>
+            d.plies.forEach((p, i) =>
                 addPlyRow(
                     p.plyName || '',
                     p.specification || '',
                     p.gSM ?? '',
                     p.rate ?? '',
                     p.kGs ?? '',
-                    p.itemId ?? ''
+                    p.itemId ?? '',
+                    d.clientCosting?.flutedLayers?.[i] ?? null
                 )
             );
         } else {
             addPlyRow();
         }
+
+        document.getElementById('matBody').innerHTML = '';
+        (d.materials || []).filter(x => !d.clientCosting || (x.itemId !== d.clientCosting.glueLaminationItemId && x.itemId !== d.clientCosting.laminationChemicalItemId))
+            .forEach(x => addMatRow(x.itemId, x.quantity ?? '', x.rate ?? ''));
 
         recalcAll();
     } catch (err) {
@@ -547,14 +646,6 @@ async function loadExistingSheet(id) {
     }
 }
 
-async function getCustomerName(customerId) {
-    try {
-        const res = await fetch('/CostSheet/GetCustomers');
-        const json = await res.json();
-        const c = json.customers?.find(x => x.partyId.toString() === customerId.toString());
-        return c ? c.partyName : customerId;
-    } catch { return customerId; }
-}
 
 // ════════════════════════════════════════════════════════════════════════════
 // RESET FORM
@@ -565,8 +656,6 @@ async function resetForm() {
     setVal('sheetDate', new Date().toISOString().split('T')[0]);
     setSelect('status', 'Draft');
     setSelect('branchId', '1');
-    setVal('customerId', '');
-    setVal('customerName', '');
     setVal('itemName', '');
 
     ['dimL', 'dimW', 'dimH', 'dimFlap', 'autoFlapGap',
@@ -580,11 +669,15 @@ async function resetForm() {
     setVal('dickelCost', 0);
     setSelect('hasLamination', 'false');
     setVal('laminationCost', 0);
+    legacyAdhesiveReview = false;
+    setVal('finishedItemId', ''); setVal('glueItemId', ''); setVal('silicateItemId', '');
+    setVal('glueKgPerBox', 0); setVal('silicateKgPerBox', 0);
     setVal('glueRate', 0);
     setVal('silicateRate', 0);
     setVal('glueSilicateKg', 0);
 
     // FIX: Reset to 3 blank rows — no hardcoded names
+    document.getElementById('matBody').innerHTML = '';
     document.getElementById('plyBody').innerHTML = '';
     plyCounter = 0;
     addPlyRow();
@@ -602,102 +695,13 @@ async function resetForm() {
     setVal('remarks', '');
 
     applySettingsToForm();
+    setSelect('costingMethod', 'Client'); restoreClientOptions({}); applyCostingMethod(true);
     loadNextSheetNumber();
     document.getElementById('editCostSheetId').value = '0';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CUSTOMER MODAL
-// ════════════════════════════════════════════════════════════════════════════
-function openCustomerModal() {
-    selectedCustomer = null;
-    document.getElementById('selectCustomerBtn').disabled = true;
-    document.getElementById('customerSearchInput').value = '';
-    document.getElementById('customerModal').classList.add('show');
-    loadCustomers();
-}
-
-function closeCustomerModal() {
-    document.getElementById('customerModal').classList.remove('show');
-    selectedCustomer = null;
-    document.getElementById('selectCustomerBtn').disabled = true;
-    document.querySelectorAll('#customerTableBody tr').forEach(r => r.classList.remove('selected'));
-}
-
-function loadCustomers() {
-    const tbody = document.getElementById('customerTableBody');
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;">Loading...</td></tr>';
-
-    fetch('/CostSheet/GetCustomers')
-        .then(r => r.json())
-        .then(data => {
-            if (data.success && data.customers?.length) {
-                allCustomers = data.customers;
-                renderCustomers(allCustomers);
-            } else {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:#999;">No customers found.</td></tr>';
-            }
-        })
-        .catch(() => {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:#dc3545;">Error loading customers.</td></tr>';
-        });
-}
-
-function renderCustomers(list) {
-    const tbody = document.getElementById('customerTableBody');
-    if (!list.length) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:#999;">No customers found.</td></tr>';
-        return;
-    }
-    tbody.innerHTML = '';
-    list.forEach(c => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${c.partyId}</td>
-            <td>${escHtml(c.partyName)}</td>
-            <td><span class="party-badge party-badge-${c.partyType}">${capitalize(c.partyType)}</span></td>
-            <td>${c.phone || '–'}</td>
-            <td>${c.email || '–'}</td>
-        `;
-        tr.addEventListener('click', function () { selectCustomerRow(this, c); });
-        tbody.appendChild(tr);
-    });
-}
-
-function selectCustomerRow(row, customer) {
-    document.querySelectorAll('#customerTableBody tr').forEach(r => r.classList.remove('selected'));
-    row.classList.add('selected');
-    selectedCustomer = customer;
-    document.getElementById('selectCustomerBtn').disabled = false;
-}
-
-function selectCustomer() {
-    if (!selectedCustomer) return;
-    setVal('customerId', selectedCustomer.partyId);
-    setVal('customerName', selectedCustomer.partyName);
-    closeCustomerModal();
-}
-
-function searchCustomers() {
-    const q = document.getElementById('customerSearchInput').value.toLowerCase();
-    if (!q) { renderCustomers(allCustomers); return; }
-    renderCustomers(allCustomers.filter(c =>
-        c.partyName?.toLowerCase().includes(q) ||
-        c.phone?.includes(q) ||
-        c.email?.toLowerCase().includes(q)
-    ));
-}
-
-document.getElementById('customerModal').addEventListener('click', function (e) {
-    if (e.target === this) closeCustomerModal();
-});
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && document.getElementById('customerModal').classList.contains('show'))
-        closeCustomerModal();
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// PLY ITEM LOOKUP MODAL
+// PLY ITEM LOOKUP
 // ════════════════════════════════════════════════════════════════════════════
 let allPlyItems = [];
 let selectedPlyItem = null;
@@ -820,14 +824,15 @@ async function confirmPlyItem() {
         parseFloat(selectedPlyItem.lastPurPrice || 0).toFixed(2);
 
     if (!selectedPlyItem.lastPurPrice || selectedPlyItem.lastPurPrice === 0) {
-        await alertDialog(`⚠️ "${selectedPlyItem.itemName}" has no purchase history.\nRate set to 0 — please enter manually.`);
+        await alertDialog(`⚠️ "${escapeHtml(selectedPlyItem.itemName)}" has no purchase history.\nRate set to 0 — please enter manually.`);
     }
     if ((selectedPlyItem.currentStock || 0) <= 0) {
-        await alertDialog(`⚠️ "${selectedPlyItem.itemName}" has zero stock.\nPlease create a Purchase Invoice first.`);
+        await alertDialog(`⚠️ "${escapeHtml(selectedPlyItem.itemName)}" has zero stock.\nPlease create a Purchase Invoice first.`);
     }
 
     // Auto-focus KGs field for fast entry
-    setTimeout(() => currentPlyRow.cells[6].querySelector('input').focus(), 100);
+    const kgInput = currentPlyRow.cells[6].querySelector('input');
+    setTimeout(() => { if (kgInput.isConnected) kgInput.focus(); }, 100);
 
     calcPlyRow(currentPlyRow.cells[5].querySelector('input'));
     closePlyItemModal();
@@ -857,7 +862,7 @@ function setVal(id, val) {
 
 function setSelect(id, val) {
     const el = document.getElementById(id);
-    if (!el) return;
+    if (!el || el.type === 'hidden') return;
     const opt = [...el.options].find(o => o.value == val || o.text == val);
     if (opt) el.value = opt.value;
 }
@@ -887,4 +892,68 @@ function escAttr(str) {
 function capitalize(s) {
     if (!s) return '';
     return s.charAt(0).toUpperCase() + s.slice(1);
+}
+// Client workbook adapter. Existing recipes stay on their saved calculation method.
+function isClientCosting() { return document.getElementById('costingMethod')?.value === 'Client'; }
+function getClientOptions() {
+    const c = {version:1};
+    document.querySelectorAll('[data-client-option]').forEach(e => c[e.dataset.clientOption] = Number(e.value) || 0);
+    document.querySelectorAll('[data-client-stock]').forEach(e => c[e.dataset.clientStock] = Number(e.value) || null);
+    c.flutedLayers = [...document.querySelectorAll('#plyBody .ply-fluted')].map(e => e.value === 'true');
+    return c;
+}
+function restoreClientOptions(c) {
+    document.querySelectorAll('[data-client-option]').forEach(e => e.value = c[e.dataset.clientOption] ?? e.defaultValue);
+    document.querySelectorAll('[data-client-stock]').forEach(e => e.value = c[e.dataset.clientStock] ?? '');
+}
+function applyCostingMethod(defaults) {
+    const client = isClientCosting();
+    document.getElementById('clientCostingPanel').hidden = !client;
+    document.querySelectorAll('select.client-stock').forEach(e => {
+        const value = e.value;
+        e.replaceChildren(new Option('Select stock item', ''));
+        materialOptions.filter(i => i.type === 'RawMaterial' && i.unit === 'kg').forEach(i => e.add(new Option(i.name, String(i.id))));
+        e.value = value;
+    });
+    document.querySelectorAll('[data-client-weight-label]').forEach(e => e.textContent = e.dataset.clientWeightLabel + (client ? ' Rate / paper KG' : ' Rate'));
+    document.querySelectorAll('[data-client-rate-label]').forEach(e => e.textContent = e.dataset.clientRateLabel + (client ? ' / paper KG' : ' %'));
+    ['commPersonAPct','commPersonBPct','taxPct'].forEach(id => document.getElementById(id).readOnly = false);
+    document.getElementById('additionalTaxLabel').textContent = client ? 'Additional Tax % (on base cost)' : 'Tax % (on Final)';
+    ['glueKgPerBox','silicateKgPerBox','printingCost','laminationCost','sheetWidthIn','sheetLengthIn','withFlap','adjWidthIn','adjLength1In','adjLength2In','adjWidthMm','adjLengthMm','totalSheetSqIn'].forEach(id => document.getElementById(id).readOnly = client);
+    if (defaults && client) {
+        const rates = {labourRate:10,energyRate:5,freightRate:0,wastePct:5.25,adminExpPct:2.5,sellingDistPct:2.5,repairMaintPct:2.25,storeSparesPct:2.25,mfgCostPct:2.75,
+            glueRate:50,silicateRate:45,profitPct:5,gstPct:18,moq:1};
+        Object.entries(rates).forEach(([id,v]) => setVal(id,v));
+    }
+    [...document.getElementById('boxStyle').options].forEach(o => o.disabled = client && o.value !== 'Regular Slotted Carton (RSC)');
+    if (client && getVal('boxStyle') !== 'Regular Slotted Carton (RSC)') setSelect('boxStyle','Regular Slotted Carton (RSC)');
+    recalcAll();
+}
+function recalcClientCosting() {
+    const c = getClientOptions(), m = {};
+    const fields = {length:'dimL',width:'dimW',height:'dimH',flap:'dimFlap',autoFlapGap:'autoFlapGap',printingColors:'printingColors',glueRate:'glueRate',silicateRate:'silicateRate',labourRate:'labourRate',energyRate:'energyRate',freightRate:'freightRate',bindingPins:'bindingPins',bindingCost:'bindingCost',dickelCost:'dickelCost',wastePct:'wastePct',adminExpPct:'adminExpPct',sellingDistPct:'sellingDistPct',repairMaintPct:'repairMaintPct',storeSparesPct:'storeSparesPct',mfgCostPct:'mfgCostPct',profitPct:'profitPct',gstPct:'gstPct',whTaxPct:'whTaxPct',moq:'moq',commPersonAPct:'commPersonAPct',commPersonBPct:'commPersonBPct',taxPct:'taxPct'};
+    Object.entries(fields).forEach(([key,id]) => m[key] = Number(getVal(id)) || 0);
+    m.sizeUnit = getVal('sizeUnit'); m.bindingType = getVal('bindingType'); m.hasLamination = getVal('hasLamination') === 'true';
+    m.otherMaterialsCost = [...document.querySelectorAll('#matBody tr')].filter(r => {
+        const id = Number(r.querySelector('.mat-item').value);
+        return id !== c.glueLaminationItemId && id !== c.laminationChemicalItemId;
+    }).reduce((sum,r) => sum+(Number(r.querySelector('.mat-qty').value)||0)*(Number(r.querySelector('.mat-rate').value)||0),0);
+    const rows = [...document.querySelectorAll('#plyBody tr')];
+    m.plies = rows.map(r => ({gsm:Number(r.cells[4].querySelector('input').value)||0,rate:Number(r.cells[5].querySelector('input').value)||0}));
+    const out = ClientCartonCosting.calculate(m,c);
+    rows.forEach((r,i) => {
+        r.cells[6].querySelector('input').readOnly = true;
+        r.cells[6].querySelector('input').value = out.plies[i].kg.toFixed(6);
+        r.cells[7].querySelector('input').value = out.plies[i].cost.toFixed(2);
+        r.querySelector('.ply-fluted').style.display = '';
+    });
+    Object.entries(out).forEach(([key,value]) => {
+        if (typeof value !== 'number') return;
+        const e = document.getElementById(key) || document.getElementById('client_'+key);
+        if (e) e.value = value.toFixed(key.endsWith('Kg') || key.endsWith('PerBox') ? 6 : key.includes('In') || key.endsWith('Mm') || key === 'area' ? 6 : 2);
+    });
+    setVal('totalSheetSqIn',out.area.toFixed(6)); setVal('otherMaterialsCost',m.otherMaterialsCost.toFixed(2));
+    document.getElementById('bindingCost').readOnly = m.bindingType === 'None' || m.bindingType === 'Pins';
+    document.getElementById('finalCostDisplay').textContent = ClientCartonCosting.round(out.finalCostWOGST).toFixed(2);
+    document.getElementById('finalRateDisplay').textContent = ClientCartonCosting.round(out.finalRateWithGST).toFixed(2);
 }

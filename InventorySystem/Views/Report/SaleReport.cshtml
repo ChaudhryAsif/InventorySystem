@@ -1,6 +1,7 @@
 @{
     Layout = "_Layout";
-    ViewData["Title"] = "Sale Report";
+    ViewData["Title"] = "Sales Report";
+    var colCount = BranchSettings.Value.MultiBranchEnabled ? 11 : 10;
 }
 
 <link href="~/css/report.css" rel="stylesheet" />
@@ -9,7 +10,7 @@
 
     <div class="rpt-page-header">
         <div>
-            <h2 class="rpt-title">🧾 Sale Report</h2>
+            <h2 class="rpt-title">🧾 Sales Report</h2>
             <p class="rpt-subtitle">Summary of all sale invoices with item details</p>
         </div>
         <div class="rpt-header-actions" id="actionButtons">
@@ -46,16 +47,93 @@
                 <button class="rpt-btn rpt-btn-outline" onclick="resetFilters()">↺ Reset</button>
             </div>
         </div>
+
+        <div class="rpt-quick-dates">
+            <button type="button" class="rpt-btn rpt-btn-ghost" onclick="quickDate('today')">Today</button>
+            <button type="button" class="rpt-btn rpt-btn-ghost" onclick="quickDate('week')">This week</button>
+            <button type="button" class="rpt-btn rpt-btn-ghost" onclick="quickDate('month')">This month</button>
+            <button type="button" class="rpt-btn rpt-btn-ghost" onclick="quickDate('lastmonth')">Last month</button>
+            <button type="button" class="rpt-btn rpt-btn-ghost" onclick="quickDate('year')">This year</button>
+        </div>
+
+        <details class="rpt-advanced">
+            <summary>Advanced filters</summary>
+            <div class="rpt-filter-grid">
+                @if (BranchSettings.Value.MultiBranchEnabled)
+                {
+                    <div class="rpt-filter-group">
+                        <label class="rpt-filter-label">Branch</label>
+                        <select class="rpt-filter-input" id="branchFilter">
+                            <option value="">All Branches</option>
+                            <option value="1">Main Branch</option>
+                            <option value="2">Branch 2</option>
+                            <option value="3">Branch 3</option>
+                        </select>
+                    </div>
+                }
+                <div class="rpt-filter-group">
+                    <label class="rpt-filter-label">Payment (Credit = unpaid on account)</label>
+                    <select class="rpt-filter-input" id="paymentFilter">
+                        <option value="">All Payments</option>
+                        <option value="0">Credit</option>
+                        <option value="1">Cash</option>
+                        <option value="2">Cheque</option>
+                        <option value="3">Bank Transfer</option>
+                    </select>
+                </div>
+                <div class="rpt-filter-group">
+                    <label class="rpt-filter-label">Ref No</label>
+                    <input type="text" class="rpt-filter-input" id="refNoSearch" maxlength="20" placeholder="Contains...">
+                </div>
+                <div class="rpt-filter-group">
+                    <label class="rpt-filter-label">Item (invoice contains)</label>
+                    <select class="rpt-filter-input" id="itemFilter">
+                        <option value="">All Items</option>
+                    </select>
+                </div>
+                <div class="rpt-filter-group">
+                    <label class="rpt-filter-label">Category (invoice contains)</label>
+                    <select class="rpt-filter-input" id="categoryFilter">
+                        <option value="">All Categories</option>
+                    </select>
+                </div>
+                <div class="rpt-filter-group">
+                    <label class="rpt-filter-label">Total amount (min / max)</label>
+                    <div class="rpt-range">
+                        <input type="number" class="rpt-filter-input" id="minAmount" min="0" step="any" placeholder="Min" data-label="Min amount">
+                        <input type="number" class="rpt-filter-input" id="maxAmount" min="0" step="any" placeholder="Max" data-label="Max amount">
+                    </div>
+                </div>
+                <div class="rpt-filter-group">
+                    <label class="rpt-filter-label">Sort by</label>
+                    <select class="rpt-filter-input" id="sortBy">
+                        <option value="">Date</option>
+                        <option value="amount">Total amount</option>
+                        <option value="customer">Customer</option>
+                        <option value="invoice">Invoice no</option>
+                    </select>
+                </div>
+                <div class="rpt-filter-group">
+                    <label class="rpt-filter-label">Direction</label>
+                    <select class="rpt-filter-input" id="sortDir" data-default="desc">
+                        <option value="desc">Newest / highest first</option>
+                        <option value="asc">Oldest / lowest first</option>
+                    </select>
+                </div>
+            </div>
+        </details>
     </div>
 
     <!-- PDF / Print content -->
     <div id="reportContent">
 
         <div class="rpt-print-header" id="printHeader">
-            <h2>🧾 Sale Report</h2>
+            <h2>🧾 Sales Report</h2>
             <p>Generated: <span id="generatedDate"></span></p>
             <hr>
         </div>
+
+        <div class="rpt-filter-summary" id="filterSummary"></div>
 
         <div class="rpt-summary-grid" id="summaryGrid">
             <div class="rpt-summary-card rpt-card-blue">
@@ -85,7 +163,8 @@
                         <th>Date</th>
                         <th>Customer</th>
                         <th>Ref No</th>
-                        <th>Branch</th>
+                        @if (BranchSettings.Value.MultiBranchEnabled)
+                        { <th>Branch</th> }
                         <th>Payment</th>
                         <th class="rpt-amount">Total Amount</th>
                         <th class="rpt-amount">Net Amount</th>
@@ -93,9 +172,15 @@
                     </tr>
                 </thead>
                 <tbody id="saleTableBody">
-                    <tr><td colspan="11" class="rpt-loading">⏳ Loading...</td></tr>
+                    <tr><td colspan="@colCount" class="rpt-loading">⏳ Loading...</td></tr>
                 </tbody>
             </table>
+        </div>
+
+        <div class="rpt-pager" id="pager" style="display:none;">
+            <button type="button" class="rpt-btn rpt-btn-outline" id="prevPage" onclick="goPage(-1)">← Previous</button>
+            <span id="pageInfo"></span>
+            <button type="button" class="rpt-btn rpt-btn-outline" id="nextPage" onclick="goPage(1)">Next →</button>
         </div>
 
         <div class="rpt-empty-state" id="emptyState" style="display:none;">
@@ -107,54 +192,84 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="~/js/report-filters.js" asp-append-version="true"></script>
 <script>
     let allExpanded = false;
     let reportData  = [];
+    let currentPage = 1;
+    let totalPages  = 1;
+    const PAGE_SIZE = 50;
 
-    window.addEventListener('DOMContentLoaded', function () {
-        const today     = new Date();
-        const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
-        document.getElementById('toDate').value   = today.toISOString().split('T')[0];
-        document.getElementById('fromDate').value = lastMonth.toISOString().split('T')[0];
-        loadCustomers();
+    const filterIds = ['invoiceNoSearch', 'fromDate', 'toDate', 'customerFilter', 'paymentFilter', 'refNoSearch',
+        'itemFilter', 'categoryFilter', 'minAmount', 'maxAmount', 'sortBy', 'sortDir'];
+    @if (BranchSettings.Value.MultiBranchEnabled) { <text>filterIds.unshift('branchFilter');</text> }
+    RptFilters.init(filterIds);
+
+    window.addEventListener('DOMContentLoaded', async function () {
+        setDefaultDates();
+        await Promise.all([loadCustomers(), loadItems(), loadCategories()]);
+        RptFilters.loadFromUrl();
         applyFilters();
     });
 
-    function loadCustomers() {
-        fetch('/Report/GetCustomerList')
-            .then(r => r.json())
-            .then(list => {
-                const sel = document.getElementById('customerFilter');
-                list.forEach(c => {
-                    const o = document.createElement('option');
-                    o.value = c.value;
-                    o.textContent = c.text;
-                    sel.appendChild(o);
-                });
-            });
+    function setDefaultDates() {
+        const today     = new Date();
+        const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+        document.getElementById('toDate').value   = RptFilters.iso(today);
+        document.getElementById('fromDate').value = RptFilters.iso(lastMonth);
+    }
+
+    function fillSelect(id, list) {
+        const sel = document.getElementById(id);
+        list.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.value;
+            o.textContent = s.text;
+            sel.appendChild(o);
+        });
+    }
+
+    function loadCustomers()  { return fetch('/Report/GetCustomerList').then(r => r.json()).then(l => fillSelect('customerFilter', l)); }
+    function loadItems()      { return fetch('/Report/GetItemList').then(r => r.json()).then(l => fillSelect('itemFilter', l)); }
+    function loadCategories() { return fetch('/Report/GetCategoryList').then(r => r.json()).then(l => fillSelect('categoryFilter', l)); }
+
+    function quickDate(kind) {
+        RptFilters.quickDate(kind, 'fromDate', 'toDate');
+        applyFilters();
+    }
+
+    function goPage(step) {
+        currentPage = Math.min(Math.max(1, currentPage + step), totalPages);
+        loadData();
     }
 
     function applyFilters() {
-        const invoiceNo  = document.getElementById('invoiceNoSearch').value;
-        const from       = document.getElementById('fromDate').value;
-        const to         = document.getElementById('toDate').value;
-        const customerId = document.getElementById('customerFilter').value;
-        const tbody      = document.getElementById('saleTableBody');
+        currentPage = 1;
+        RptFilters.saveToUrl();
+        RptFilters.writeSummary('filterSummary');
+        loadData();
+    }
 
-        tbody.innerHTML = '<tr><td colspan="11" class="rpt-loading">⏳ Loading...</td></tr>';
+    function loadData() {
+        const tbody = document.getElementById('saleTableBody');
+
+        tbody.innerHTML = '<tr><td colspan="@colCount" class="rpt-loading">⏳ Loading...</td></tr>';
         document.getElementById('emptyState').style.display = 'none';
 
-        const params = new URLSearchParams();
-        if (invoiceNo)  params.append('invoiceNo', invoiceNo);
-        if (from)       params.append('from', from);
-        if (to)         params.append('to', to);
-        if (customerId) params.append('customerId', customerId);
+        const params = new URLSearchParams({ page: currentPage, pageSize: PAGE_SIZE });
+        [['invoiceNo', 'invoiceNoSearch'], ['from', 'fromDate'], ['to', 'toDate'], ['customerId', 'customerFilter'],
+         ['paymentMode', 'paymentFilter'], ['refNo', 'refNoSearch'], ['itemId', 'itemFilter'], ['categoryId', 'categoryFilter'],
+         ['minAmount', 'minAmount'], ['maxAmount', 'maxAmount'], ['sortBy', 'sortBy'], ['sortDir', 'sortDir'],
+         ['branchId', 'branchFilter']].forEach(([key, id]) => {
+            const el = document.getElementById(id);
+            if (el && el.value !== '') params.set(key, el.value);
+        });
 
         fetch(`/Report/GetSaleData?${params}`)
             .then(r => r.json())
             .then(result => {
                 if (!result.success) {
-                    tbody.innerHTML = `<tr><td colspan="11" class="rpt-loading rpt-error">❌ ${result.message}</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="@colCount" class="rpt-loading rpt-error">❌ ${result.message}</td></tr>`;
                     return;
                 }
 
@@ -163,6 +278,12 @@
                 document.getElementById('totalInvoices').textContent = result.summary.totalInvoices;
                 document.getElementById('totalAmount').textContent   = 'Rs. ' + parseFloat(result.summary.totalAmount).toFixed(2);
                 document.getElementById('netAmount').textContent     = 'Rs. ' + parseFloat(result.summary.netAmount).toFixed(2);
+
+                totalPages = Math.max(1, Math.ceil(result.totalCount / PAGE_SIZE));
+                document.getElementById('pager').style.display = result.totalCount > PAGE_SIZE ? 'flex' : 'none';
+                document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages} · ${result.totalCount} invoices`;
+                document.getElementById('prevPage').disabled = currentPage <= 1;
+                document.getElementById('nextPage').disabled = currentPage >= totalPages;
 
                 if (!reportData || reportData.length === 0) {
                     tbody.innerHTML = '';
@@ -175,7 +296,7 @@
                 document.getElementById('expandAllBtn').textContent = '⊞ Expand All';
             })
             .catch(() => {
-                tbody.innerHTML = '<tr><td colspan="11" class="rpt-loading rpt-error">❌ Failed to load data.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="@colCount" class="rpt-loading rpt-error">❌ Failed to load data.</td></tr>';
             });
     }
 
@@ -198,19 +319,19 @@
                 <td>
                     <span class="rpt-expand-icon" id="icon-${r.invoiceNo}">▶</span>
                 </td>
-                <td>${i + 1}</td>
+                <td>${(currentPage - 1) * PAGE_SIZE + i + 1}</td>
                 <td><strong class="rpt-invoice-no">#${r.invoiceNo}</strong></td>
                 <td>${r.saleDate}</td>
                 <td>${escHtml(r.customerName ?? '–')}</td>
-                <td>${r.refNo}</td>
-                <td>${r.branchName}</td>
+                <td>${escapeHtml(r.refNo)}</td>
+                ${@(BranchSettings.Value.MultiBranchEnabled ? "true" : "false") ? '<td>' + escapeHtml(r.branchName) + '</td>' : ''}
                 <td><span class="rpt-badge rpt-badge-blue">${r.paymentMode}</span></td>
                 <td class="rpt-amount">Rs. ${parseFloat(r.totalAmount).toFixed(2)}</td>
                 <td class="rpt-amount"><strong>Rs. ${parseFloat(r.netAmount).toFixed(2)}</strong></td>
                 <td class="rpt-remarks" title="${escHtml(r.remarks)}">${escHtml(r.remarks) || '–'}</td>
             </tr>
             <tr class="rpt-detail-row" id="detail-${r.invoiceNo}">
-                <td colspan="11">
+                <td colspan="@colCount">
                     <div class="rpt-detail-container">
                         <div class="rpt-detail-header">
                             <span class="rpt-detail-title">📦 Items — Invoice #${r.invoiceNo}</span>
@@ -259,12 +380,9 @@
     }
 
     function resetFilters() {
-        const today     = new Date();
-        const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
-        document.getElementById('invoiceNoSearch').value  = '';
-        document.getElementById('fromDate').value         = lastMonth.toISOString().split('T')[0];
-        document.getElementById('toDate').value           = today.toISOString().split('T')[0];
-        document.getElementById('customerFilter').value   = '';
+        filterIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        document.getElementById('sortDir').value = 'desc';
+        setDefaultDates();
         applyFilters();
     }
 

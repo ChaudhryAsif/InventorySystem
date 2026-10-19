@@ -1,4 +1,4 @@
-using InventorySystem.Core.Models;
+﻿using InventorySystem.Core.Models;
 using InventorySystem.Core.Services;
 using InventorySystem.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -69,8 +69,8 @@ namespace InventorySystem.Controllers
         // VOUCHERS
         // ═══════════════════════════════════════════════════════════════════════
 
-        [HttpGet] public IActionResult PaymentVoucher() => View("Voucher", "PV");
-        [HttpGet] public IActionResult ReceiptVoucher() => View("Voucher", "RV");
+        [HttpGet] public IActionResult PaymentVoucher() => View("Settlement", "Payment");
+        [HttpGet] public IActionResult ReceiptVoucher() => View("Settlement", "Receipt");
         [HttpGet] public IActionResult JournalVoucher() => View("Voucher", "JV");
         [HttpGet] public IActionResult ContraVoucher() => View("Voucher", "CV");
         [HttpGet] public IActionResult VoucherList() => View();
@@ -107,7 +107,17 @@ namespace InventorySystem.Controllers
         {
             var v = await _accounts.GetVoucherAsync(id);
             if (v == null) return Json(new { success = false, message = "Not found." });
-            return Json(new { success = true, data = v });
+            // Return the screen's fields, not EF navigation graphs with back references.
+            return Json(new { success = true, data = new {
+                v.VoucherId, v.VoucherNo, v.VoucherType, v.VoucherDate, v.TotalAmount,
+                v.PartyId, partyName = v.Party?.PartyName, v.PaymentMode, v.ReferenceNo,
+                v.Narration, v.Status, v.BranchId, v.IsVoid, v.CreatedBy, v.CreatedDate,
+                details = v.Details.Select(d => new {
+                    d.VoucherDetailId, d.VoucherId, d.AccountHeadId,
+                    accountCode = d.AccountHead?.AccountCode, accountName = d.AccountHead?.AccountName,
+                    d.PartyId, partyName = d.Party?.PartyName, d.Debit, d.Credit, d.Narration
+                })
+            } });
         }
 
         [HttpPost]
@@ -195,6 +205,35 @@ namespace InventorySystem.Controllers
             return Json(new { success = true, data = rows });
         }
 
+        [HttpPost]
+        public async Task<IActionResult> SavePayment([FromBody] InventorySystem.Models.PartyPaymentRequest model)
+        {
+            if (model.Direction is not ("Receipt" or "Payment") || model.Mode is not ("Cash" or "Bank Transfer") || model.Amount <= 0 || model.Amount > 100000000 || model.Amount != decimal.Round(model.Amount, 2) || model.Reference?.Length > 100 || model.Date.Year < 2000 || model.Date.Date > DateTime.Today.AddDays(1))
+                return BadRequest(new { success = false, message = "Enter a valid payment, amount and date." });
+            var party = await _db.Parties.SingleOrDefaultAsync(p => p.PartyId == model.PartyId && p.Status != "inactive");
+            if (party == null || party.PartyType is not ("supplier" or "customer" or "both"))
+                return BadRequest(new { success = false, message = "Select an active customer or supplier for this payment." });
+            var statement = await _accounts.GetPartyStatementAsync(party.PartyId, null, null);
+            var balance = statement.LastOrDefault()?.Balance ?? 0;
+            var position = PartyBalanceService.Position(party.PartyType, balance);
+            if (position.Amount == 0 || model.Amount > position.Amount)
+                return BadRequest(new { success = false, message = "Amount exceeds the outstanding payment or refund. Use an administrator voucher for an advance." });
+            if ((model.Direction == "Receipt") != (position.BalanceType == "Receivable"))
+                return BadRequest(new { success = false, message = position.BalanceType == "Receivable" ? "Use Receive Money for this balance." : "Use Pay Money for this balance." });
+            var cash = await _db.AccountHeads.SingleAsync(a => a.AccountCode == (model.Mode == "Cash" ? "1101" : "1102"));
+            var control = await _db.AccountHeads.SingleAsync(a => a.AccountCode == position.ControlCode);
+            var receipt = model.Direction == "Receipt";
+            var voucher = new Voucher { VoucherType = receipt ? "RV" : "PV", VoucherDate = model.Date, PartyId = model.PartyId,
+                PaymentMode = model.Mode, ReferenceNo = model.Reference, BranchId = model.BranchId,
+                Narration = (position.IsRefund ? receipt ? "Supplier refund received" : "Customer refund paid" : receipt ? "Customer collection" : "Supplier payment") + (string.IsNullOrWhiteSpace(model.Reference) ? "" : " | " + model.Reference),
+                CreatedBy = User.Identity?.Name,
+                Details = [new() { AccountHeadId = cash.AccountHeadId, Debit = receipt ? model.Amount : 0, Credit = receipt ? 0 : model.Amount },
+                    new() { AccountHeadId = control.AccountHeadId, PartyId = model.PartyId, Debit = receipt ? 0 : model.Amount, Credit = receipt ? model.Amount : 0 }] };
+            var result = await _accounts.SaveVoucherAsync(voucher);
+            return result.success ? Ok(new { success = true, message = "Payment recorded.", id = result.voucherId })
+                : BadRequest(new { success = false, message = result.message });
+        }
+
         // ── Party Ledger (used by PartyLedger.cshtml) ─────────────────
         [HttpGet]
         public async Task<IActionResult> GetLedger(int partyId, DateTime? from = null, DateTime? to = null)
@@ -205,35 +244,12 @@ namespace InventorySystem.Controllers
             var fromDate = from ?? DateTime.MinValue;
             var toDate   = to.HasValue ? to.Value.Date.AddDays(1).AddTicks(-1) : DateTime.MaxValue;
 
-            bool isSupplier = party.PartyType is "supplier" or "both";
-
-            var entries = await _db.GeneralLedger
-                .Where(l => l.PartyId == partyId && !l.IsVoid
-                         && l.VoucherDate >= fromDate && l.VoucherDate <= toDate)
-                .OrderBy(l => l.VoucherDate)
-                .ThenBy(l => l.GLId)
-                .ToListAsync();
-
-            decimal runningBalance = 0;
-            var rows = entries.Select(e =>
-            {
-                runningBalance += isSupplier
-                    ? e.Credit - e.Debit
-                    : e.Debit  - e.Credit;
-                return new
-                {
-                    date            = e.VoucherDate.ToString("yyyy-MM-dd"),
-                    description     = e.Narration ?? e.VoucherType,
-                    transactionType = e.VoucherType,
-                    debit           = e.Debit,
-                    credit          = e.Credit,
-                    balance         = runningBalance,
-                    refNo           = e.VoucherNo
-                };
-            }).ToList();
-
-            var totalDebit  = entries.Sum(e => e.Debit);
-            var totalCredit = entries.Sum(e => e.Credit);
+            var entries = await _accounts.GetPartyStatementAsync(partyId, from, to);
+            var runningBalance = entries.LastOrDefault()?.Balance ?? 0;
+            var position = PartyBalanceService.Position(party.PartyType, runningBalance);
+            var rows = entries.Select(e => new { date = e.Date.ToString("yyyy-MM-dd"), description = e.Description,
+                transactionType = e.TransactionType, debit = e.Debit, credit = e.Credit, balance = e.Balance, refNo = e.VoucherNo }).ToList();
+            var totalDebit = entries.Sum(e => e.Debit); var totalCredit = entries.Sum(e => e.Credit);
 
             return Json(new
             {
@@ -243,9 +259,12 @@ namespace InventorySystem.Controllers
                 {
                     totalDebit,
                     totalCredit,
-                    balance     = runningBalance,
-                    balanceType = isSupplier ? "Payable" : "Receivable",
-                    status      = runningBalance <= 0 ? "Cleared" : "Outstanding",
+                    balance     = position.Amount,
+                    signedBalance = runningBalance,
+                    balanceType = position.BalanceType,
+                    isRefund = position.IsRefund,
+                    balanceDescription = position.Description,
+                    status = position.Amount == 0 ? "Cleared" : position.IsRefund ? "Refund due" : "Outstanding",
                     partyName   = party.PartyName,
                     partyType   = party.PartyType
                 }
@@ -432,11 +451,21 @@ namespace InventorySystem.Controllers
         [HttpGet] public IActionResult OpeningBalance() => View();
 
         [HttpPost]
-        public async Task<IActionResult> SaveOpeningBalances([FromBody] List<AccountHead> accounts)
+        public async Task<IActionResult> SaveOpeningBalances([FromBody] List<OpeningBalanceRequest> accounts)
         {
-            var result = await _accounts.SaveOpeningBalancesAsync(accounts);
+            var result = await _accounts.SaveOpeningBalancesAsync(accounts.Select(a => new AccountHead {
+                AccountHeadId = a.AccountHeadId, OpeningBalance = a.OpeningBalance,
+                OpeningBalanceType = a.OpeningBalanceType
+            }).ToList());
             return Json(new { result.success, result.message });
         }
+    }
+
+    public class OpeningBalanceRequest
+    {
+        public int AccountHeadId { get; set; }
+        public decimal OpeningBalance { get; set; }
+        public string OpeningBalanceType { get; set; } = "Debit";
     }
 
     public class MarkClearedRequest

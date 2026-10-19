@@ -4,7 +4,7 @@
     Layout = "_Layout";
     ViewData["Title"] = "Material Requirements";
     string customerName = ViewBag.CustomerName ?? Model.CustomerId;
-    decimal totalValue  = ViewBag.TotalOrderValue ?? 0;
+    decimal? totalValue = Model.AgreedUnitPrice.HasValue ? InventorySystem.Models.OrderPricing.Total(Model.OrderQty, Model.AgreedUnitPrice.Value, Model.AgreedGstPercent) : null;
 }
 
 <style>
@@ -27,9 +27,26 @@
     .mat-table th { background:#1e3a5f; color:#fff; padding:.7rem .9rem; text-align:left; font-weight:600; }
     .mat-table td { padding:.65rem .9rem; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
     .mat-table tbody tr:hover { background:#f8fafc; }
+
+    .mobile-table-scroll { overflow-x:auto; max-width:100%; }
+    .mat-table { min-width:760px; }
+    @@media screen and (max-width:768px) {
+        .summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .mat-card { padding:1rem; }
+    }
+    @@media screen and (max-width:400px) {
+        .summary-grid { grid-template-columns:minmax(0,1fr); }
+    }
+
+    @@media screen and (max-width:768px) {
+        .mobile-page-header { flex-wrap:wrap; gap:1rem; }
+        .mobile-page-header > div { min-width:0; }
+        .mobile-page-header h2 { overflow-wrap:anywhere; }
+    }
+
 </style>
 
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+<div class="mobile-page-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
     <div>
         <h2 style="font-size:1.5rem;font-weight:700;color:#1e3a5f;margin:0;">
             📋 Material Requirements — Order #@Model.ProductionOrderId
@@ -45,7 +62,7 @@
         {
             <a href="/Production/Consume/@Model.ProductionOrderId"
                style="background:#16a34a;color:#fff;padding:.5rem 1.2rem;border-radius:8px;text-decoration:none;font-size:.9rem;font-weight:600;">
-                🏭 Record Consumption
+                📦 Record Production
             </a>
         }
         <a href="/Production/Index" style="color:#6b7280;font-size:.9rem;padding:.5rem 0;">← Back</a>
@@ -82,6 +99,8 @@
     </div>
 </div>
 
+<p>Agreed price / box before GST: <strong>@(Model.AgreedUnitPrice?.ToString("N2") ?? "Not recorded")</strong> · GST: @Model.AgreedGstPercent.ToString("0.##")% · Agreed order value: <strong>@(totalValue?.ToString("N2") ?? "Not recorded")</strong></p>
+
 @if (critCount > 0 || lowCount > 0)
 {
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:1rem;margin-bottom:1rem;">
@@ -99,17 +118,18 @@ else if (mats.Any())
 }
 
 <div class="mat-card">
-    <span class="mat-title">🧪 Raw Material Plan</span>
-    <table class="mat-table">
+    <span class="mat-title">🧪 Estimated Raw Material Plan (quantity per box, in each item's unit)</span>
+    <div class="mobile-table-scroll" role="region" aria-label="Material requirements" tabindex="0"><table class="mat-table">
         <thead>
             <tr>
                 <th>#</th>
                 <th>Item Name</th>
                 <th>Specification</th>
-                <th>KG / Box</th>
-                <th>Required KG<br /><small>(@Model.OrderQty boxes)</small></th>
-                <th>Available KG<br /><small>(Live Stock)</small></th>
-                <th>Shortfall KG</th>
+                <th>Unit</th>
+                <th>Qty / Box</th>
+                <th>Required<br /><small>(@Model.OrderQty boxes)</small></th>
+                <th>Available<br /><small>(Estimated stock balance)</small></th>
+                <th>Shortfall</th>
                 <th>Status</th>
             </tr>
         </thead>
@@ -121,6 +141,7 @@ else if (mats.Any())
                     <td>@(r++)</td>
                     <td><strong>@m.ItemName</strong></td>
                     <td>@m.Specification</td>
+                    <td>@m.Unit</td>
                     <td>@m.KgPerUnit.ToString("N3")</td>
                     <td><strong>@m.RequiredKg.ToString("N2")</strong></td>
                     <td style="color:@(m.AvailableKg >= m.RequiredKg ? "#16a34a" : "#dc2626");font-weight:600;">
@@ -135,11 +156,11 @@ else if (mats.Any())
             @if (!mats.Any())
             {
                 <tr>
-                    <td colspan="8" style="text-align:center;padding:2rem;color:#9ca3af;">
+                    <td colspan="9" style="text-align:center;padding:2rem;color:#9ca3af;">
                         No ply items linked. Make sure Cost Sheet plies have items selected via 🔍.
                     </td>
                 </tr>
             }
         </tbody>
-    </table>
+    </table></div>
 </div>

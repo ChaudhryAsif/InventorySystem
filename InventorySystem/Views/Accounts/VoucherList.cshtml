@@ -1,6 +1,6 @@
 @{
     Layout = "_Layout";
-    ViewData["Title"] = "Voucher List";
+    ViewData["Title"] = "Voucher History";
 }
 
 <link href="~/css/Accounts.css" rel="stylesheet" />
@@ -9,7 +9,7 @@
 
     <div class="page-header">
         <div class="page-title">
-            <h2>📋 Voucher List</h2>
+            <h2>📋 Voucher History</h2>
             <p>View and manage all posted vouchers</p>
         </div>
         <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
@@ -142,10 +142,10 @@ async function loadVouchers() {
             <td><strong style="font-family:monospace;color:#2d5f7f">${v.voucherNo}</strong></td>
             <td><span class="badge ${m.badge}">${m.icon} ${m.label}</span></td>
             <td>${v.voucherDate}</td>
-            <td>${v.partyName}</td>
+            <td>${escapeHtml(v.partyName)}</td>
             <td>${v.paymentMode || '—'}</td>
             <td>${v.referenceNo || '—'}</td>
-            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${v.narration||''}">${v.narration || '—'}</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(v.narration||'')}">${escapeHtml(v.narration || '—')}</td>
             <td style="text-align:right;font-weight:600">${fmt(v.totalAmount)}</td>
             <td><span class="badge ${statusBadge(v.status)}">${v.status}</span></td>
             <td>

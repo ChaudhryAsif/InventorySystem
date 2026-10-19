@@ -39,13 +39,16 @@ namespace InventorySystem.Controllers
             if (model == null || model.Items == null || !model.Items.Any())
                 return BadRequest("Invalid return data.");
 
+            try { await InvoiceValidation.Validate(_context, model); }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
+
             var validItems = model.Items.Where(i => i.ItemId != null && i.Quantity > 0).ToList();
             if (!validItems.Any())
                 return BadRequest("No valid items provided.");
 
             var branchId = model.BranchID ?? 1;
 
-            using var transaction = _context.Database.BeginTransaction();
+            using var transaction = _context.Database.BeginAtomicTransaction();
             try
             {
                 var saleReturn = new SaleReturn
@@ -86,13 +89,16 @@ namespace InventorySystem.Controllers
             if (model.Items == null || !model.Items.Any())
                 return BadRequest("Invalid return data.");
 
+            try { await InvoiceValidation.Validate(_context, model); }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
+
             var validItems = model.Items.Where(i => i.ItemId != null && i.Quantity > 0).ToList();
             if (!validItems.Any())
                 return BadRequest("No valid items provided.");
 
             var branchId = model.BranchID ?? 1;
 
-            using var transaction = _context.Database.BeginTransaction();
+            using var transaction = _context.Database.BeginAtomicTransaction();
             try
             {
                 var saleReturn = _context.SaleReturn.FirstOrDefault(r => r.SaleReturnId == model.SaleReturnId);
@@ -131,7 +137,11 @@ namespace InventorySystem.Controllers
         [HttpPost]
         public async Task<IActionResult> Delete(int id)
         {
-            using var transaction = _context.Database.BeginTransaction();
+            var reason = Request.Headers["X-Operation-Reason"].ToString().Trim();
+            if (reason.Length < 3 || reason.Length > 500)
+                return BadRequest(new { success = false, message = "Enter a cancellation reason (3–500 characters)." });
+
+            using var transaction = _context.Database.BeginAtomicTransaction();
             try
             {
                 var saleReturn = _context.SaleReturn.FirstOrDefault(r => r.SaleReturnId == id);
@@ -140,12 +150,15 @@ namespace InventorySystem.Controllers
 
                 var bodies = _context.SaleReturnBody.Where(b => b.SaleReturnId == id).ToList();
 
-                await ReverseSaleReturnEffectsAsync(saleReturn, bodies);
-                _context.SaleReturn.Remove(saleReturn);
+                await ReverseSaleReturnEffectsAsync(saleReturn, bodies, keepBodies: true);
+                saleReturn.IsCancelled = true;
+                saleReturn.CancelledUtc = DateTime.UtcNow;
+                saleReturn.CancelledBy = User.Identity?.Name;
+                saleReturn.CancellationReason = reason;
                 _context.SaveChanges();
 
                 transaction.Commit();
-                return Ok(new { success = true, message = "Sale return deleted successfully." });
+                return Ok(new { success = true, message = "Sale return cancelled successfully." });
             }
             catch (Exception ex)
             {
@@ -156,18 +169,30 @@ namespace InventorySystem.Controllers
 
         // ── LIST data (with optional search + date range) ─────────────────────
         [HttpGet]
-        public IActionResult GetSaleReturns(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50)
+        public IActionResult GetSaleReturns(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50, bool includeCancelled = false)
         {
-            var query = _context.SaleReturn.AsQueryable();
+            var query = includeCancelled
+                ? _context.SaleReturn.IgnoreQueryFilters().Where(s => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(s.BranchID ?? 1))
+                : _context.SaleReturn.AsQueryable();
+            page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim();
+                var parties = _context.Parties.Where(p => p.PartyName.Contains(term)).Select(p => p.PartyId.ToString());
+                query = query.Where(s => parties.Contains(s.CustomerID) || (s.RefNo != null && s.RefNo.Contains(term)) || s.SaleReturnId.ToString().Contains(term));
+            }
+
 
             if (from.HasValue) query = query.Where(r => r.ReturnDate >= from.Value.Date);
             if (to.HasValue) query = query.Where(r => r.ReturnDate < to.Value.Date.AddDays(1));
 
+            var totalCount = query.Count();
             var returns = query
                 .OrderByDescending(r => r.SaleReturnId)
                 .Select(r => new
                 {
                     r.SaleReturnId,
+                r.IsCancelled,
                     ReturnDate = r.ReturnDate,
                     r.CustomerID,
                     CustomerName = _context.Parties
@@ -179,11 +204,12 @@ namespace InventorySystem.Controllers
                     r.NetAmount,
                     ItemCount = _context.SaleReturnBody.Count(b => b.SaleReturnId == r.SaleReturnId)
                 })
-                .ToList();
+                .Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
             var result = returns.Select(r => new
             {
                 r.SaleReturnId,
+                r.IsCancelled,
                 ReturnDate = r.ReturnDate.HasValue ? r.ReturnDate.Value.ToString("yyyy-MM-dd") : "",
                 CustomerName = r.CustomerName ?? $"#{r.CustomerID}",
                 r.RefNo,
@@ -192,18 +218,7 @@ namespace InventorySystem.Controllers
                 r.ItemCount
             });
 
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var q = search.Trim().ToLower();
-                result = result.Where(r =>
-                    (r.CustomerName ?? "").ToLower().Contains(q) ||
-                    (r.RefNo ?? "").ToLower().Contains(q) ||
-                    r.SaleReturnId.ToString().Contains(q));
-            }
-
-            var resultList = result.ToList();
-            var totalCount = resultList.Count;
-            var paged = resultList.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            var paged = result.ToList();
 
             return Json(new { data = paged, totalCount, page, pageSize });
         }
@@ -255,7 +270,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public IActionResult Print(int id)
         {
-            var saleReturn = _context.SaleReturn
+            var saleReturn = _context.SaleReturn.IgnoreQueryFilters().Where(s => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(s.BranchID ?? 1))
                 .Include(r => r.SaleReturnBodies)
                 .FirstOrDefault(r => r.SaleReturnId == id);
             if (saleReturn == null) return NotFound();
@@ -366,7 +381,7 @@ namespace InventorySystem.Controllers
         }
 
         /// <summary>Restores stock and removes all ledger/voucher/body rows tied to this return.</summary>
-        private async Task ReverseSaleReturnEffectsAsync(SaleReturn saleReturn, List<SaleReturnBody> bodies)
+        private async Task ReverseSaleReturnEffectsAsync(SaleReturn saleReturn, List<SaleReturnBody> bodies, bool keepBodies = false)
         {
             var branchId = saleReturn.BranchID ?? 1;
 
@@ -381,7 +396,7 @@ namespace InventorySystem.Controllers
             var returnLedgers = _context.AccountLedger
                 .Where(l => l.TransactionType == TransactionTypes.CreditNote && l.ReferenceId == saleReturn.SaleReturnId)
                 .ToList();
-            _context.AccountLedger.RemoveRange(returnLedgers);
+            foreach (var historical in returnLedgers) historical.IsVoid = true;
 
             // Remove auto-payment voucher(s) + their ledger rows
             var vouchers = _context.PaymentVoucher.Where(v => v.SaleReturnId == saleReturn.SaleReturnId).ToList();
@@ -390,9 +405,9 @@ namespace InventorySystem.Controllers
                 var paymentLedgers = _context.AccountLedger
                     .Where(l => l.TransactionType == TransactionTypes.Payment && l.ReferenceId == v.VoucherId)
                     .ToList();
-                _context.AccountLedger.RemoveRange(paymentLedgers);
+                foreach (var historical in paymentLedgers) historical.IsVoid = true;
             }
-            _context.PaymentVoucher.RemoveRange(vouchers);
+            foreach (var historical in vouchers) historical.IsVoid = true;
 
             // Void the matching double-entry voucher, if one was posted
             if (_accountingOptions.PostToGeneralLedger && saleReturn.GLVoucherId != null)
@@ -402,7 +417,7 @@ namespace InventorySystem.Controllers
             }
 
             // Remove the old line items
-            _context.SaleReturnBody.RemoveRange(bodies);
+            if (!keepBodies) _context.SaleReturnBody.RemoveRange(bodies);
         }
 
         private static string GetPaymentModeLabel(int? mode) => mode switch

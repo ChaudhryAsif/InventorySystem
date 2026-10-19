@@ -33,16 +33,13 @@ public class StockServiceTests
     }
 
     [Fact]
-    public async Task AdjustAsync_NoExistingRow_NegativeDelta_CreatesNegativeQuantity()
+    public async Task AdjustAsync_NoExistingRow_NegativeDelta_IsRejected()
     {
         using var db = NewContext();
         var svc = new StockService(db);
 
-        await svc.AdjustAsync(itemId: 2, branchId: 1, delta: -10m);
-        await db.SaveChangesAsync();
-
-        var stock = await db.Stock.SingleAsync(s => s.ItemId == 2 && s.BranchId == 1);
-        Assert.Equal(-10m, stock.Quantity);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.AdjustAsync(itemId: 2, branchId: 1, delta: -10m));
+        Assert.Empty(db.Stock.Local);
     }
 
     [Fact]
@@ -61,19 +58,16 @@ public class StockServiceTests
     }
 
     [Fact]
-    public async Task AdjustAsync_ExistingRow_NegativeDelta_DecreasesQuantity_CanGoNegative()
+    public async Task AdjustAsync_ExistingRow_Shortage_IsRejectedWithoutChangingStock()
     {
         using var db = NewContext();
         db.Stock.Add(new Stock { ItemId = 4, BranchId = 1, Quantity = 5m, LastUpdated = DateTime.Now.AddDays(-1) });
         await db.SaveChangesAsync();
 
         var svc = new StockService(db);
-        await svc.AdjustAsync(itemId: 4, branchId: 1, delta: -12m);
-        await db.SaveChangesAsync();
-
-        // Current behavior has no floor at zero — confirm it, not invent one.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.AdjustAsync(itemId: 4, branchId: 1, delta: -12m));
         var stock = await db.Stock.SingleAsync(s => s.ItemId == 4 && s.BranchId == 1);
-        Assert.Equal(-7m, stock.Quantity);
+        Assert.Equal(5m, stock.Quantity);
     }
 
     [Fact]

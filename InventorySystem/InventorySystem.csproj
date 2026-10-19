@@ -23,4 +23,12 @@
     <Folder Include="wwwroot\uploads\items\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The offline payload is uploaded only by the publish targets, never shipped in the app. -->
+    <Compile Remove="Deployment\**" />
+    <Content Update="Deployment\**" CopyToPublishDirectory="Never" CopyToOutputDirectory="Never" />
+    <None Update="Deployment\**" CopyToPublishDirectory="Never" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+  <!-- Keep publish profiles as plain settings so Visual Studio can display site details. -->
+  <Import Project="Deployment\Maintenance.targets" />
 </Project>

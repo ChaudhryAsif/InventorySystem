@@ -1,4 +1,6 @@
 ﻿using InventorySystem.Core.Models;
+using InventorySystem.Core.Options;
+using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
 
 namespace InventorySystem.Data
@@ -8,8 +10,15 @@ namespace InventorySystem.Data
         // ── Static Seed Date to prevent Model Change Warnings ────────────────────
         private static readonly DateTime SeedDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
-            : base(options) { }
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IOptions<BranchOptions>? branches = null)
+            : base(options)
+        {
+            if (branches?.Value.MultiBranchEnabled == false)
+            {
+                RestrictBranches = true;
+                AllowedBranchIds = [BranchOptions.DefaultBranchId];
+            }
+        }
 
         // ── Master data ──────────────────────────────────────────────────────────
         public DbSet<ItemCategory> ItemCategory => Set<ItemCategory>();
@@ -17,6 +26,9 @@ namespace InventorySystem.Data
         public DbSet<Party> Parties => Set<Party>();
 
         // ── Inventory ────────────────────────────────────────────────────────────
+        public DbSet<OperationRecord> OperationRecords => Set<OperationRecord>();
+        public bool RestrictBranches { get; set; }
+        public int[] AllowedBranchIds { get; set; } = Array.Empty<int>();
         public DbSet<Stock> Stock => Set<Stock>();
         public DbSet<StockAdjustment> StockAdjustment => Set<StockAdjustment>();
         public DbSet<StockAdjustmentDetail> StockAdjustmentDetail => Set<StockAdjustmentDetail>();
@@ -55,6 +67,7 @@ namespace InventorySystem.Data
         public DbSet<CostSheetSettings> CostSheetSettings => Set<CostSheetSettings>();
         public DbSet<CostSheet> CostSheet => Set<CostSheet>();
         public DbSet<CostSheetPly> CostSheetPly => Set<CostSheetPly>();
+        public DbSet<CostSheetMaterial> CostSheetMaterial => Set<CostSheetMaterial>();
 
         // ── Production ────────────────────────────────────────────────────────────
         public DbSet<ProductionOrder> ProductionOrder => Set<ProductionOrder>();
@@ -77,6 +90,43 @@ namespace InventorySystem.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<OperationRecord>().HasIndex(o => new { o.UserId, o.Action, o.RequestId }).IsUnique().HasFilter("[RequestId] IS NOT NULL");
+            modelBuilder.Entity<Stock>().Property(s => s.Quantity).IsConcurrencyToken();
+            modelBuilder.Entity<ProductionOrder>().Property(o => o.RowVersion).IsRowVersion();
+            modelBuilder.Entity<SaleInvoice>().HasOne(s => s.ProductionOrder).WithMany()
+                .HasForeignKey(s => s.ProductionOrderId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProductionMaterial>().Property(m => m.KgPerUnit).HasPrecision(18, 6);
+            modelBuilder.Entity<ProductionMaterial>().Property(m => m.RequiredKg).HasPrecision(18, 3);
+            modelBuilder.Entity<ProductionMaterial>().Property(m => m.RatePerKg).HasPrecision(18, 4);
+            modelBuilder.Entity<ProductionConsumption>().Property(m => m.ActualKg).HasPrecision(18, 3);
+            modelBuilder.Entity<ProductionConsumption>().Property(m => m.PlannedKg).HasPrecision(18, 3);
+            modelBuilder.Entity<CostSheetPly>().Property(m => m.KGs).HasPrecision(18, 6);
+            modelBuilder.Entity<CostSheet>().Property(m => m.GlueKgPerBox).HasPrecision(18, 6);
+            modelBuilder.Entity<CostSheet>().Property(m => m.SilicateKgPerBox).HasPrecision(18, 6);
+            modelBuilder.Entity<Items>().Property(i => i.ReorderLevel).HasPrecision(18, 2).HasDefaultValue(50m);
+            modelBuilder.Entity<AppUser>().Property(u => u.BranchIds).HasDefaultValue("1");
+            modelBuilder.Entity<CostSheetMaterial>().Property(m => m.Quantity).HasPrecision(18, 6);
+            modelBuilder.Entity<CostSheetMaterial>().Property(m => m.Rate).HasPrecision(18, 4);
+            modelBuilder.Entity<CostSheetMaterial>().Property(m => m.Cost).HasPrecision(18, 2);
+            modelBuilder.Entity<ProductionMaterial>().Property(m => m.Unit).HasDefaultValue("kg");
+            modelBuilder.Entity<ProductionConsumption>().Property(m => m.Unit).HasDefaultValue("kg");
+            modelBuilder.Entity<Items>().Property(i => i.ItemType).HasDefaultValue("RawMaterial");
+            modelBuilder.Entity<Items>().Property(i => i.StockUnit).HasDefaultValue("pcs");
+            modelBuilder.Entity<ProductionOrder>().Property(o => o.BranchId).HasDefaultValue(1);
+            modelBuilder.Entity<Items>().HasIndex(i => i.Barcode).IsUnique().HasFilter("[Barcode] IS NOT NULL");
+            modelBuilder.Entity<Stock>().HasQueryFilter(s => !RestrictBranches || AllowedBranchIds.Contains(s.BranchId));
+            modelBuilder.Entity<SaleInvoice>().HasQueryFilter(s => !s.IsCancelled && (!RestrictBranches || AllowedBranchIds.Contains(s.BranchID ?? 1)));
+            modelBuilder.Entity<PurchaseInvoice>().HasQueryFilter(s => !s.IsCancelled && (!RestrictBranches || AllowedBranchIds.Contains(s.BranchID ?? 1)));
+            modelBuilder.Entity<SaleReturn>().HasQueryFilter(s => !s.IsCancelled && (!RestrictBranches || AllowedBranchIds.Contains(s.BranchID ?? 1)));
+            modelBuilder.Entity<PurchaseReturn>().HasQueryFilter(s => !s.IsCancelled && (!RestrictBranches || AllowedBranchIds.Contains(s.BranchID ?? 1)));
+            modelBuilder.Entity<StockAdjustment>().HasQueryFilter(s => !RestrictBranches || AllowedBranchIds.Contains(s.BranchId));
+            modelBuilder.Entity<AccountLedger>().HasQueryFilter(s => !s.IsVoid && (!RestrictBranches || AllowedBranchIds.Contains((s.BranchId ?? 1))));
+            modelBuilder.Entity<PaymentVoucher>().HasQueryFilter(s => !s.IsVoid && (!RestrictBranches || AllowedBranchIds.Contains((s.BranchId ?? 1))));
+            modelBuilder.Entity<Voucher>().HasQueryFilter(s => !RestrictBranches || AllowedBranchIds.Contains((s.BranchId ?? 1)));
+            modelBuilder.Entity<GeneralLedger>().HasQueryFilter(s => !RestrictBranches || AllowedBranchIds.Contains((s.BranchId ?? 1)));
+            modelBuilder.Entity<CostSheet>().HasQueryFilter(s => !RestrictBranches || AllowedBranchIds.Contains((s.BranchID ?? 1)));
+            modelBuilder.Entity<ProductionOrder>().HasQueryFilter(s => !RestrictBranches || ((s.UsesEstimatedConsumption && AllowedBranchIds.Contains(s.BranchId)) || (!s.UsesEstimatedConsumption && s.CostSheet != null && AllowedBranchIds.Contains(s.CostSheet.BranchID ?? 1))));
+
             // ── Value Generation ────────────────────────────────────────────────────
             modelBuilder.Entity<PurchaseInvoiceBody>()
                 .Property(p => p.Srno).ValueGeneratedOnAdd();
@@ -119,12 +169,12 @@ namespace InventorySystem.Data
             // Stock
             modelBuilder.Entity<Stock>()
                 .Property(x => x.Quantity)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             // StockAdjustmentDetail
             modelBuilder.Entity<StockAdjustmentDetail>()
                 .Property(x => x.Quantity)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             modelBuilder.Entity<StockAdjustmentDetail>()
                 .Property(x => x.TotalCost)
@@ -166,7 +216,7 @@ namespace InventorySystem.Data
             // PurchaseInvoiceBody
             modelBuilder.Entity<PurchaseInvoiceBody>()
                 .Property(x => x.Quantity)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             modelBuilder.Entity<PurchaseInvoiceBody>()
                 .Property(x => x.PurPrice)
@@ -200,7 +250,7 @@ namespace InventorySystem.Data
             // PurchaseReturnBody
             modelBuilder.Entity<PurchaseReturnBody>()
                 .Property(x => x.Quantity)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             modelBuilder.Entity<PurchaseReturnBody>()
                 .Property(x => x.PurPrice)
@@ -250,7 +300,7 @@ namespace InventorySystem.Data
             // SaleInvoiceBody
             modelBuilder.Entity<SaleInvoiceBody>()
                 .Property(x => x.Quantity)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             modelBuilder.Entity<SaleInvoiceBody>()
                 .Property(x => x.SalePrice)
@@ -280,7 +330,7 @@ namespace InventorySystem.Data
             // SaleReturnBody
             modelBuilder.Entity<SaleReturnBody>()
                 .Property(x => x.Quantity)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             modelBuilder.Entity<SaleReturnBody>()
                 .Property(x => x.SalePrice)
@@ -301,59 +351,59 @@ namespace InventorySystem.Data
             // CostSheet
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.Length)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.Width)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.Height)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.Flap)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AutoFlapGap)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.SheetWidthIn)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.SheetLengthIn)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.WithFlap)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AdjWidthIn)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AdjLength1In)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AdjLength2In)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AdjWidthMm)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AdjLengthMm)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.TotalSheetSqIn)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.PrintingCost)
@@ -377,7 +427,7 @@ namespace InventorySystem.Data
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.GlueSilicateKg)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.GlueSilicateCost)
@@ -418,7 +468,7 @@ namespace InventorySystem.Data
 
             modelBuilder.Entity<CostSheetPly>()
                 .Property(x => x.KGs)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 6);
 
             modelBuilder.Entity<CostSheetPly>()
                 .Property(x => x.Cost)
@@ -468,32 +518,32 @@ namespace InventorySystem.Data
             // ProductionMaterial
             modelBuilder.Entity<ProductionMaterial>()
                 .Property(x => x.KgPerUnit)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 6);
 
             modelBuilder.Entity<ProductionMaterial>()
                 .Property(x => x.RequiredKg)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             modelBuilder.Entity<ProductionMaterial>()
                 .Property(x => x.AvailableKg)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             modelBuilder.Entity<ProductionMaterial>()
                 .Property(x => x.ShortfallKg)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             // ProductionConsumption
             modelBuilder.Entity<ProductionConsumption>()
                 .Property(x => x.PlannedKg)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             modelBuilder.Entity<ProductionConsumption>()
                 .Property(x => x.ActualKg)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             modelBuilder.Entity<ProductionConsumption>()
                 .Property(x => x.VarianceKg)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 3);
 
             // Party
             modelBuilder.Entity<Party>()
@@ -570,59 +620,59 @@ namespace InventorySystem.Data
             // CostSheet - ALL decimal properties
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.Length)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.Width)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.Height)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.Flap)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AutoFlapGap)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.SheetWidthIn)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.SheetLengthIn)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.WithFlap)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AdjWidthIn)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AdjLength1In)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AdjLength2In)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AdjWidthMm)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.AdjLengthMm)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.TotalSheetSqIn)
-                .HasPrecision(18, 2);
+                .HasPrecision(22, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.PrintingCost)
@@ -646,7 +696,7 @@ namespace InventorySystem.Data
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.GlueSilicateKg)
-                .HasPrecision(18, 2);
+                .HasPrecision(18, 6);
 
             modelBuilder.Entity<CostSheet>()
                 .Property(x => x.GlueSilicateCost)
@@ -897,6 +947,26 @@ namespace InventorySystem.Data
                 new Permission { Id = 29, Code = "WhatsApp.View",         Name = "View WhatsApp Inbox",      Module = "WhatsApp",         Action = "View"     },
                 new Permission { Id = 30, Code = "WhatsApp.Config",       Name = "Configure WhatsApp",       Module = "WhatsApp",         Action = "Config"   },
                 new Permission { Id = 31, Code = "WhatsApp.Reply",        Name = "Reply to Customers",       Module = "WhatsApp",         Action = "Reply"    },
+                new Permission { Id = 32, Code = "Sale.Edit", Name = "Sale Edit", Module = "Sale", Action = "Edit" },
+                new Permission { Id = 33, Code = "Sale.Delete", Name = "Sale Delete", Module = "Sale", Action = "Delete" },
+                new Permission { Id = 34, Code = "Production.Edit", Name = "Production Edit", Module = "Production", Action = "Edit" },
+                new Permission { Id = 35, Code = "Production.Delete", Name = "Production Delete", Module = "Production", Action = "Delete" },
+                new Permission { Id = 36, Code = "StockAdjustment.Post", Name = "StockAdjustment Post", Module = "StockAdjustment", Action = "Post" },
+                new Permission { Id = 37, Code = "StockAdjustment.Delete", Name = "StockAdjustment Delete", Module = "StockAdjustment", Action = "Delete" },
+                new Permission { Id = 38, Code = "Parties.View", Name = "Parties View", Module = "Parties", Action = "View" },
+                new Permission { Id = 39, Code = "Parties.Create", Name = "Parties Create", Module = "Parties", Action = "Create" },
+                new Permission { Id = 40, Code = "Parties.Edit", Name = "Parties Edit", Module = "Parties", Action = "Edit" },
+                new Permission { Id = 41, Code = "Parties.Delete", Name = "Parties Delete", Module = "Parties", Action = "Delete" },
+                new Permission { Id = 42, Code = "Accounts.Edit", Name = "Accounts Edit", Module = "Accounts", Action = "Edit" },
+                new Permission { Id = 43, Code = "Accounts.Post", Name = "Accounts Post", Module = "Accounts", Action = "Post" },
+                new Permission { Id = 44, Code = "SaleReturn.View", Name = "SaleReturn View", Module = "SaleReturn", Action = "View" },
+                new Permission { Id = 45, Code = "SaleReturn.Create", Name = "SaleReturn Create", Module = "SaleReturn", Action = "Create" },
+                new Permission { Id = 46, Code = "SaleReturn.Edit", Name = "SaleReturn Edit", Module = "SaleReturn", Action = "Edit" },
+                new Permission { Id = 47, Code = "SaleReturn.Delete", Name = "SaleReturn Delete", Module = "SaleReturn", Action = "Delete" },
+                new Permission { Id = 48, Code = "PurchaseReturn.View", Name = "PurchaseReturn View", Module = "PurchaseReturn", Action = "View" },
+                new Permission { Id = 49, Code = "PurchaseReturn.Create", Name = "PurchaseReturn Create", Module = "PurchaseReturn", Action = "Create" },
+                new Permission { Id = 50, Code = "PurchaseReturn.Edit", Name = "PurchaseReturn Edit", Module = "PurchaseReturn", Action = "Edit" },
+                new Permission { Id = 51, Code = "PurchaseReturn.Delete", Name = "PurchaseReturn Delete", Module = "PurchaseReturn", Action = "Delete" },
             };
             modelBuilder.Entity<Permission>().HasData(permissions);
         }
@@ -918,6 +988,7 @@ namespace InventorySystem.Data
                 new RolePermission { Id = 28, RoleId = 2, PermissionId = 14 }
             };
 
+            modelBuilder.Entity<RolePermission>().HasData(Enumerable.Range(32, 20).Select(id => new RolePermission { Id = 1000 + id, RoleId = 1, PermissionId = id }));
             modelBuilder.Entity<RolePermission>().HasData(adminPermissions);
             modelBuilder.Entity<RolePermission>().HasData(costSheetUserPermissions);
             modelBuilder.Entity<RolePermission>().HasData(
@@ -935,68 +1006,7 @@ namespace InventorySystem.Data
 
         private void SeedMenuItems(ModelBuilder modelBuilder)
         {
-            var menuItems = new MenuItem[]
-            {
-                new MenuItem { Id = 1, Name = "Dashboard", Icon = "📊", Controller = "Home", Action = "Index", SortOrder = 1, RequiredPermission = "Dashboard.View" },
-                new MenuItem { Id = 2, Name = "Item Category", Icon = "📦", Controller = "Category", Action = "Index", SortOrder = 2, RequiredPermission = "ItemCategory.View" },
-                new MenuItem { Id = 3, Name = "Item Management", Icon = "🏷️", Controller = "Item", Action = "Index", SortOrder = 3, RequiredPermission = "Item.View" },
-                new MenuItem { Id = 4, Name = "Product List", Icon = "💰", Controller = "ItemRateList", Action = "Index", SortOrder = 4, RequiredPermission = "Item.View" },
-                new MenuItem { Id = 5, Name = "Parties", Icon = "👥", Controller = "Parties", Action = "Index", SortOrder = 5, RequiredPermission = "Item.View" },
-                new MenuItem { Id = 6, Name = "Purchase Invoice", Icon = "📝", Controller = "Purchase", Action = "Index", SortOrder = 6, RequiredPermission = "Purchase.View" },
-                new MenuItem { Id = 7, Name = "Sale Invoice", Icon = "🧾", Controller = "Sale", Action = "Index", SortOrder = 7, RequiredPermission = "Sale.View" },
-                new MenuItem { Id = 8, Name = "Raw Material Consume", Icon = "🏭", Controller = "Consume", Action = "Index", SortOrder = 8, RequiredPermission = "Item.View" },
-                new MenuItem { Id = 9, Name = "Stock Adjustment", Icon = "📦", SortOrder = 9, RequiredPermission = "StockAdjustment.View" },
-                new MenuItem { Id = 10, Name = "All Adjustments", Icon = "📋", Controller = "StockAdjustment", Action = "Index", ParentId = 9, SortOrder = 1, RequiredPermission = "StockAdjustment.View" },
-                new MenuItem { Id = 11, Name = "New Adjustment", Icon = "➕", Controller = "StockAdjustment", Action = "Create", ParentId = 9, SortOrder = 2, RequiredPermission = "StockAdjustment.Create" },
-                new MenuItem { Id = 12, Name = "Cost Sheet", Icon = "📦", SortOrder = 10, RequiredPermission = "CostSheet.View" },
-                new MenuItem { Id = 13, Name = "All Cost Sheets", Icon = "📋", Controller = "CostSheet", Action = "Index", ParentId = 12, SortOrder = 1, RequiredPermission = "CostSheet.View" },
-                new MenuItem { Id = 14, Name = "New Cost Sheet", Icon = "➕", Controller = "CostSheet", Action = "Create", ParentId = 12, SortOrder = 2, RequiredPermission = "CostSheet.Create" },
-                new MenuItem { Id = 15, Name = "Settings", Icon = "⚙️", Controller = "CostSheet", Action = "Settings", ParentId = 12, SortOrder = 3, RequiredPermission = "CostSheet.Settings" },
-                new MenuItem { Id = 16, Name = "Production", Icon = "🏭", SortOrder = 11, RequiredPermission = "Production.View" },
-                new MenuItem { Id = 17, Name = "All Orders", Icon = "📋", Controller = "Production", Action = "Index", ParentId = 16, SortOrder = 1, RequiredPermission = "Production.View" },
-                new MenuItem { Id = 18, Name = "New Order", Icon = "➕", Controller = "Production", Action = "Create", ParentId = 16, SortOrder = 2, RequiredPermission = "Production.Create" },
-
-                // Add to the menuItems array inside SeedMenuItems():
-                new MenuItem { Id = 19, Name = "Accounts",           Icon = "💰", SortOrder = 12, RequiredPermission = "Accounts.View" },
-                new MenuItem { Id = 20, Name = "Chart of Accounts",  Icon = "📒", Controller = "Accounts", Action = "ChartOfAccounts", ParentId = 19, SortOrder = 1, RequiredPermission = "Accounts.View" },
-                new MenuItem { Id = 21, Name = "Payment Voucher",    Icon = "💳", Controller = "Accounts", Action = "PaymentVoucher",  ParentId = 19, SortOrder = 2, RequiredPermission = "Accounts.Create" },
-                new MenuItem { Id = 22, Name = "Receipt Voucher",    Icon = "🧾", Controller = "Accounts", Action = "ReceiptVoucher",  ParentId = 19, SortOrder = 3, RequiredPermission = "Accounts.Create" },
-                new MenuItem { Id = 23, Name = "Journal Voucher",    Icon = "📓", Controller = "Accounts", Action = "JournalVoucher",  ParentId = 19, SortOrder = 4, RequiredPermission = "Accounts.Create" },
-                new MenuItem { Id = 24, Name = "Contra Voucher",     Icon = "🏦", Controller = "Accounts", Action = "ContraVoucher",   ParentId = 19, SortOrder = 5, RequiredPermission = "Accounts.Create" },
-                new MenuItem { Id = 25, Name = "Voucher List",       Icon = "📋", Controller = "Accounts", Action = "VoucherList",     ParentId = 19, SortOrder = 6, RequiredPermission = "Accounts.View" },
-                new MenuItem { Id = 26, Name = "General Ledger",     Icon = "📖", Controller = "Accounts", Action = "GeneralLedgerView", ParentId = 19, SortOrder = 7, RequiredPermission = "Accounts.View" },
-                new MenuItem { Id = 27, Name = "Party Statement",    Icon = "👤", Controller = "Accounts", Action = "PartyLedger",     ParentId = 19, SortOrder = 8, RequiredPermission = "Accounts.View" },
-                new MenuItem { Id = 28, Name = "Trial Balance",      Icon = "⚖️", Controller = "Accounts", Action = "TrialBalance",    ParentId = 19, SortOrder = 9, RequiredPermission = "Accounts.View" },
-                new MenuItem { Id = 29, Name = "Profit & Loss",      Icon = "📈", Controller = "Accounts", Action = "ProfitAndLoss",   ParentId = 19, SortOrder = 10, RequiredPermission = "Accounts.View" },
-                new MenuItem { Id = 30, Name = "Balance Sheet",      Icon = "🏦", Controller = "Accounts", Action = "BalanceSheet",    ParentId = 19, SortOrder = 11, RequiredPermission = "Accounts.View" },
-                
-                // Reports
-                new MenuItem { Id = 31, Name = "Reports",          Icon = "📊", SortOrder = 13, RequiredPermission = "Report.View" },
-                new MenuItem { Id = 32, Name = "Stock Report",     Icon = "📦", Controller = "Report", Action = "StockReport",    ParentId = 31, SortOrder = 1, RequiredPermission = "Report.View" },
-                new MenuItem { Id = 33, Name = "Purchase Report",  Icon = "📝", Controller = "Report", Action = "PurchaseReport", ParentId = 31, SortOrder = 2, RequiredPermission = "Report.View" },
-                new MenuItem { Id = 34, Name = "Sale Report",      Icon = "🧾", Controller = "Report", Action = "SaleReport",     ParentId = 31, SortOrder = 3, RequiredPermission = "Report.View" },
-                new MenuItem { Id = 35, Name = "Consume Report",   Icon = "🏭", Controller = "Report", Action = "ConsumeReport",  ParentId = 31, SortOrder = 4, RequiredPermission = "Report.View" },
-
-                // New Accounts sub-menu items
-                new MenuItem { Id = 36, Name = "Cash Book",          Icon = "💵", Controller = "Accounts", Action = "CashBook",          ParentId = 19, SortOrder = 12, RequiredPermission = "Accounts.View" },
-                new MenuItem { Id = 37, Name = "Cash Flow",          Icon = "💧", Controller = "Accounts", Action = "CashFlow",          ParentId = 19, SortOrder = 13, RequiredPermission = "Accounts.View" },
-                new MenuItem { Id = 38, Name = "Aging Report",       Icon = "📅", Controller = "Accounts", Action = "AgingReport",       ParentId = 19, SortOrder = 14, RequiredPermission = "Accounts.View" },
-                new MenuItem { Id = 39, Name = "Outstanding Report", Icon = "📋", Controller = "Accounts", Action = "OutstandingReport", ParentId = 19, SortOrder = 15, RequiredPermission = "Accounts.View" },
-
-                // Day Book and Bank Reconciliation
-                new MenuItem { Id = 40, Name = "Day Book",            Icon = "📅", Controller = "Accounts", Action = "DayBook",           ParentId = 19, SortOrder = 16, RequiredPermission = "Accounts.View"   },
-                new MenuItem { Id = 41, Name = "Bank Reconciliation", Icon = "🏦", Controller = "Accounts", Action = "BankReconciliation", ParentId = 19, SortOrder = 17, RequiredPermission = "Accounts.View"   },
-                new MenuItem { Id = 42, Name = "Debit Note",          Icon = "📉", Controller = "Accounts", Action = "DebitNote",          ParentId = 19, SortOrder = 18, RequiredPermission = "Accounts.Create" },
-                new MenuItem { Id = 43, Name = "Credit Note",         Icon = "📈", Controller = "Accounts", Action = "CreditNote",         ParentId = 19, SortOrder = 19, RequiredPermission = "Accounts.Create" },
-                new MenuItem { Id = 44, Name = "Opening Balance",     Icon = "🔓", Controller = "Accounts", Action = "OpeningBalance",     ParentId = 19, SortOrder = 20, RequiredPermission = "Accounts.View"   },
-                
-                // ── WhatsApp ──────────────────────────────────────────────────────────
-                new MenuItem { Id = 50, Name = "WhatsApp",     Icon = "💬",                                                              SortOrder = 21, RequiredPermission = "WhatsApp.View"   },
-                new MenuItem { Id = 51, Name = "Configuration",Icon = "⚙️", Controller = "WhatsApp", Action = "Configure",   ParentId = 50, SortOrder = 1, RequiredPermission = "WhatsApp.Config" },
-                new MenuItem { Id = 52, Name = "Inbox",        Icon = "📥", Controller = "WhatsApp", Action = "Inbox",        ParentId = 50, SortOrder = 2, RequiredPermission = "WhatsApp.View"   },
-                new MenuItem { Id = 53, Name = "Test Message", Icon = "🧪", Controller = "WhatsApp", Action = "TestMessage",  ParentId = 50, SortOrder = 3, RequiredPermission = "WhatsApp.Config" },
-                new MenuItem { Id = 54, Name = "AI Playground", Icon = "🤖", Controller = "WhatsApp", Action = "Playground",   ParentId = 50, SortOrder = 4, RequiredPermission = "WhatsApp.Config" },
-            };
+            var menuItems = LegacyMenuSeed.Create();
             modelBuilder.Entity<MenuItem>().HasData(menuItems);
         }
 

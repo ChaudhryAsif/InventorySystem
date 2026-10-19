@@ -1,4 +1,4 @@
-﻿let adjustmentItems = [];
+let adjustmentItems = [];
 let allCategories = [];
 
 // Initialize on page load
@@ -98,10 +98,10 @@ async function searchItems() {
                 onmouseout="this.style.background=''">
                 <td style="padding: 0.75rem;">${item.itemID}</td>
                 <td style="padding: 0.75rem;">
-                    <strong>${item.itemName || 'N/A'}</strong><br>
-                    <small style="color: #6b7280;">${item.companyName || ''}</small>
+                    <strong>${escapeHtml(item.itemName || 'N/A')}</strong><br>
+                    <small style="color: #6b7280;">${escapeHtml(item.companyName || '')}</small>
                 </td>
-                <td style="padding: 0.75rem;">${item.categoryName || 'N/A'}</td>
+                <td style="padding: 0.75rem;">${escapeHtml(item.categoryName || 'N/A')}</td>
                 <td class="num" style="padding: 0.75rem; text-align: right; font-weight: 600;">${item.currentStock || 0}</td>
                 <td class="num" style="padding: 0.75rem; text-align: right; font-weight: 600; color: #059669;">${item.salePrice ? item.salePrice.toFixed(2) : '0.00'}</td>
                 <td style="padding: 0.75rem;">

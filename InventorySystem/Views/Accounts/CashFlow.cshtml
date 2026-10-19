@@ -1,4 +1,4 @@
-﻿@{
+@{
     Layout = "_Layout";
     ViewData["Title"] = "Cash Flow Statement";
 }
@@ -194,7 +194,7 @@
             }
             tbody.innerHTML = rows.map(r => `
                 <tr>
-                    <td>${r.description}</td>
+                    <td>${escapeHtml(r.description)}</td>
                     <td style="text-align:right;color:#155724">${r.inflow  > 0 ? fmt(r.inflow)  : '—'}</td>
                     <td style="text-align:right;color:#721c24">${r.outflow > 0 ? fmt(r.outflow) : '—'}</td>
                     <td style="text-align:right;font-weight:600;color:${r.net >= 0 ? '#155724' : '#721c24'}">${fmt(r.net)}</td>

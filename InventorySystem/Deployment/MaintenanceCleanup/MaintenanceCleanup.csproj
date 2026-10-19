@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net48</TargetFramework>
+    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
+    <NuGetAudit>false</NuGetAudit>
+    <WebDeployLibrary Condition="Exists('$(ProgramW6432)\IIS\Microsoft Web Deploy V3\Microsoft.Web.Deployment.dll')">$(ProgramW6432)\IIS\Microsoft Web Deploy V3\Microsoft.Web.Deployment.dll</WebDeployLibrary>
+    <WebDeployLibrary Condition="'$(WebDeployLibrary)' == ''">$(MSBuildProgramFiles32)\IIS\Microsoft Web Deploy V3\Microsoft.Web.Deployment.dll</WebDeployLibrary>
+  </PropertyGroup>
+  <ItemGroup><Reference Include="Microsoft.Web.Deployment"><HintPath>$(WebDeployLibrary)</HintPath><Private>true</Private></Reference></ItemGroup>
+</Project>

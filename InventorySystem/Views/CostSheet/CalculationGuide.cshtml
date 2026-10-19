@@ -1,4 +1,4 @@
-@model InventorySystem.Core.Models.CostSheetSettings
+﻿@model InventorySystem.Core.Models.CostSheetSettings
 @{
     Layout = "_Layout";
     ViewData["Title"] = "Cost Sheet Calculation Guide - Complete Documentation";
@@ -7,6 +7,15 @@
 <link href="~/css/calculationguide.css" rel="stylesheet" />
 
 <div class="guide-wrapper">
+    <section class="section">
+        <h2>Client carton cost sheet</h2>
+        <p>New RSC sheets calculate paper KG from area × GSM ÷ 1,550,000, with the flute factor applied to fluted layers. Width allowance is 0.63 in and length allowance is 0.55 in by default. One flap is added to sheet length.</p>
+        <p>Printing = area ÷ 1,000 × colours × printing rate. Lamination sheet = area ÷ 144 × sheet rate, rounded to 2 decimals; choosing No sets this charge, glue-lamination and lamination-chemical costs and stock quantities to zero. General glue and silicate remain separate.</p>
+        <p>Labour, energy, wood, starch and overhead rates multiply paper KG. Pins use the entered rate per pin. Base cost includes paper, printing, lamination when selected and operating costs. Commission A, commission B, profit and additional tax each use base cost × percentage ÷ 100. GST = (base cost + profit) × GST percentage ÷ 100. Withholding uses operating costs. Final rate = (base + commissions + profit) ÷ MOQ + GST + additional tax + withholding. Labour of 10 per KG on 0.5 KG paper costs Rs. 5.00.</p>
+        <p>Paper and adhesive stock estimates are per box. Link the stock items before Final, or set unused applications to zero. Lamination stock links are needed only when lamination is Yes and their application counts are above zero. Existing saved sheets retain the manual method unless explicitly switched.</p>
+        <h3>Manual method / existing saved sheets</h3>
+        <p>The sections below describe the manual method, which uses entered paper KG and overhead percentages.</p>
+    </section>
 
     <!-- HERO SECTION -->
     <div class="hero-section">

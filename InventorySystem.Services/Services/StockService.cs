@@ -16,7 +16,11 @@ namespace InventorySystem.Core.Services
         // Finds the Stock row for (itemId, branchId); creates it if missing, else adjusts Quantity.
         public async Task AdjustAsync(long itemId, int branchId, decimal delta)
         {
-            var stock = await _context.Stock.FirstOrDefaultAsync(s => s.ItemId == itemId && s.BranchId == branchId);
+            if (_context.RestrictBranches && !_context.AllowedBranchIds.Contains(branchId)) throw new InvalidOperationException("Branch access denied.");
+            var stock = _context.Stock.Local.FirstOrDefault(s => s.ItemId == itemId && s.BranchId == branchId)
+                ?? await _context.Stock.FirstOrDefaultAsync(s => s.ItemId == itemId && s.BranchId == branchId);
+            if (itemId <= 0 || branchId <= 0) throw new InvalidOperationException("Invalid item or branch.");
+            if ((stock?.Quantity ?? 0) + delta < 0) throw new InvalidOperationException("Insufficient stock for this operation.");
             if (stock == null)
             {
                 _context.Stock.Add(new Stock { ItemId = itemId, BranchId = branchId, Quantity = delta, LastUpdated = DateTime.Now });

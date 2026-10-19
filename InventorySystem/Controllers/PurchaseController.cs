@@ -39,13 +39,16 @@ namespace InventorySystem.Controllers
             if (model == null || model.Items == null || !model.Items.Any())
                 return BadRequest("Invalid invoice data.");
 
+            try { await InvoiceValidation.Validate(_context, model); }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
+
             var validItems = model.Items.Where(i => i.Itemid != null && i.Quantity > 0).ToList();
             if (!validItems.Any())
                 return BadRequest("No valid items provided.");
 
             var branchId = model.BranchID ?? 1;
 
-            using var transaction = _context.Database.BeginTransaction();
+            using var transaction = _context.Database.BeginAtomicTransaction();
             try
             {
                 var invoice = new PurchaseInvoice
@@ -90,23 +93,43 @@ namespace InventorySystem.Controllers
             if (model.Items == null || !model.Items.Any())
                 return BadRequest("Invalid invoice data.");
 
+            try { await InvoiceValidation.Validate(_context, model); }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
+
             var validItems = model.Items.Where(i => i.Itemid != null && i.Quantity > 0).ToList();
             if (!validItems.Any())
                 return BadRequest("No valid items provided.");
 
             var branchId = model.BranchID ?? 1;
 
-            using var transaction = _context.Database.BeginTransaction();
+            using var transaction = _context.Database.BeginAtomicTransaction();
             try
             {
                 var invoice = _context.PurchaseInvoice.FirstOrDefault(p => p.PurchaseId == model.PurchaseId);
                 if (invoice == null)
                     return Ok(new { success = false, message = "Invoice not found." });
 
+                if (await _context.PurchaseReturn.AnyAsync(r => r.OriginalPurchaseId == invoice.PurchaseId))
+                    return BadRequest(new { success = false, message = "Cancel linked returns before editing or cancelling this invoice." });
+
                 var bodies = _context.PurchaseInvoiceBody.Where(b => b.PurchaseId == invoice.PurchaseId).ToList();
 
-                // 1) Reverse the old invoice's effects (restore stock, drop ledger + bodies)
-                await ReversePurchaseEffectsAsync(invoice, bodies);
+                // Apply only the net change: old receipts may already be consumed.
+                var stockChanges = new Dictionary<(long ItemId, int BranchId), decimal>();
+                foreach (var body in bodies.Where(b => b.Itemid.HasValue))
+                {
+                    var key = (body.Itemid!.Value, invoice.BranchID ?? 1);
+                    stockChanges[key] = stockChanges.GetValueOrDefault(key) - (body.Quantity ?? 0);
+                }
+                foreach (var line in validItems)
+                {
+                    var key = (line.Itemid!.Value, branchId);
+                    stockChanges[key] = stockChanges.GetValueOrDefault(key) + (line.Quantity ?? 0);
+                }
+                foreach (var change in stockChanges.Where(c => c.Value != 0))
+                    await _stock.AdjustAsync(change.Key.ItemId, change.Key.BranchId, change.Value);
+
+                await ReversePurchaseEffectsAsync(invoice, bodies, adjustStock: false);
                 _context.SaveChanges();
 
                 // 2) Update header + re-apply lines/stock/ledger
@@ -124,7 +147,7 @@ namespace InventorySystem.Controllers
                 invoice.TotalAmount = model.TotalAmount;
                 invoice.AmountPaid = model.NetAmount;
 
-                await ApplyPurchaseLinesAndStockAsync(invoice, validItems, branchId);
+                await ApplyPurchaseLinesAndStockAsync(invoice, validItems, branchId, adjustStock: false);
                 await PostLedgerForPurchaseAsync(invoice);
 
                 transaction.Commit();
@@ -141,21 +164,31 @@ namespace InventorySystem.Controllers
         [HttpPost]
         public async Task<IActionResult> Delete(int id)
         {
-            using var transaction = _context.Database.BeginTransaction();
+            var reason = Request.Headers["X-Operation-Reason"].ToString().Trim();
+            if (reason.Length < 3 || reason.Length > 500)
+                return BadRequest(new { success = false, message = "Enter a cancellation reason (3–500 characters)." });
+
+            using var transaction = _context.Database.BeginAtomicTransaction();
             try
             {
                 var invoice = _context.PurchaseInvoice.FirstOrDefault(p => p.PurchaseId == id);
                 if (invoice == null)
                     return Ok(new { success = false, message = "Invoice not found." });
 
+                if (await _context.PurchaseReturn.AnyAsync(r => r.OriginalPurchaseId == invoice.PurchaseId))
+                    return BadRequest(new { success = false, message = "Cancel linked returns before editing or cancelling this invoice." });
+
                 var bodies = _context.PurchaseInvoiceBody.Where(b => b.PurchaseId == id).ToList();
 
-                await ReversePurchaseEffectsAsync(invoice, bodies);
-                _context.PurchaseInvoice.Remove(invoice);
+                await ReversePurchaseEffectsAsync(invoice, bodies, keepBodies: true);
+                invoice.IsCancelled = true;
+                invoice.CancelledUtc = DateTime.UtcNow;
+                invoice.CancelledBy = User.Identity?.Name;
+                invoice.CancellationReason = reason;
                 _context.SaveChanges();
 
                 transaction.Commit();
-                return Ok(new { success = true, message = "Purchase invoice deleted successfully." });
+                return Ok(new { success = true, message = "Purchase invoice cancelled successfully." });
             }
             catch (Exception ex)
             {
@@ -166,18 +199,30 @@ namespace InventorySystem.Controllers
 
         // ── LIST data (with optional search + date range) ─────────────────────
         [HttpGet]
-        public IActionResult GetPurchases(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50)
+        public IActionResult GetPurchases(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50, bool includeCancelled = false)
         {
-            var query = _context.PurchaseInvoice.AsQueryable();
+            var query = includeCancelled
+                ? _context.PurchaseInvoice.IgnoreQueryFilters().Where(s => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(s.BranchID ?? 1))
+                : _context.PurchaseInvoice.AsQueryable();
+            page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim();
+                var parties = _context.Parties.Where(p => p.PartyName.Contains(term)).Select(p => p.PartyId.ToString());
+                query = query.Where(s => parties.Contains(s.VendorID) || (s.BillNo != null && s.BillNo.Contains(term)) || s.PurchaseId.ToString().Contains(term));
+            }
+
 
             if (from.HasValue) query = query.Where(p => p.PurchaseDate >= from.Value.Date);
             if (to.HasValue) query = query.Where(p => p.PurchaseDate < to.Value.Date.AddDays(1));
 
+            var totalCount = query.Count();
             var purchases = query
                 .OrderByDescending(p => p.PurchaseId)
                 .Select(p => new
                 {
                     p.PurchaseId,
+                p.IsCancelled,
                     PurchaseDate = p.PurchaseDate,
                     p.VendorID,
                     VendorName = _context.Parties
@@ -189,11 +234,12 @@ namespace InventorySystem.Controllers
                     NetAmount = p.AmountPaid,
                     ItemCount = _context.PurchaseInvoiceBody.Count(b => b.PurchaseId == p.PurchaseId)
                 })
-                .ToList();
+                .Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
             var result = purchases.Select(p => new
             {
                 p.PurchaseId,
+                p.IsCancelled,
                 PurchaseDate = p.PurchaseDate.HasValue ? p.PurchaseDate.Value.ToString("yyyy-MM-dd") : "",
                 VendorName = p.VendorName ?? $"#{p.VendorID}",
                 p.BillNo,
@@ -202,18 +248,7 @@ namespace InventorySystem.Controllers
                 p.ItemCount
             });
 
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var q = search.Trim().ToLower();
-                result = result.Where(p =>
-                    (p.VendorName ?? "").ToLower().Contains(q) ||
-                    (p.BillNo ?? "").ToLower().Contains(q) ||
-                    p.PurchaseId.ToString().Contains(q));
-            }
-
-            var resultList = result.ToList();
-            var totalCount = resultList.Count;
-            var paged = resultList.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            var paged = result.ToList();
 
             return Json(new { data = paged, totalCount, page, pageSize });
         }
@@ -238,6 +273,7 @@ namespace InventorySystem.Controllers
                 {
                     b.Itemid,
                     b.Descr,
+                    b.PackageCount, b.PackageType,
                     b.Quantity,
                     b.PurPrice,
                     b.SalePrice,
@@ -276,7 +312,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public IActionResult Print(int id)
         {
-            var invoice = _context.PurchaseInvoice
+            var invoice = _context.PurchaseInvoice.IgnoreQueryFilters().Where(s => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(s.BranchID ?? 1))
                 .Include(p => p.PurchaseInvoiceBodies)
                 .FirstOrDefault(p => p.PurchaseId == id);
             if (invoice == null) return NotFound();
@@ -293,7 +329,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public IActionResult GetNextInvoiceNumber()
         {
-            var nextId = (_context.PurchaseInvoice.Max(c => (int?)c.PurchaseId) ?? 0) + 1;
+            var nextId = (_context.PurchaseInvoice.IgnoreQueryFilters().Max(c => (int?)c.PurchaseId) ?? 0) + 1;
             return Json(new { invoiceNo = nextId });
         }
 
@@ -302,7 +338,7 @@ namespace InventorySystem.Controllers
         // ───────────────────────────────────────────────────────────────────────
 
         /// <summary>Adds line items and increases stock (goods received).</summary>
-        private async Task ApplyPurchaseLinesAndStockAsync(PurchaseInvoice invoice, List<PurchaseInvoiceBodyViewModel> validItems, int branchId)
+        private async Task ApplyPurchaseLinesAndStockAsync(PurchaseInvoice invoice, List<PurchaseInvoiceBodyViewModel> validItems, int branchId, bool adjustStock = true)
         {
             foreach (var item in validItems)
             {
@@ -311,6 +347,7 @@ namespace InventorySystem.Controllers
                     PurchaseId = invoice.PurchaseId,
                     Itemid = item.Itemid,
                     Descr = item.Desc,
+                    PackageCount = item.PackageCount, PackageType = item.PackageType,
                     Quantity = item.Quantity,
                     PurPrice = item.PurPrice,
                     SalePrice = item.SalePrice,
@@ -319,7 +356,7 @@ namespace InventorySystem.Controllers
                 });
 
                 var itemId = long.Parse(item.Itemid.ToString()!);
-                await _stock.AdjustAsync(itemId, branchId, item.Quantity ?? 0);
+                if (adjustStock) await _stock.AdjustAsync(itemId, branchId, item.Quantity ?? 0);
             }
             _context.SaveChanges();
         }
@@ -388,12 +425,12 @@ namespace InventorySystem.Controllers
         }
 
         /// <summary>Restores stock and removes all ledger/voucher/body rows tied to this invoice.</summary>
-        private async Task ReversePurchaseEffectsAsync(PurchaseInvoice invoice, List<PurchaseInvoiceBody> bodies)
+        private async Task ReversePurchaseEffectsAsync(PurchaseInvoice invoice, List<PurchaseInvoiceBody> bodies, bool keepBodies = false, bool adjustStock = true)
         {
             var branchId = invoice.BranchID ?? 1;
 
             // Restore stock: goods were added on save, so we subtract on reversal
-            foreach (var body in bodies)
+            foreach (var body in adjustStock ? bodies : [])
             {
                 if (body.Itemid == null) continue;
                 await _stock.AdjustAsync(body.Itemid.Value, branchId, -(body.Quantity ?? 0));
@@ -403,7 +440,7 @@ namespace InventorySystem.Controllers
             var purchaseLedgers = _context.AccountLedger
                 .Where(l => l.TransactionType == TransactionTypes.PurchaseInvoice && l.ReferenceId == invoice.PurchaseId)
                 .ToList();
-            _context.AccountLedger.RemoveRange(purchaseLedgers);
+            foreach (var historical in purchaseLedgers) historical.IsVoid = true;
 
             // Remove auto-payment voucher(s) + their ledger rows
             var vouchers = _context.PaymentVoucher.Where(v => v.PurchaseId == invoice.PurchaseId).ToList();
@@ -412,9 +449,9 @@ namespace InventorySystem.Controllers
                 var paymentLedgers = _context.AccountLedger
                     .Where(l => l.TransactionType == TransactionTypes.Payment && l.ReferenceId == v.VoucherId)
                     .ToList();
-                _context.AccountLedger.RemoveRange(paymentLedgers);
+                foreach (var historical in paymentLedgers) historical.IsVoid = true;
             }
-            _context.PaymentVoucher.RemoveRange(vouchers);
+            foreach (var historical in vouchers) historical.IsVoid = true;
 
             // Void the matching double-entry voucher, if one was posted
             if (_accountingOptions.PostToGeneralLedger && invoice.GLVoucherId != null)
@@ -424,7 +461,7 @@ namespace InventorySystem.Controllers
             }
 
             // Remove the old line items
-            _context.PurchaseInvoiceBody.RemoveRange(bodies);
+            if (!keepBodies) _context.PurchaseInvoiceBody.RemoveRange(bodies);
         }
 
         private static string GetPaymentModeLabel(int? mode) => mode switch

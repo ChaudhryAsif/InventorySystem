@@ -122,8 +122,8 @@ async function loadLedger() {
             <td>${r.date}</td>
             <td><span class="acc-code">${r.voucherNo}</span></td>
             <td><span class="badge badge-primary" style="font-size:0.75rem">${r.voucherType}</span></td>
-            <td>${r.partyName || '—'}</td>
-            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.narration || '—'}</td>
+            <td>${escapeHtml(r.partyName || '—')}</td>
+            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.narration || '—')}</td>
             <td style="text-align:right;color:#2d5f7f;font-weight:600">${r.debit > 0 ? fmt(r.debit) : ''}</td>
             <td style="text-align:right;color:#28a745;font-weight:600">${r.credit > 0 ? fmt(r.credit) : ''}</td>
             <td style="text-align:right" class="${r.balance >= 0 ? 'bal-positive' : 'bal-negative'}">${fmt(Math.abs(r.balance))} ${r.balance >= 0 ? 'Dr' : 'Cr'}</td>

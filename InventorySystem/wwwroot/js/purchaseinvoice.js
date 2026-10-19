@@ -48,6 +48,7 @@ async function loadInvoiceForEdit(id) {
         document.getElementById('invoiceNo').value = inv.purchaseId;
         document.getElementById('billNo').value     = inv.billNo || '';
         if (inv.purchaseDate) document.getElementById('invoiceDate').value = inv.purchaseDate;
+        if (document.getElementById("posBranch")) document.getElementById("posBranch").value = inv.branchID || 1;
 
         document.getElementById('hftxtSupplierId').value = inv.vendorID || '';
         document.getElementById('supplierAccount').value = inv.vendorName || '';
@@ -71,6 +72,8 @@ async function loadInvoiceForEdit(id) {
             row.cells[1].querySelector('input').value = it.itemid;
             row.cells[2].querySelector('input').value = it.descr || '';
             row.cells[3].querySelector('input').value = it.quantity;
+            row.querySelector('.package-count').value = it.packageCount || '';
+            row.querySelector('.package-type').value = it.packageType || '';
             row.cells[4].querySelector('input').value = parseFloat(it.purPrice || 0).toFixed(2);
             row.cells[5].querySelector('input').value = parseFloat(it.salePrice || 0).toFixed(2);
             row.cells[6].querySelector('input').value = it.discPer || 0;
@@ -103,7 +106,11 @@ function addNewRow() {
                 </div>
             </td>
             <td><input type="text" class="table-input" placeholder="Enter item name" readonly></td>
-            <td><input type="number" class="table-input" value="0" step="0.01" data-field="qty"></td>
+            <td>
+                <input type="number" class="table-input" value="0" min="0" step="0.001" data-field="qty" aria-label="Quantity">
+                <input type="hidden" class="package-count" value="">
+                <input type="hidden" class="package-type" value="">
+            </td>
             <td><input type="number" class="table-input" value="0" step="0.01" data-field="price"></td>
             <td><input type="number" class="table-input" value="0" step="0.01"></td>
             <td><input type="number" class="table-input highlight" value="0" data-field="disc"></td>
@@ -185,7 +192,7 @@ function calculateTotals() {
     const discAmount = (invoiceTotal * discPercent) / 100;
     const netAmount = invoiceTotal + gstAmount + freight + otherExp - discAmount;
 
-    document.getElementById('totalQty').value = totalQty.toFixed(0);
+    document.getElementById('totalQty').value = parseFloat(totalQty.toFixed(3)).toString();
     document.getElementById('invoiceTotal').value = invoiceTotal.toFixed(2);
     document.getElementById('gstAmount').value = gstAmount.toFixed(2);
     document.getElementById('discAmount').value = discAmount.toFixed(2);
@@ -202,6 +209,7 @@ function loadNextInvoiceNumber() {
 }
 
 function resetForm() {
+    if (window.posMarkSaved) window.posMarkSaved();
     editId = null;
     const header = document.querySelector('.page-header h2');
     if (header) header.textContent = 'Purchase Invoice';
@@ -276,6 +284,8 @@ document.getElementById('purchaseForm').addEventListener('submit', async functio
         items.push({
             Itemid: parseInt(itemId),
             Desc: row.cells[2].querySelector('input').value,
+            PackageCount: parseInt(row.querySelector('.package-count').value) || null,
+            PackageType: row.querySelector('.package-type').value || null,
             Quantity: qty,
             PurPrice: parseFloat(row.cells[4].querySelector('input').value) || 0,
             SalePrice: parseFloat(row.cells[5].querySelector('input').value) || 0,
@@ -315,6 +325,7 @@ document.getElementById('purchaseForm').addEventListener('submit', async functio
         .then(res => res.json())
         .then(async data => {
             if (data.success) {
+                if (window.posMarkSaved) window.posMarkSaved();
                 await alertDialog('✅ ' + data.message);
                 if (editId) {
                     window.location.href = '/Purchase/List';
@@ -392,11 +403,11 @@ function displaySuppliers(suppliers) {
         row.setAttribute('data-supplier-name', supplier.partyName);
         row.innerHTML = `
                 <td>${supplier.partyId}</td>
-                <td>${supplier.partyName}</td>
+                <td>${escapeHtml(supplier.partyName)}</td>
                 <td><span class="party-badge party-badge-${supplier.partyType}">${formatPartyType(supplier.partyType)}</span></td>
-                <td>${supplier.contactPerson || '-'}</td>
-                <td>${supplier.phone}</td>
-                <td>${supplier.email || '-'}</td>
+                <td>${escapeHtml(supplier.contactPerson || '-')}</td>
+                <td>${escapeHtml(supplier.phone)}</td>
+                <td>${escapeHtml(supplier.email || '-')}</td>
                 <td>Rs. ${parseFloat(supplier.openingBalance || 0).toFixed(2)}</td>
             `;
 
@@ -569,9 +580,9 @@ function displayItems(items) {
         row.innerHTML = `
                 <td>${item.itemID}</td>
                 <td><img src="${item.imageUrl || NO_IMAGE_PLACEHOLDER}" class="item-image-thumb" alt="Item"></td>
-                <td>${item.itemName}</td>
-                <td>${item.categoryName}</td>
-                <td>${item.barcode || '-'}</td>
+                <td>${escapeHtml(item.itemName)}</td>
+                <td>${escapeHtml(item.categoryName)}</td>
+                <td>${escapeHtml(item.barcode || '-')}</td>
                 <td>Rs. ${parseFloat(item.salePrice).toFixed(2)}</td>
                 <td>${stockBadge}</td>
             `;
@@ -602,6 +613,11 @@ function selectItemRow(row, item) {
 function selectItem() {
     if (selectedItem && currentRow) {
         // Fill the row with selected item data
+        // Keep historical packaging on edits, but not when choosing a different item.
+        if (currentRow.cells[1].querySelector('input').value.toString() !== selectedItem.itemID.toString()) {
+            currentRow.querySelector('.package-count').value = '';
+            currentRow.querySelector('.package-type').value = '';
+        }
         currentRow.cells[1].querySelector('input').value = selectedItem.itemID;
         currentRow.cells[2].querySelector('input').value = selectedItem.itemName;
         currentRow.cells[4].querySelector('input').value = selectedItem.purchasePrice || selectedItem.salePrice;

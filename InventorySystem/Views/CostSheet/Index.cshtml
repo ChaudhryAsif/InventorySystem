@@ -1,7 +1,7 @@
-﻿@model IEnumerable<dynamic>
+@model IEnumerable<dynamic>
 @{
     Layout = "_Layout";
-    ViewData["Title"] = "Cost Sheets";
+    ViewData["Title"] = "Cost Sheet List";
 }
 
 <link href="~/css/report.css" rel="stylesheet" />
@@ -23,28 +23,27 @@
 </style>
 
 <!-- Add this top section for info and actions -->
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+<div class="cs-index-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
     <div>
-        <h2>📋 Cost Sheets</h2>
-        <p style="color:#666; margin:0;">Manage and track all your product cost sheets</p>
+        <h2>📋 Cost Sheet List</h2>
+        <p style="color:#666; margin:0;">Reusable product recipes. Select the customer and agreed price on each production order.</p>
     </div>
     <div style="display:flex; gap:0.75rem;">
         <a href="/CostSheet/CalculationGuide" class="btn btn-info" title="View Calculation Guide">
             📚 How Calculations Work
         </a>
         <a href="/CostSheet/Create" class="btn btn-primary">
-            ➕ Create New
+            ➕ Create Cost Sheet
         </a>
     </div>
 </div>
 
-<table class="cs-table">
+<div class="responsive-list-scroll" role="region" aria-label="Cost sheets" tabindex="0"><table class="cs-table">
     <thead>
         <tr>
             <th>#</th>
             <th>Sheet No</th>
             <th>Date</th>
-            <th>Customer</th>
             <th>Item / Product</th>
             <th>Box Style</th>
             <th>Final Cost (W/O GST)</th>
@@ -62,7 +61,6 @@
                     <td>@i</td>
                     <td><strong>#@s.CostSheetId</strong></td>
                     <td>@(s.SheetDate != null ? ((DateTime)s.SheetDate).ToString("dd-MMM-yyyy") : "–")</td>
-                    <td>@(s.CustomerName ?? "–")</td>
                     <td>@(s.ItemName ?? "–")</td>
                     <td>@(s.BoxStyle ?? "–")</td>
                     <td style="text-align:right;"><strong>@(s.FinalCostWOGST != null ? ((decimal)s.FinalCostWOGST).ToString("N2") : "–")</strong></td>
@@ -90,14 +88,10 @@
         }
         @if (!Model.Any())
         {
-            <tr>
-                <td colspan="10" style="text-align:center; padding:2rem; color:#999;">
-                    No cost sheets found. Click ➕ New Cost Sheet to get started.
-                </td>
-            </tr>
+            <partial name="_ListEmptyState" model='new InventorySystem.Models.ListEmptyState(9, "No cost sheets yet", "Create a cost sheet to estimate material requirements and pricing for your product.", "+ Create Cost Sheet", "/CostSheet/Create")' />
         }
     </tbody>
-</table>
+</table></div>
 
 <script>
 async function deleteSheet(id) {

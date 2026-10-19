@@ -1,4 +1,4 @@
-﻿@{
+@{
     Layout = "_Layout";
     ViewData["Title"] = "Aging Report";
 }
@@ -21,8 +21,8 @@
                 <label class="form-label">Party Type</label>
                 <select class="form-control" id="partyType">
                     <option value="all">All Parties</option>
-                    <option value="customer">Customers (Receivable)</option>
-                    <option value="supplier">Suppliers (Payable)</option>
+                    <option value="customer">Customers (including refunds)</option>
+                    <option value="supplier">Suppliers (including refunds)</option>
                 </select>
             </div>
             <div class="form-group">
@@ -145,7 +145,7 @@
                 const severity = r.over90 > 0 ? 'color:#721c24' : r.days61_90 > 0 ? 'color:#856404' : '';
                 return `<tr>
                     <td>${i + 1}</td>
-                    <td style="font-weight:600;${severity}">${r.partyName}</td>
+                    <td style="font-weight:600;${severity}">${escapeHtml(r.partyName)}<small style="display:block">${escapeHtml(r.balanceDescription)} · ${escapeHtml(r.balanceType)}</small></td>
                     <td>${ptBadge(r.partyType)}</td>
                     <td style="text-align:right;color:#155724">${r.current   > 0 ? fmt(r.current)   : '—'}</td>
                     <td style="text-align:right;color:#856404">${r.days31_60 > 0 ? fmt(r.days31_60) : '—'}</td>

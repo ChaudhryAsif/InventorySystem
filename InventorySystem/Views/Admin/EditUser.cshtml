@@ -16,6 +16,13 @@
 <!-- SINGLE FORM FOR BOTH USER DETAILS AND ROLES -->
 <form method="post" id="editUserForm">
     @Html.AntiForgeryToken()
+            @if (BranchSettings.Value.MultiBranchEnabled)
+            {
+                <label asp-for="BranchIds">Allowed branch IDs (comma separated)</label>
+                <input asp-for="BranchIds" class="form-control" pattern="[0-9]+(,[0-9]+)*" required />
+                <small>For example: 1,2. SuperAdmin can access all branches.</small>
+            }
+
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; max-width: 1200px;">
         <!-- User Details Section -->

@@ -7,7 +7,8 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Production Order #@Model.ProductionOrderId</title>
+    <title>Production Order #@Model.ProductionOrderId — Bright Packages</title>
+    <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
     <style>
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:2rem; }
@@ -29,6 +30,7 @@
 <body>
     <div class="actions"><button onclick="window.print()">🖨 Print</button></div>
     <div class="inv">
+        <partial name="_CompanyPrintHeader" />
         <div class="inv-head">
             <div>
                 <h1>PRODUCTION ORDER</h1>
@@ -45,7 +47,12 @@
             <div><span>Customer</span><strong>@ViewBag.CustomerName</strong></div>
             <div><span>Order Date</span><strong>@Model.OrderDate.ToString("dd MMM yyyy")</strong></div>
             <div><span>Delivery Date</span><strong>@Model.DeliveryDate.ToString("dd MMM yyyy")</strong></div>
-            <div><span>Order Qty</span><strong>@Model.OrderQty.ToString("N0")</strong></div>
+            <div><span>Ordered / Produced (boxes)</span><strong>@Model.OrderQty / @Model.ProducedQty</strong></div>
+            <div><span>Agreed Selling Price / Box (before GST)</span><strong>@(Model.AgreedUnitPrice?.ToString("N2") ?? "Not recorded")</strong></div>
+            <div><span>Agreed GST</span><strong>@Model.AgreedGstPercent.ToString("0.##")%</strong></div>
+            <div><span>Agreed Order Value (including GST)</span><strong>@(Model.AgreedUnitPrice.HasValue ? InventorySystem.Models.OrderPricing.Total(Model.OrderQty, Model.AgreedUnitPrice.Value, Model.AgreedGstPercent).ToString("N2") : "Not recorded")</strong></div>
+            <div><span>Customer Reference / PO Number</span><strong>@(Model.CustomerReference ?? "-")</strong></div>
+            <p>Materials are estimated from the saved cost sheet, not measured consumption.</p>
             <div><span>Remarks</span><strong>@(Model.Remarks ?? "-")</strong></div>
         </div>
 
@@ -55,10 +62,11 @@
                     <th style="width:40px;">#</th>
                     <th>Item Name</th>
                     <th>Specification</th>
-                    <th class="num">Kg / Unit</th>
-                    <th class="num">Required Kg</th>
-                    <th class="num">Available Kg</th>
-                    <th class="num">Shortfall Kg</th>
+                    <th>Unit</th>
+                    <th class="num">Qty / Box</th>
+                    <th class="num">Required</th>
+                    <th class="num">Available</th>
+                    <th class="num">Shortfall</th>
                     <th>Stock Status</th>
                 </tr>
             </thead>
@@ -70,6 +78,7 @@
                         <td>@(i++)</td>
                         <td>@(m.ItemName ?? "-")</td>
                         <td>@(m.Specification ?? "-")</td>
+                        <td>@m.Unit</td>
                         <td class="num">@m.KgPerUnit.ToString("0.000")</td>
                         <td class="num">@m.RequiredKg.ToString("0.00")</td>
                         <td class="num">@m.AvailableKg.ToString("0.00")</td>
@@ -79,7 +88,7 @@
                 }
                 @if (!mats.Any())
                 {
-                    <tr><td colspan="8" style="text-align:center;color:#9ca3af;">No materials linked.</td></tr>
+                    <tr><td colspan="9" style="text-align:center;color:#9ca3af;">No materials linked.</td></tr>
                 }
             </tbody>
         </table>

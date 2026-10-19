@@ -26,23 +26,29 @@ namespace InventorySystem.Controllers
         /// Used by Purchase & Sale pages — includes live stock quantity.
         /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetItems(int branchId = 1, int page = 1, int pageSize = 200)
+        public async Task<IActionResult> GetItems(int branchId = 1, int page = 1, int pageSize = 200, string? search = null)
         {
             try
             {
-                var totalCount = await _context.Items.CountAsync();
+                page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
+                var query = _context.Items.Where(i => i.IsActive == true &&
+                    _context.ItemCategory.Any(c => c.CategoryId == i.CategoryID && c.IsActive == true));
+                if (!string.IsNullOrWhiteSpace(search)) query = query.Where(i => i.ItemName!.Contains(search) || i.Barcode == search);
+                var totalCount = await query.CountAsync();
 
-                var items = await _context.Items
+                var items = await query.OrderBy(i => i.ItemID)
                     .Skip((page - 1) * pageSize).Take(pageSize)
                     .Select(i => new
                     {
                         itemID = i.ItemID,
                         itemName = i.ItemName ?? "",
+                        size = i.Size ?? "",
                         categoryName = _context.ItemCategory
                             .Where(c => c.CategoryId == i.CategoryID)
                             .Select(c => c.CategoryName)
                             .FirstOrDefault() ?? "",
-                        barcode = "",
+                        itemType = i.ItemType, stockUnit = i.StockUnit,
+                        barcode = i.Barcode ?? "",
                         salePrice = i.SalePrice ?? 0,
                         // Actual last-purchase cost for this item (not the sale price).
                         // Falls back to 0 when the item has never been purchased.
@@ -68,13 +74,25 @@ namespace InventorySystem.Controllers
         }
 
         [HttpGet]
-        public async Task<JsonResult> GetList(int page = 1, int pageSize = 50)
+        public async Task<JsonResult> GetList(int page = 1, int pageSize = 50, string? itemType = null, string? search = null, string? status = null)
         {
             try
             {
-                var totalCount = await _context.Items.CountAsync();
+                page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
+                if (!string.IsNullOrEmpty(itemType) && itemType is not ("RawMaterial" or "FinishedGoods") ||
+                    !string.IsNullOrEmpty(status) && status is not ("Active" or "Inactive"))
+                    return new JsonResult(new { success = false, message = "Select a valid item type and status." }) { StatusCode = 400 };
+                var query = _context.Items.AsQueryable();
+                if (!string.IsNullOrEmpty(itemType)) query = query.Where(i => i.ItemType == itemType);
+                if (!string.IsNullOrEmpty(status)) query = status == "Active" ? query.Where(i => i.IsActive == true) : query.Where(i => i.IsActive != true);
+                if (!string.IsNullOrWhiteSpace(search)) {
+                    var term = search.Trim().ToLowerInvariant();
+                    query = query.Where(i => (i.ItemName ?? "").ToLower().Contains(term) ||
+                        _context.ItemCategory.Any(c => c.CategoryId == i.CategoryID && c.CategoryName.ToLower().Contains(term)));
+                }
+                var totalCount = await query.CountAsync();
 
-                var items = await _context.Items
+                var items = await query.OrderBy(i => i.ItemID)
                     .Skip((page - 1) * pageSize).Take(pageSize)
                     .Select(i => new
                     {
@@ -90,7 +108,8 @@ namespace InventorySystem.Controllers
                         SalePrice = i.SalePrice ?? 0,
                         IsActive = i.IsActive ?? false,
                         WHCOGS = i.WHCOGS ?? "",
-                        Barcode = "",
+                        ItemType = i.ItemType, StockUnit = i.StockUnit,
+                        Barcode = i.Barcode ?? "",
                         CategoryName = _context.ItemCategory
                             .Where(c => c.CategoryId == i.CategoryID)
                             .Select(c => c.CategoryName)
@@ -98,7 +117,7 @@ namespace InventorySystem.Controllers
                     })
                     .ToListAsync();
 
-                return Json(new { data = items, totalCount, page, pageSize });
+                return Json(new { data = items, totalCount, page, pageSize, canDelete = User?.IsInRole("SuperAdmin") == true });
             }
             catch (Exception ex)
             {
@@ -107,7 +126,7 @@ namespace InventorySystem.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetItemById(int id)
+        public async Task<IActionResult> GetItemById(long id)
         {
             var item = await _context.Items
                 .Where(x => x.ItemID == id)
@@ -121,7 +140,10 @@ namespace InventorySystem.Controllers
                     x.Description,
                     //x.IsMarinated,
                     x.IsActive,
-                    x.ImagePath
+                    x.ImagePath,
+                    x.Barcode,
+                    x.ItemType, x.StockUnit,
+                    x.ReorderLevel
                     //Barcodes = _context.Barcodes
                     //    .Where(b => b.ItemId == x.ItemId)
                     //    .Select(b => b.Code)
@@ -139,15 +161,43 @@ namespace InventorySystem.Controllers
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> Save([FromForm] ItemViewModel model, IFormFile? File)
         {
-            if (model == null)
-                return BadRequest("Invalid data.");
+            if (model == null || !ModelState.IsValid)
+                return BadRequest(new { success = false, message = "Review the item details and try again.",
+                    errors = ModelState.Where(x => x.Value!.Errors.Count > 0).Select(x => x.Key) });
+            if (model.ItemID < 0)
+                return BadRequest(new { success = false, message = "The item reference is invalid. Reopen the item and try again." });
 
+            if (string.IsNullOrWhiteSpace(model.ItemName) || model.SalePrice < 0 || model.ReorderLevel < 0 ||
+                !await _context.ItemCategory.AnyAsync(c => c.CategoryId == model.CategoryID && c.IsActive == true))
+                return BadRequest(new { success = false, message = "Enter a valid name, group, price and reorder level." });
+            if (model.ItemType is not ("RawMaterial" or "FinishedGoods") || model.StockUnit is not ("kg" or "pcs") ||
+                model.ItemType == "FinishedGoods" && model.StockUnit != "pcs")
+                return BadRequest(new { success = false, message = "Raw materials use kg or pcs; finished goods use pcs." });
+            var groupType = await _context.ItemCategory.Where(c => c.CategoryId == model.CategoryID)
+                .Select(c => c.GroupType).SingleAsync();
+            if (groupType != null && model.ItemType != groupType)
+                return BadRequest(new { success = false, message = "The item type must match the selected group type." });
+            var existingUnit = await _context.Items.Where(i => i.ItemID == model.ItemID).Select(i => i.StockUnit).FirstOrDefaultAsync();
+            if (existingUnit != null && existingUnit != model.StockUnit && await _context.Stock.AnyAsync(s => s.ItemId == model.ItemID && s.Quantity != 0))
+                return BadRequest(new { success = false, message = "Cannot change units while stock exists. Use a separate item to preserve quantities." });
+            model.Barcode = string.IsNullOrWhiteSpace(model.Barcode) ? null : model.Barcode.Trim();
+            if (model.Barcode?.Length > 100 || (model.Barcode != null && await _context.Items.AnyAsync(i => i.Barcode == model.Barcode && i.ItemID != model.ItemID)))
+                return BadRequest(new { success = false, message = "Barcode must be unique and at most 100 characters." });
+            if (model.ItemID > 0 && !await _context.Items.AnyAsync(i => i.ItemID == model.ItemID)) return NotFound();
             try
             {
                 string? imagePath = null;
 
                 if (File != null && File.Length > 0)
                 {
+                    if (File.Length > 2 * 1024 * 1024) return BadRequest(new { success = false, message = "Image must be at most 2 MB." });
+                    var extension = Path.GetExtension(File.FileName).ToLowerInvariant();
+                    using var input = File.OpenReadStream();
+                    var header = new byte[8]; var read = await input.ReadAsync(header);
+                    var png = read == 8 && header.SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
+                    var jpg = read >= 3 && header[0] == 255 && header[1] == 216 && header[2] == 255;
+                    if (!(png && extension == ".png" || jpg && extension is ".jpg" or ".jpeg"))
+                        return BadRequest(new { success = false, message = "Upload a valid PNG or JPEG image." });
                     var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
                     if (!Directory.Exists(uploadsFolder))
                         Directory.CreateDirectory(uploadsFolder);
@@ -167,7 +217,11 @@ namespace InventorySystem.Controllers
                     ? new Items()
                     : await _context.Items.FindAsync(model.ItemID) ?? new Items();
 
-                item.ItemName = model.ItemName;
+                item.ItemType = model.ItemType;
+                item.StockUnit = model.StockUnit;
+                item.ItemName = model.ItemName.Trim();
+                item.Barcode = model.Barcode;
+                item.ReorderLevel = model.ReorderLevel;
                 item.CategoryID = model.CategoryID;
                 item.SalePrice = model.SalePrice;
                 item.Description = model.Description;
@@ -192,17 +246,22 @@ namespace InventorySystem.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "SuperAdmin")]
         public async Task<JsonResult> Delete([FromBody] DeleteRequest request)
         {
+            if (User?.IsInRole("SuperAdmin") != true)
+                return new JsonResult(new { success = false, message = "Only SuperAdmin can delete items." }) { StatusCode = 403 };
+            if (request == null || request.Id <= 0)
+                return new JsonResult(new { success = false, message = "Select a valid item." }) { StatusCode = 400 };
             try
             {
                 var item = await _context.Items.FindAsync(request.Id);
                 if (item == null)
                     return Json(new { success = false, message = "Item not found" });
 
-                _context.Items.Remove(item);
+                item.IsActive = false;
                 await _context.SaveChangesAsync();
-                return Json(new { success = true, message = "Item deleted successfully" });
+                return Json(new { success = true, message = "Item deactivated successfully; invoice history was preserved" });
             }
             catch (Exception ex)
             {

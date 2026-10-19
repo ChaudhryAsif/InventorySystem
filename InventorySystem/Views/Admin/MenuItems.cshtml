@@ -1,80 +1,263 @@
 ﻿@model IEnumerable<InventorySystem.Core.Models.MenuItem>
 
 @{
-    ViewData["Title"] = "Menu Items";
+    ViewData["Title"] = "Menu Builder";
     Layout = "_Layout";
+
+    var all = Model.ToList();
+    var tops = all.Where(m => m.ParentId == null).OrderBy(m => m.SortOrder).ThenBy(m => m.Id).ToList();
+    var kids = all.Where(m => m.ParentId != null).ToLookup(m => m.ParentId!.Value);
+    bool IsGroup(InventorySystem.Core.Models.MenuItem m) => string.IsNullOrEmpty(m.Controller);
+
+    void Row(InventorySystem.Core.Models.MenuItem m)
+    {
+        var group = IsGroup(m);
+        <div class="mb-row" draggable="true">
+            <span class="mb-handle" title="Drag to reorder">⠿</span>
+            <span class="mb-icon">@m.Icon</span>
+            <span class="mb-name">@m.Name</span>
+            @if (group) { <span class="mb-badge mb-badge-group">Group</span> }
+            @if (!m.IsActive) { <span class="mb-badge mb-badge-off">Hidden</span> }
+            <span class="mb-actions">
+                @if (!group)
+                {
+                    <select class="mb-move" title="Move to" aria-label="Move to"></select>
+                }
+                <button type="button" class="admin-btn admin-btn-secondary mb-up" title="Move up" aria-label="Move up">▲</button>
+                <button type="button" class="admin-btn admin-btn-secondary mb-down" title="Move down" aria-label="Move down">▼</button>
+                <a href="@Url.Action("EditMenuItem", "Admin", new { id = m.Id })" class="admin-btn admin-btn-primary mb-edit" title="Edit">✏️</a>
+                @if (group)
+                {
+                    <button type="button" class="admin-btn admin-btn-danger mb-del" title="Delete empty group" aria-label="Delete group">🗑️</button>
+                }
+            </span>
+        </div>
+    }
 }
+
+<style>
+    .mb-list { list-style: none; margin: 0; padding: 0; min-height: 12px; }
+    .mb-children { margin: 0.4rem 0 0.2rem 1.6rem; padding: 0.4rem; min-height: 38px; border: 1px dashed var(--border-color, #cbd5e1); border-radius: 8px; }
+    .mb-children:empty::before { content: "Empty group: drag pages here"; color: var(--text-secondary, #64748b); font-size: 0.85rem; padding: 0.3rem; display: block; }
+    .mb-node { margin: 0.4rem 0; }
+    .mb-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.55rem 0.75rem; background: #fff; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; }
+    .mb-node.is-group > .mb-row { background: #f1f5f9; font-weight: 600; }
+    .mb-handle { cursor: grab; color: #94a3b8; user-select: none; }
+    .mb-name { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+    .mb-actions { display: flex; gap: 0.3rem; align-items: center; margin-left: auto; flex-wrap: wrap; }
+    .mb-actions .admin-btn { padding: 0.3rem 0.6rem; }
+    .mb-move { max-width: 150px; padding: 0.3rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); }
+    .mb-badge { background: rgba(45, 95, 127, 0.1); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.78rem; font-weight: 400; }
+    .mb-badge-group { background: #dbeafe; }
+    .mb-badge-off { background: #fee2e2; }
+    .mb-dragging { opacity: 0.4; }
+    .mb-over { outline: 2px solid #2d5f7f; background: rgba(45, 95, 127, 0.06); }
+    .mb-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+    .mb-toolbar input { padding: 0.45rem 0.6rem; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); }
+    .mb-save-bar { position: sticky; bottom: 0; background: #fff; padding: 0.75rem 0; border-top: 2px solid var(--border-color, #e2e8f0); display: flex; gap: 0.75rem; justify-content: flex-end; align-items: center; }
+    .mb-dirty { color: #b45309; font-size: 0.9rem; display: none; }
+    .mb-toolbar > input { min-width: 0; max-width: 100%; box-sizing: border-box; }
+    .mb-row .admin-btn, .mb-move { min-height: 40px; }
+    @@media (max-width: 600px) {
+        .mb-children { margin-left: 0.45rem; padding: 0.25rem; }
+        .mb-row { padding: 0.5rem; }
+        .mb-actions { width: 100%; margin-left: 0; }
+        .mb-move { flex: 1; min-width: 0; max-width: 100%; }
+        .mb-save-bar { flex-wrap: wrap; }
+        .mb-toolbar > #newGroupName { flex-basis: 100% !important; }
+    }
+</style>
 
 <div class="admin-page-header">
     <span class="admin-page-icon">📋</span>
     <div>
-        <h1 class="admin-page-title">Menu Items</h1>
-        <p class="admin-page-subtitle">Manage navigation menu items and their settings</p>
+        <h1 class="admin-page-title">Menu Builder</h1>
+        <p class="admin-page-subtitle">Create main menus, then drag pages into them or use the arrows. Permissions never change when a page is moved.</p>
     </div>
 </div>
 
-<div class="admin-table-container">
-    <div class="admin-table-header">
-        <h3 class="admin-table-title">All Menu Items</h3>
+@if (TempData["Success"] != null) { <div class="alert-box alert-success">✅ @TempData["Success"]</div> }
+@if (TempData["Error"] != null) { <div class="alert-box alert-danger">❌ @TempData["Error"]</div> }
+
+<div class="admin-table-container" id="menuBuilder" style="padding: 1rem;">
+    <div class="mb-toolbar">
+        <input type="text" id="newGroupIcon" placeholder="Icon" maxlength="8" style="width: 80px;">
+        <partial name="_IconPicker" model="@("newGroupIcon")" />
+        <input type="text" id="newGroupName" placeholder="New main menu name, e.g. Raw Material" maxlength="100" style="flex: 1 1 220px;">
+        <button type="button" class="admin-btn admin-btn-success" id="addGroupBtn">➕ New main menu</button>
     </div>
 
-    @if (Model.Any())
-    {
-        <table class="admin-table">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Controller</th>
-                    <th>Action</th>
-                    <th>Required Permission</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var menuItem in Model)
+    <ul class="mb-list" id="topList" data-version="@ViewBag.MenuVersion">
+        @foreach (var top in tops)
+        {
+            var group = IsGroup(top);
+            <li class="mb-node @(group ? "is-group" : "")" data-id="@top.Id" data-group="@(group ? "1" : "0")">
+                @{ Row(top); }
+                @if (group)
                 {
-                    <tr>
-                        <td>
-                            <strong>@menuItem.Name</strong>
-                        </td>
-                        <td>
-                            <code style="background: #f8fafc; padding: 0.25rem 0.5rem; border-radius: 4px;">
-                                @menuItem.Controller
-                            </code>
-                        </td>
-                        <td>
-                            <code style="background: #f8fafc; padding: 0.25rem 0.5rem; border-radius: 4px;">
-                                @menuItem.Action
-                            </code>
-                        </td>
-                        <td>
-                            @if (!string.IsNullOrEmpty(menuItem.RequiredPermission))
-                            {
-                                <span style="background: rgba(45, 95, 127, 0.1); padding: 0.35rem 0.75rem; border-radius: 4px; font-size: 0.85rem;">
-                                    @menuItem.RequiredPermission
-                                </span>
-                            }
-                            else
-                            {
-                                <span style="color: var(--text-secondary); font-style: italic;">None</span>
-                            }
-                        </td>
-                        <td>
-                            <div class="admin-table-actions">
-                                <a asp-action="EditMenuItem" asp-route-id="@menuItem.Id" class="admin-btn admin-btn-primary">
-                                    ✏️ Edit
-                                </a>
-                            </div>
-                        </td>
-                    </tr>
+                    <ul class="mb-list mb-children">
+                        @foreach (var child in kids[top.Id].OrderBy(c => c.SortOrder).ThenBy(c => c.Id))
+                        {
+                            <li class="mb-node" data-id="@child.Id" data-group="0">
+                                @{ Row(child); }
+                            </li>
+                        }
+                    </ul>
                 }
-            </tbody>
-        </table>
-    }
-    else
-    {
-        <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
-            <p>No menu items found.</p>
-        </div>
-    }
+            </li>
+        }
+    </ul>
+
+    <div class="mb-save-bar">
+        <span class="mb-dirty" id="dirtyNote">Unsaved changes</span>
+        <button type="button" class="admin-btn admin-btn-secondary" id="resetBtn">↩ Discard changes</button>
+        <button type="button" class="admin-btn admin-btn-success" id="saveBtn">💾 Save order</button>
+    </div>
 </div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const topList = document.getElementById('topList');
+            const dirtyNote = document.getElementById('dirtyNote');
+            let dirty = false, dragged = null, busy = false;
+
+            const nodes = list => [...list.children].filter(li => li.classList.contains('mb-node'));
+            const isGroup = li => li.dataset.group === '1';
+            const rowOf = li => li.querySelector(':scope > .mb-row');
+            const childList = li => li.querySelector(':scope > .mb-children');
+            const parentLi = li => li.parentElement.closest('.mb-node');
+            const nameOf = li => rowOf(li).querySelector('.mb-name').textContent;
+
+            function setDirty(v) { dirty = v; dirtyNote.style.display = v ? 'inline' : 'none'; }
+
+            function refresh() {
+                const groups = nodes(topList).filter(isGroup);
+                document.querySelectorAll('.mb-node').forEach(li => {
+                    const siblings = nodes(li.parentElement), i = siblings.indexOf(li);
+                    const row = rowOf(li);
+                    row.querySelector('.mb-up').disabled = i === 0;
+                    row.querySelector('.mb-down').disabled = i === siblings.length - 1;
+                    const del = row.querySelector('.mb-del');
+                    if (del) del.disabled = nodes(childList(li)).length > 0;
+                    const sel = row.querySelector('.mb-move');
+                    if (sel) {
+                        const parent = parentLi(li);
+                        sel.replaceChildren(new Option('Top level', ''));
+                        groups.forEach(g => sel.add(new Option(nameOf(g), g.dataset.id)));
+                        sel.value = parent ? parent.dataset.id : '';
+                    }
+                });
+            }
+
+            function insertAt(list, li, y) {
+                const before = nodes(list).find(n => n !== li && y < rowOf(n).getBoundingClientRect().top + rowOf(n).offsetHeight / 2);
+                list.insertBefore(li, before || null);
+            }
+
+            // Drag and drop (desktop)
+            document.addEventListener('dragstart', e => {
+                if (busy) { e.preventDefault(); return; }
+                const row = e.target.closest && e.target.closest('.mb-row');
+                if (!row) return;
+                dragged = row.parentElement;
+                dragged.classList.add('mb-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', dragged.dataset.id);
+            });
+            document.addEventListener('dragend', () => {
+                if (dragged) dragged.classList.remove('mb-dragging');
+                document.querySelectorAll('.mb-over').forEach(x => x.classList.remove('mb-over'));
+                dragged = null;
+            });
+            document.addEventListener('dragover', e => {
+                if (!dragged) return;
+                const list = e.target.closest('.mb-list');
+                if (!list || (isGroup(dragged) && list !== topList) || dragged.contains(list)) return;
+                e.preventDefault();
+                document.querySelectorAll('.mb-over').forEach(x => x.classList.remove('mb-over'));
+                if (list !== topList) list.classList.add('mb-over');
+            });
+            document.addEventListener('drop', e => {
+                if (!dragged) return;
+                const list = e.target.closest('.mb-list');
+                if (!list || (isGroup(dragged) && list !== topList) || dragged.contains(list)) return;
+                e.preventDefault();
+                insertAt(list, dragged, e.clientY);
+                setDirty(true); refresh();
+            });
+
+            // Buttons (mobile friendly)
+            topList.addEventListener('click', async e => {
+                if (busy) { e.preventDefault(); return; }
+                const btn = e.target.closest('button');
+                if (!btn) return;
+                const li = btn.closest('.mb-node');
+                if (btn.classList.contains('mb-up')) {
+                    const prev = li.previousElementSibling;
+                    if (prev) li.parentElement.insertBefore(li, prev);
+                } else if (btn.classList.contains('mb-down')) {
+                    const next = li.nextElementSibling;
+                    if (next) next.after(li);
+                } else if (btn.classList.contains('mb-del')) {
+                    if (dirty) return alertDialog('Save or discard your changes before deleting a group.', { type: 'warning' });
+                    if (!await confirmDialog(`Delete the empty group "${nameOf(li)}"?`)) return;
+                    const r = await post(`/Admin/MenuItems/${li.dataset.id}/DeleteGroup`);
+                    if (r.success) location.reload(); else alertDialog(r.message || 'Delete failed.', { type: 'warning' });
+                    return;
+                } else return;
+                setDirty(true); refresh();
+            });
+            topList.addEventListener('change', e => {
+                if (!e.target.classList.contains('mb-move')) return;
+                const li = e.target.closest('.mb-node');
+                const target = e.target.value ? childList(topList.querySelector(`.mb-node[data-id="${e.target.value}"]`)) : topList;
+                target.appendChild(li);
+                setDirty(true); refresh();
+            });
+
+            async function post(url, body) {
+                if (busy) return { success: false, message: 'Please wait for the current request to finish.' };
+                busy = true;
+                const controls = document.querySelectorAll('#menuBuilder button, #menuBuilder input, #menuBuilder select');
+                controls.forEach(c => c.disabled = true);
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: body === undefined ? '{}' : JSON.stringify(body)
+                    });
+                    try { return await res.json(); } catch { return { success: false, message: 'Request failed (' + res.status + ').' }; }
+                } catch {
+                    return { success: false, message: 'Connection interrupted. Your arrangement is still on this screen. Reload to check whether it was saved before trying again.' };
+                } finally {
+                    busy = false;
+                    controls.forEach(c => c.disabled = false);
+                    refresh();
+                }
+            }
+
+            document.getElementById('saveBtn').addEventListener('click', async () => {
+                const tree = nodes(topList).map(li => ({
+                    id: +li.dataset.id,
+                    children: isGroup(li) ? nodes(childList(li)).map(c => +c.dataset.id) : []
+                }));
+                const r = await post('/Admin/MenuItems/SaveOrder', { version: topList.dataset.version, items: tree });
+                if (r.success) { setDirty(false); location.reload(); }
+                else alertDialog(r.message || 'Save failed.', { type: 'warning' });
+            });
+            document.getElementById('resetBtn').addEventListener('click', () => { setDirty(false); location.reload(); });
+
+            document.getElementById('addGroupBtn').addEventListener('click', async () => {
+                if (dirty) return alertDialog('Save or discard your changes before adding a main menu.', { type: 'warning' });
+                const name = document.getElementById('newGroupName').value.trim();
+                if (!name) return alertDialog('Enter a name for the main menu.', { type: 'warning' });
+                const r = await post('/Admin/MenuItems/CreateGroup', { name, icon: document.getElementById('newGroupIcon').value });
+                if (r.success) location.reload(); else alertDialog(r.message || 'Could not create the group.', { type: 'warning' });
+            });
+
+            window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+            refresh();
+        })();
+    </script>
+}

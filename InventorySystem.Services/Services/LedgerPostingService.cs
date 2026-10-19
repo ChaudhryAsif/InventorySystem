@@ -75,8 +75,9 @@ namespace InventorySystem.Core.Services
                 }
             };
 
-            var (success, _, voucherId) = await _accounts.SaveVoucherAsync(voucher);
-            return success ? voucherId : null;
+            var (success, message, voucherId) = await _accounts.SaveVoucherAsync(voucher);
+            if (!success) throw new InvalidOperationException(message);
+            return voucherId;
         }
 
         public async Task<int?> PostPurchaseAsync(PurchaseInvoice invoice)
@@ -106,8 +107,9 @@ namespace InventorySystem.Core.Services
                 }
             };
 
-            var (success, _, voucherId) = await _accounts.SaveVoucherAsync(voucher);
-            return success ? voucherId : null;
+            var (success, message, voucherId) = await _accounts.SaveVoucherAsync(voucher);
+            if (!success) throw new InvalidOperationException(message);
+            return voucherId;
         }
 
         public async Task<int?> PostSaleReturnAsync(SaleReturn saleReturn)
@@ -138,8 +140,9 @@ namespace InventorySystem.Core.Services
                 }
             };
 
-            var (success, _, voucherId) = await _accounts.SaveVoucherAsync(voucher);
-            return success ? voucherId : null;
+            var (success, message, voucherId) = await _accounts.SaveVoucherAsync(voucher);
+            if (!success) throw new InvalidOperationException(message);
+            return voucherId;
         }
 
         public async Task<int?> PostPurchaseReturnAsync(PurchaseReturn purchaseReturn)
@@ -170,14 +173,16 @@ namespace InventorySystem.Core.Services
                 }
             };
 
-            var (success, _, voucherId) = await _accounts.SaveVoucherAsync(voucher);
-            return success ? voucherId : null;
+            var (success, message, voucherId) = await _accounts.SaveVoucherAsync(voucher);
+            if (!success) throw new InvalidOperationException(message);
+            return voucherId;
         }
 
         public async Task VoidAsync(int? voucherId)
         {
             if (voucherId is null or <= 0) return;
-            await _accounts.VoidVoucherAsync(voucherId.Value);
+            var result = await _accounts.VoidVoucherAsync(voucherId.Value);
+            if (!result.success) throw new InvalidOperationException(result.message);
         }
     }
 }

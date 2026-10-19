@@ -1,13 +1,16 @@
-@model InventorySystem.Core.Models.CostSheet
+﻿@model InventorySystem.Core.Models.CostSheet
 @{
     Layout = null;
+    var client = string.IsNullOrEmpty(Model.ClientCostingJson) ? null : System.Text.Json.JsonSerializer.Deserialize<InventorySystem.Core.Models.ClientCostingOptions>(Model.ClientCostingJson);
+    var rateUnit = client == null ? "%" : " / paper KG";
     var plies = Model.Plies?.OrderBy(p => p.SrNo).ToList() ?? new List<InventorySystem.Core.Models.CostSheetPly>();
 }
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Cost Sheet #@Model.CostSheetId</title>
+    <title>Cost Sheet #@Model.CostSheetId — Bright Packages</title>
+    <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
     <style>
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:2rem; }
@@ -38,6 +41,7 @@
 <body>
     <div class="actions"><button onclick="window.print()">🖨 Print</button></div>
     <div class="inv">
+        <partial name="_CompanyPrintHeader" />
         <div class="inv-head">
             <div>
                 <h1>COST SHEET</h1>
@@ -50,7 +54,7 @@
         </div>
 
         <div class="meta">
-            <div><span>Customer</span><strong>@ViewBag.CustomerName</strong></div>
+            <div><span>Usage</span><strong>Reusable recipe — customer and agreed price are selected on each order.</strong></div>
             <div><span>Item Name</span><strong>@(Model.ItemName ?? "-")</strong></div>
             <div><span>Box Style</span><strong>@(Model.BoxStyle ?? "-")</strong></div>
             <div><span>Size</span><strong>@Model.Length?.ToString("0.##") x @Model.Width?.ToString("0.##") x @Model.Height?.ToString("0.##") @Model.SizeUnit</strong></div>
@@ -65,7 +69,7 @@
                     <th>#</th>
                     <th>Ply Name</th>
                     <th>Specification</th>
-                    <th class="num">GSM</th>
+                    <th class="num">GSM</th>@if (client != null) { <th>Layer</th> }
                     <th class="num">Rate/Kg</th>
                     <th class="num">Kgs</th>
                     <th class="num">Cost</th>
@@ -78,7 +82,7 @@
                         <td>@p.SrNo</td>
                         <td>@(p.PlyName ?? "-")</td>
                         <td>@(p.Specification ?? "-")</td>
-                        <td class="num">@p.GSM?.ToString("0.##")</td>
+                        <td class="num">@p.GSM?.ToString("0.##")</td>@if (client != null) { <td>@((p.SrNo > 0 && p.SrNo <= client.FlutedLayers.Count && client.FlutedLayers[p.SrNo - 1]) ? "Fluted" : "Plain")</td> }
                         <td class="num">@p.Rate?.ToString("0.00")</td>
                         <td class="num">@p.KGs?.ToString("0.000")</td>
                         <td class="num">@p.Cost?.ToString("0.00")</td>
@@ -86,10 +90,64 @@
                 }
                 @if (!plies.Any())
                 {
-                    <tr><td colspan="7" style="text-align:center;color:#9ca3af;">No plies.</td></tr>
+                    <tr><td colspan="@(client == null ? 7 : 8)" style="text-align:center;color:#9ca3af;">No plies.</td></tr>
                 }
             </tbody>
         </table>
+
+        @{
+            var others = Model.Materials?.OrderBy(x => x.SrNo).ToList() ?? new List<InventorySystem.Core.Models.CostSheetMaterial>();
+            var materialNames = ViewBag.MaterialNames as Dictionary<long, string> ?? new Dictionary<long, string>();
+        }
+        @if (others.Any())
+        {
+            <span class="section-title">Other Materials</span>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Item</th>
+                        <th>Unit</th>
+                        <th class="num">Qty / Box</th>
+                        <th class="num">Rate</th>
+                        <th class="num">Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var o in others)
+                    {
+                        <tr>
+                            <td>@o.SrNo</td>
+                            <td>@(materialNames.TryGetValue(o.ItemId, out var nm) ? nm : "#" + o.ItemId)</td>
+                            <td>@o.Unit</td>
+                            <td class="num">@o.Quantity.ToString("0.######")</td>
+                            <td class="num">@o.Rate.ToString("0.00")</td>
+                            <td class="num">@o.Cost.ToString("0.00")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (client?.Totals is { } ct)
+        {
+            <span class="section-title">Client Carton Costing</span>
+            <p>RSC sheet: @Model.AdjWidthMm?.ToString("0.###") × @Model.AdjLengthMm?.ToString("0.###") mm; @Model.TotalSheetSqIn?.ToString("0.######") sq.in. Paper: @ct.PaperWeightKg.ToString("0.######") KG. Deckel: @ct.DeckelIn.ToString("0.00") in.</p>
+            <div class="cost-grid">
+                <div class="cost-row"><span>Lamination</span><span>@(Model.HasLamination == true ? "Yes" : "No")</span></div>
+                <div class="cost-row"><span>Pin Rate</span><span>@client.PinRate.ToString("0.00")</span></div>
+                <div class="cost-row"><span>Wood Cost</span><span>@ct.WoodCost.ToString("0.00")</span></div>
+                <div class="cost-row"><span>Starch &amp; Chemicals</span><span>@ct.StarchCost.ToString("0.00")</span></div>
+                <div class="cost-row"><span>Glue Lamination</span><span>@ct.GlueLaminationCost.ToString("0.00")</span></div>
+                <div class="cost-row"><span>Lamination Chemicals</span><span>@ct.LaminationChemicalCost.ToString("0.00")</span></div>
+                <div class="cost-row"><span>Operating Costs incl. Adhesives</span><span>@ct.OperatingCost.ToString("0.00")</span></div>
+                <div class="cost-row"><span>Base Cost before Profit</span><span>@Model.ManufacturingTotal?.ToString("0.00")</span></div>
+                <div class="cost-row"><span>GST on Cost + Profit</span><span>@ct.GstAmount.ToString("0.00")</span></div>
+                <div class="cost-row"><span>Additional Tax on Base Cost (@Model.TaxPct?.ToString("0.##")%)</span><span>@ct.AdditionalTaxAmount.ToString("0.00")</span></div>
+                <div class="cost-row"><span>Withholding on Operating Costs</span><span>@ct.WithholdingAmount.ToString("0.00")</span></div>
+                <div class="cost-row"><span>MOQ Divisor / Price after Divisor</span><span>@Model.MOQ / @ct.PricePerUnit.ToString("0.00")</span></div>
+            </div>
+        }
 
         <span class="section-title">Cost Breakdown</span>
         <div class="cost-grid">
@@ -106,12 +164,12 @@
 
         <span class="section-title">Overheads</span>
         <div class="cost-grid">
-            <div class="cost-row"><span>Waste (@Model.WastePct?.ToString("0.##")%)</span><span>@Model.WasteCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Admin Exp (@Model.AdminExpPct?.ToString("0.##")%)</span><span>@Model.AdminExpCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Selling/Dist (@Model.SellingDistPct?.ToString("0.##")%)</span><span>@Model.SellingDistCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Repair/Maint (@Model.RepairMaintPct?.ToString("0.##")%)</span><span>@Model.RepairMaintCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Store/Spares (@Model.StoreSparesPct?.ToString("0.##")%)</span><span>@Model.StoreSparesCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Mfg Cost (@Model.MfgCostPct?.ToString("0.##")%)</span><span>@Model.MfgCostValue?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Waste (@Model.WastePct?.ToString("0.##")@rateUnit)</span><span>@Model.WasteCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Admin Exp (@Model.AdminExpPct?.ToString("0.##")@rateUnit)</span><span>@Model.AdminExpCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Selling/Dist (@Model.SellingDistPct?.ToString("0.##")@rateUnit)</span><span>@Model.SellingDistCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Repair/Maint (@Model.RepairMaintPct?.ToString("0.##")@rateUnit)</span><span>@Model.RepairMaintCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Store/Spares (@Model.StoreSparesPct?.ToString("0.##")@rateUnit)</span><span>@Model.StoreSparesCost?.ToString("0.00")</span></div>
+            <div class="cost-row"><span>Mfg Cost (@Model.MfgCostPct?.ToString("0.##")@rateUnit)</span><span>@Model.MfgCostValue?.ToString("0.00")</span></div>
         </div>
 
         <span class="section-title">Commission &amp; Tax</span>

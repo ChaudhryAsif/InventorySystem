@@ -1,4 +1,4 @@
-﻿using InventorySystem.Data;
+using InventorySystem.Data;
 using InventorySystem.Core.Services;
 using InventorySystem.Models;
 using Microsoft.AspNetCore.Authentication;
@@ -22,10 +22,19 @@ namespace InventorySystem.Controllers
 
         // GET /Auth/Login
         [HttpGet]
-        public IActionResult Login(string? returnUrl = null)
+        public async Task<IActionResult> Login(string? returnUrl = null)
         {
             if (User.Identity?.IsAuthenticated == true)
-                return RedirectToAction("Index", "Home");
+            {
+                if (int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)
+                    && await _db.AppUsers.AnyAsync(u => u.Id == userId && u.IsActive))
+                    return RedirectToAction("Index", "Home");
+
+                // A cookie from an old database or disabled account must not loop back to Home.
+                await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity());
+                ModelState.AddModelError(string.Empty, "Your previous session is no longer valid. Please sign in again.");
+            }
 
             ViewData["ReturnUrl"] = returnUrl;
             return View();
@@ -44,6 +53,7 @@ namespace InventorySystem.Controllers
             var user = _db.AppUsers
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
+                .Include(u => u.PrimaryRole)
                 .FirstOrDefault(u => u.Username == model.Username && u.IsActive);
 
             if (user is null || !BCrypt.Net.BCrypt.Verify(model.Password, user.PasswordHash))
@@ -73,9 +83,9 @@ namespace InventorySystem.Controllers
             // Add all user roles
             if (user.UserRoles?.Count > 0)
             {
-                foreach (var userRole in user.UserRoles)
+                foreach (var userRole in user.UserRoles.Where(ur => ur.Role?.IsActive == true))
                 {
-                    claims.Add(new Claim("Roles", userRole.Role?.Name ?? ""));
+                    claims.Add(new Claim(ClaimTypes.Role, userRole.Role?.Name ?? ""));
                 }
             }
 

@@ -1,8 +1,8 @@
-﻿@model InventorySystem.Core.Models.ProductionOrder
+@model InventorySystem.Core.Models.ProductionOrder
 @{
     Layout = "_Layout";
     bool isEdit = Model != null && Model.ProductionOrderId > 0;
-    ViewData["Title"] = isEdit ? "Edit Production Order" : "New Production Order";
+    ViewData["Title"] = isEdit ? "Edit Production Order" : "Create Production Order";
     var finalSheets = (ViewBag.FinalSheets as IEnumerable<dynamic>) ?? new List<dynamic>();
     int selectedId  = (int)(ViewBag.SelectedCostSheetId ?? 0);
 }
@@ -25,11 +25,24 @@
     .btn-save  { background:#1e3a5f; color:#fff; border:none; padding:.6rem 2rem; border-radius:8px; font-size:.95rem; font-weight:600; cursor:pointer; }
     .btn-save:hover    { background:#2d5a9e; }
     .btn-save:disabled { background:#9ca3af; cursor:not-allowed; }
+
+    @@media screen and (max-width:768px) {
+        .po-grid-3 { grid-template-columns:minmax(0,1fr); }
+        .po-card { padding:1rem; }
+        .po-fg { min-width:0; }
+    }
+
+    @@media screen and (max-width:768px) {
+        .mobile-page-header { flex-wrap:wrap; gap:1rem; }
+        .mobile-page-header > div { min-width:0; }
+        .mobile-page-header h2 { overflow-wrap:anywhere; }
+    }
+
 </style>
 
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+<div class="mobile-page-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
     <div>
-        <h2 style="font-size:1.5rem;font-weight:700;color:#1e3a5f;margin:0;">🏭 @(isEdit ? $"Edit Production Order #{Model!.ProductionOrderId}" : "New Production Order")</h2>
+        <h2 style="font-size:1.5rem;font-weight:700;color:#1e3a5f;margin:0;">🏭 @(isEdit ? $"Edit Production Order #{Model!.ProductionOrderId}" : "Create Production Order")</h2>
         <p style="color:#6b7280;margin:.2rem 0 0;font-size:.9rem;">@(isEdit ? "Update this order's cost sheet, quantity or dates" : "Create a production order from an approved (Final) Cost Sheet")</p>
     </div>
     <a href="/Production/Index" style="color:#6b7280;font-size:.9rem;">← Back to Orders</a>
@@ -38,7 +51,7 @@
 @if (isEdit && Model!.Status != "Pending")
 {
     <div style="margin-bottom:1rem;padding:.8rem 1rem;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:.85rem;color:#991b1b;">
-        ⚠️ This order is <strong>@Model.Status</strong> — it can no longer be edited (stock has already been affected). Cancel it and create a new order instead.
+        ⚠️ This order is <strong>@Model.Status</strong> — only Pending orders can be edited. To correct completed production, reverse it first when eligible, then create a new order.
     </div>
 }
 
@@ -82,8 +95,8 @@
         <div class="info-row">
             <div class="info-item">Product: <span id="infoProduct">–</span></div>
             <div class="info-item">Box Style: <span id="infoBoxStyle">–</span></div>
-            <div class="info-item">Customer: <span id="infoCustomer">–</span></div>
-            <div class="info-item">Rate / Box: <span id="infoRate">–</span></div>
+            <div class="info-item">Reusable recipe — select the customer below.</div>
+            <div class="info-item">Cost-sheet proposed rate (with taxes): <span id="infoRate">–</span></div>
         </div>
     </div>
 </div>
@@ -98,15 +111,13 @@
                    placeholder="Auto-filled from cost sheet">
         </div>
         <div class="po-fg">
-            <label>Customer</label>
-            <input type="text" id="customerName" class="po-input" readonly
-                   placeholder="Auto-filled from cost sheet">
-            <input type="hidden" id="customerId">
+            <label for="customerId">Customer *</label>
+            <select id="customerId" class="po-input"><option value="">Select an active customer...</option></select>
         </div>
         <div class="po-fg">
             <label>Order Quantity (boxes) *</label>
             <input type="number" id="orderQty" class="po-input"
-                   placeholder="e.g. 10000" min="1" oninput="calcTotal()">
+                   placeholder="e.g. 10000" min="1" max="1000000" step="1" oninput="calcTotal()">
         </div>
     </div>
 
@@ -121,12 +132,28 @@
             <input type="date" id="deliveryDate" class="po-input">
         </div>
         <div class="po-fg">
-            <label>Total Order Value</label>
+            <label>Agreed Order Value (including agreed GST)</label>
             <input type="text" id="totalValue" class="po-input" readonly
                    style="background:#eff6ff;font-weight:700;color:#1e40af;"
                    placeholder="0.00">
         </div>
     </div>
+
+    <div class="po-grid-3" style="margin-bottom:1rem;">
+        <div class="po-fg">
+            <label for="agreedUnitPrice">Agreed Selling Price / Box (before GST) *</label>
+            <input type="number" id="agreedUnitPrice" class="po-input" min="0.01" max="100000000" step="0.01" oninput="calcTotal()" placeholder="Enter price agreed with customer">
+        </div>
+        <div class="po-fg">
+            <label for="agreedGstPercent">Agreed GST %</label>
+            <input type="number" id="agreedGstPercent" class="po-input" min="0" max="100" step="0.01" value="0" oninput="calcTotal()">
+        </div>
+        <div class="po-fg">
+            <label for="customerReference">Customer Reference / PO Number</label>
+            <input type="text" id="customerReference" class="po-input" maxlength="100" placeholder="Optional customer reference">
+        </div>
+    </div>
+    <p style="font-size:.85rem;color:#526475;">Enter the negotiated price explicitly. The cost-sheet rate is an estimate, not customer agreement. These terms are fixed after production is recorded. Sale Invoice can load this order's price and GST.</p>
 
     <div class="po-fg" style="margin-bottom:1rem;">
         <label>Remarks</label>
@@ -145,6 +172,20 @@
 let currentRate = 0;
 const editId = parseInt(document.getElementById('editProductionOrderId').value) || 0;
 
+async function loadOrderCustomers() {
+    const select = document.getElementById('customerId');
+    select.disabled = true;
+    try {
+        const response = await fetch('/Parties/GetCustomers');
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error('Customers could not be loaded. Refresh before saving.');
+        select.replaceChildren(new Option('Select an active customer...', ''));
+        for (const customer of data.customers || []) select.add(new Option(customer.partyName, customer.partyId));
+        return true;
+    } catch (error) { await alertDialog(error.message, {type:'error'}); return false; }
+    finally { select.disabled = false; }
+}
+
 function loadCostSheetInfo() {
     const id = document.getElementById('costSheetSelect').value;
     document.getElementById('sheetInfoBox').style.display = 'none';
@@ -152,8 +193,6 @@ function loadCostSheetInfo() {
     if (!id) {
         currentRate = 0;
         document.getElementById('productName').value  = '';
-        document.getElementById('customerName').value = '';
-        document.getElementById('customerId').value   = '';
         document.getElementById('totalValue').value   = '';
         return;
     }
@@ -167,12 +206,9 @@ function loadCostSheetInfo() {
 
             document.getElementById('infoProduct').textContent  = s.itemName     || '–';
             document.getElementById('infoBoxStyle').textContent = s.boxStyle     || '–';
-            document.getElementById('infoCustomer').textContent = s.customerName || '–';
             document.getElementById('infoRate').textContent     = currentRate.toFixed(2);
 
             document.getElementById('productName').value  = s.itemName     || '';
-            document.getElementById('customerName').value = s.customerName || '';
-            document.getElementById('customerId').value   = s.customerId   || '';
 
             document.getElementById('sheetInfoBox').style.display = 'flex';
             calcTotal();
@@ -182,25 +218,34 @@ function loadCostSheetInfo() {
 
 function calcTotal() {
     const qty   = parseInt(document.getElementById('orderQty').value) || 0;
-    const total = qty * currentRate;
+    const price = Number(document.getElementById('agreedUnitPrice').value) || 0;
+    const gst = Number(document.getElementById('agreedGstPercent').value) || 0;
+    const base = qty * price;
+    const total = base + Math.round((base * gst / 100 + Number.EPSILON) * 100) / 100;
     document.getElementById('totalValue').value = total > 0 ? total.toFixed(2) : '';
 }
 
 async function saveOrder() {
     const costSheetId  = parseInt(document.getElementById('costSheetSelect').value);
-    const orderQty     = parseInt(document.getElementById('orderQty').value);
+    const orderQty     = Number(document.getElementById('orderQty').value);
     const orderDate    = document.getElementById('orderDate').value;
     const deliveryDate = document.getElementById('deliveryDate').value;
     const productName  = document.getElementById('productName').value.trim();
     const customerId   = document.getElementById('customerId').value;
     const remarks      = document.getElementById('remarks').value;
+    const agreedUnitPrice = Number(document.getElementById('agreedUnitPrice').value);
+    const agreedGstPercent = Number(document.getElementById('agreedGstPercent').value);
 
     if (!costSheetId)              { await alertDialog('Please select a Cost Sheet.', { type: 'warning' });      return; }
-    if (!orderQty || orderQty < 1) { await alertDialog('Please enter order quantity.', { type: 'warning' });     return; }
+    if (!customerId)               { await alertDialog('Please select the customer for this order.', {type:'warning'}); return; }
+    if (!Number.isInteger(orderQty) || orderQty < 1 || orderQty > 1000000) { await alertDialog('Enter a whole box quantity from 1 to 1,000,000.', { type: 'warning' }); return; }
     if (!orderDate)                { await alertDialog('Please enter order date.', { type: 'warning' });          return; }
     if (!deliveryDate)             { await alertDialog('Please enter delivery date.', { type: 'warning' });       return; }
-    if (new Date(deliveryDate) <= new Date(orderDate)) {
-        await alertDialog('Delivery date must be after order date.', { type: 'warning' });
+    if (!Number.isFinite(agreedUnitPrice) || agreedUnitPrice <= 0 || !Number.isFinite(agreedGstPercent) || agreedGstPercent < 0 || agreedGstPercent > 100) {
+        await alertDialog('Enter the agreed price before GST and a valid GST percentage.', {type:'warning'}); return;
+    }
+    if (new Date(deliveryDate) < new Date(orderDate)) {
+        await alertDialog('Delivery date must be on or after order date.', { type: 'warning' });
         return;
     }
 
@@ -217,7 +262,10 @@ async function saveOrder() {
         OrderQty     : orderQty,
         OrderDate    : orderDate,
         DeliveryDate : deliveryDate,
-        Remarks      : remarks
+        Remarks      : remarks,
+        AgreedUnitPrice: agreedUnitPrice,
+        AgreedGstPercent: agreedGstPercent,
+        CustomerReference: document.getElementById('customerReference').value.trim()
     };
 
     fetch(editId > 0 ? '/Production/Update' : '/Production/Save', {
@@ -229,7 +277,7 @@ async function saveOrder() {
     .then(async d => {
         if (d.success) {
             await alertDialog(`✅ ${d.message}`);
-            window.location.href = `/Production/Materials/${d.id || editId}`;
+            window.location.href = `/Production/Consume/${d.id || editId}`;
         } else {
             await alertDialog('❌ ' + (d.message || 'Unknown error'));
             btn.disabled    = false;
@@ -244,30 +292,37 @@ async function saveOrder() {
 }
 
 function loadOrderForEdit(id) {
-    fetch(`/Production/GetById?id=${id}`)
+    return fetch(`/Production/GetById?id=${id}`)
         .then(r => r.json())
         .then(async d => {
             if (!d.success) { await alertDialog('❌ Could not load order for editing.'); return; }
             const o = d.data;
 
             document.getElementById('costSheetSelect').value = o.costSheetId;
-            loadCostSheetInfo().then(() => {
+            return loadCostSheetInfo().then(() => {
                 document.getElementById('productName').value  = o.productName || '';
-                document.getElementById('customerName').value = o.customerName || '';
+                const customerSelect = document.getElementById('customerId');
+                if (o.customerId && ![...customerSelect.options].some(option => option.value === String(o.customerId))) {
+                    customerSelect.add(new Option((o.customerName || o.customerId) + ' (inactive — select an active customer)', o.customerId));
+                }
                 document.getElementById('customerId').value   = o.customerId || '';
                 document.getElementById('orderQty').value      = o.orderQty;
                 document.getElementById('orderDate').value     = o.orderDate ? o.orderDate.substring(0, 10) : '';
                 document.getElementById('deliveryDate').value  = o.deliveryDate ? o.deliveryDate.substring(0, 10) : '';
                 document.getElementById('remarks').value       = o.remarks || '';
+                document.getElementById('agreedUnitPrice').value = o.agreedUnitPrice ?? '';
+                document.getElementById('agreedGstPercent').value = o.agreedGstPercent ?? 0;
+                document.getElementById('customerReference').value = o.customerReference || '';
                 calcTotal();
             });
         })
         .catch(async () => await alertDialog('❌ Failed to load order for editing.'));
 }
 
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+    if (!await loadOrderCustomers()) { document.getElementById('saveBtn').disabled = true; return; }
     if (editId > 0) {
-        loadOrderForEdit(editId);
+        await loadOrderForEdit(editId);
         return;
     }
     const sel = document.getElementById('costSheetSelect');

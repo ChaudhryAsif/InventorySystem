@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace InventorySystem.Core.Models
@@ -23,6 +23,11 @@ namespace InventorySystem.Core.Models
         [StringLength(100)]
         public string? Specification { get; set; }      // from CostSheetPly
 
+        // Quantity fields below are in Unit (kg or pcs) despite the Kg names.
+        [StringLength(10)]
+        public string Unit { get; set; } = "kg";
+
+        public decimal RatePerKg { get; set; }
         public decimal KgPerUnit { get; set; }          // CostSheetPly.KGs (per 1 box)
         public decimal RequiredKg { get; set; }         // KgPerUnit × OrderQty
         public decimal AvailableKg { get; set; }        // from Stock at time of planning

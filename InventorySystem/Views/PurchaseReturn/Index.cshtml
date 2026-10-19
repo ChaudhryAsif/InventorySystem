@@ -87,7 +87,7 @@
                 <div class="form-section">
                     <div class="form-group">
                         <label class="form-label">Remarks</label>
-                        <textarea class="form-control" id="remarks" placeholder="Enter remarks..."></textarea>
+                        <textarea class="form-control" id="remarks" maxlength="500" placeholder="Enter remarks..."></textarea>
                     </div>
                 </div>
                 <div class="totals-box">
@@ -204,5 +204,6 @@
 </div>
 
 @section Scripts {
-    <script src="~/js/purchasereturn.js"></script>
+    <script src="~/js/purchasereturn.js" asp-append-version="true"></script>
 }
+

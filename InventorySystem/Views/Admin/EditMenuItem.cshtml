@@ -13,9 +13,12 @@
     </div>
 </div>
 
+@if (TempData["Error"] != null) { <div class="alert-box alert-danger">❌ @TempData["Error"]</div> }
+
 <form method="post" id="editMenuItemForm">
     @Html.AntiForgeryToken()
     @Html.HiddenFor(m => m.Id)
+    <input type="hidden" name="Version" value="@ViewBag.MenuVersion" />
 
     <div class="admin-form" style="max-width: 640px;">
         <div class="admin-form-group">
@@ -25,20 +28,18 @@
 
         <div class="admin-form-group">
             <label class="admin-form-label" for="Icon">Icon</label>
-            <input type="text" id="Icon" asp-for="Icon" class="admin-form-input" placeholder="e.g. 📦">
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-            <div class="admin-form-group">
-                <label class="admin-form-label" for="Controller">Controller</label>
-                <input type="text" id="Controller" asp-for="Controller" class="admin-form-input" placeholder="e.g. Sale">
+            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                <input type="text" id="Icon" asp-for="Icon" class="admin-form-input" placeholder="e.g. 📦" style="max-width: 140px;">
+                <partial name="_IconPicker" model="@("Icon")" />
             </div>
-            <div class="admin-form-group">
-                <label class="admin-form-label" for="Action">Action</label>
-                <input type="text" id="Action" asp-for="Action" class="admin-form-input" placeholder="e.g. Index">
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.3rem;">
+                Leave blank to use the default icon.
             </div>
         </div>
 
+        @if (!string.IsNullOrEmpty(Model.Controller))
+        {
+        <p>Page destinations and access permissions are preserved automatically.</p>
         <div class="admin-form-group">
             <label class="admin-form-label" for="ParentId">Parent Menu</label>
             <select id="ParentId" asp-for="ParentId" class="admin-form-input">
@@ -49,16 +50,11 @@
                 }
             </select>
         </div>
-
-        <div class="admin-form-group">
-            <label class="admin-form-label" for="RequiredPermission">Required Permission *</label>
-            <select id="RequiredPermission" asp-for="RequiredPermission" class="admin-form-input" required>
-                @foreach (var perm in (List<InventorySystem.Core.Models.Permission>)ViewBag.AllPermissions)
-                {
-                    <option value="@perm.Code">@perm.Code</option>
-                }
-            </select>
-        </div>
+        }
+        else
+        {
+            <p>Main menu groups always appear at the top level. Move pages into them using the Menu Builder.</p>
+        }
 
         <div class="admin-form-group">
             <label class="admin-form-label" for="SortOrder">Sort Order</label>

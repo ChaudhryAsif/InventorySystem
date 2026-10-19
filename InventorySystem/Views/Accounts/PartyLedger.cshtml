@@ -1,6 +1,6 @@
 @{
     Layout = "_Layout";
-    ViewData["Title"] = "Party Ledger";
+    ViewData["Title"] = "Party Statement";
 }
 <link href="~/css/accounts.css" rel="stylesheet" />
 
@@ -8,10 +8,12 @@
 
     <div class="ac-page-header">
         <div>
-            <h2 class="ac-title">📒 Party Ledger</h2>
+            <h2 class="ac-title">📒 Party Statement</h2>
             <p class="ac-subtitle">Complete debit / credit history for any supplier or customer</p>
         </div>
         <div class="ac-header-actions" id="actionButtons">
+            <a class="ac-btn ac-btn-primary" href="/Accounts/ReceiptVoucher">Receive Money / Refund</a>
+            <a class="ac-btn ac-btn-outline" href="/Accounts/PaymentVoucher">Pay Money / Refund</a>
             <button class="ac-btn ac-btn-outline" onclick="window.print()">🖨️ Print</button>
             <button class="ac-btn ac-btn-primary" id="pdfBtn" onclick="downloadPDF()">⬇️ PDF</button>
         </div>
@@ -40,7 +42,7 @@
     </div>
 
     <div id="printHeader" class="ac-print-header">
-        <h2>📒 Party Ledger — <span id="printPartyName"></span></h2>
+        <h2>📒 Party Statement — <span id="printPartyName"></span></h2>
         <p>Generated: <span id="printDate"></span></p><hr>
     </div>
 
@@ -129,10 +131,10 @@
                 document.getElementById('sumDebit').textContent   = 'Rs. ' + s.totalDebit.toFixed(2);
                 document.getElementById('sumCredit').textContent  = 'Rs. ' + s.totalCredit.toFixed(2);
                 document.getElementById('sumBalance').textContent = 'Rs. ' + s.balance.toFixed(2);
-                document.getElementById('sumBalanceLabel').textContent = s.balanceType;
+                document.getElementById('sumBalanceLabel').textContent = (s.balanceDescription || s.balanceType);
 
                 const card = document.getElementById('sumCard');
-                card.className = 'ac-balance-card ' + (s.balance <= 0 ? 'ac-card-green' : 'ac-card-red');
+                card.className = 'ac-balance-card ' + (s.balance === 0 ? 'ac-card-green' : 'ac-card-red');
 
                 document.getElementById('ledgerSummary').style.display      = '';
                 document.getElementById('ledgerTableSection').style.display = '';

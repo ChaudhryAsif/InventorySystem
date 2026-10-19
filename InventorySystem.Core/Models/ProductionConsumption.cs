@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace InventorySystem.Core.Models
@@ -19,6 +19,11 @@ namespace InventorySystem.Core.Models
         [StringLength(150)]
         public string? ItemName { get; set; }
 
+        public bool IsEstimated { get; set; }
+
+        // PlannedKg/ActualKg/VarianceKg are in Unit (kg or pcs).
+        [StringLength(10)]
+        public string Unit { get; set; } = "kg";
         public decimal PlannedKg { get; set; }    // from ProductionMaterial.RequiredKg
         public decimal ActualKg { get; set; }     // entered by user
         public decimal VarianceKg { get; set; }   // ActualKg - PlannedKg

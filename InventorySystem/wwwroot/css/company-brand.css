@@ -1,0 +1,48 @@
+/* Show the supplied BP mark through a viewport; the original business-card image is unchanged. */
+:root { --header-height: 56px; }
+.company-logo-crop {
+    display: inline-block; position: relative; overflow: hidden; flex: 0 0 auto;
+    width: 64px; height: 40px; border-radius: 6px; background: #fff;
+}
+.company-logo-crop img {
+    position: absolute; width: 500%; max-width: none; height: auto;
+    left: -40.625%; top: -62.5%;
+}
+.header-logo { min-width: 0; }
+.header-logo h1 { font-size: 1.1rem; letter-spacing: 0.01em; }
+.header-logo > .company-logo-crop { display: inline-block; width: 52px; height: 33px; }
+.main-header .header-user-avatar { width: 32px; height: 32px; font-size: 0.85rem; }
+.main-header .header-user-name { font-size: 0.82rem; }
+.main-header .btn-logout { padding: 0.4rem 0.75rem; font-size: 0.82rem; }
+.login-brand-logo { margin-bottom: 1.25rem; }
+.login-brand-logo .company-logo-crop { width: 112px; height: 70px; border-radius: 10px; }
+.login-mobile-brand { display: none; }
+.company-print-header {
+    display: flex; align-items: center; gap: 1rem; color: #475569;
+    font-size: 11px; line-height: 1.6; padding-bottom: 10px; margin-bottom: 12px;
+    border-bottom: 1px solid #cbd5e1; break-inside: avoid;
+}
+.company-print-header .company-logo-crop { width: 52px; height: 33px; }
+.company-print-name { font-size: 20px; line-height: 1.4; font-weight: 700; color: #087fa9; }
+.voucher-header > .company-print-header { border: 0; padding: 0; margin: 0; color: #fff; }
+.voucher-header .company-print-name { color: #fff; }
+@media print {
+    .voucher-header .company-print-header, .voucher-header .company-print-name { color: #111; }
+}
+@media (max-width: 620px) {
+    body.login-page { overflow: auto; padding: 1rem 0; }
+    .login-mobile-brand { display: flex; align-items: center; gap: 0.65rem; margin-bottom: 1.5rem; }
+    .login-mobile-brand strong { display: block; color: #087fa9; font-size: 1.25rem; }
+    .login-mobile-brand small { display: block; color: #64748b; font-size: 0.75rem; }
+}
+@media (max-width: 600px) {
+    .main-header .header-user-avatar { display: none; }
+    .main-header .btn-logout { white-space: nowrap; }
+    .header-logo > .company-logo-crop { width: 42px; height: 27px; border-radius: 4px; }
+    .header-logo { gap: 0.35rem; }
+    .header-logo h1 { font-size: 0.95rem; }
+}
+@media (max-width: 360px) {
+    .header-logo > .company-logo-crop { width: 36px; height: 23px; }
+    .header-logo h1 { font-size: 0.85rem; }
+}

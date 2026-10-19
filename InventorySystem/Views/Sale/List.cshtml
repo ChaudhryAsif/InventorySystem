@@ -1,6 +1,6 @@
 @{
     Layout = "_Layout";
-    ViewData["Title"] = "Sale Invoices";
+    ViewData["Title"] = "Sales Invoices";
 }
 
 <style>
@@ -34,10 +34,11 @@
 
 <div class="sl-wrap">
     <div class="sl-header">
-        <h2>🧾 Sale Invoices</h2>
+        <h2>🧾 Sales Invoices</h2>
         <a href="/Sale/Index" class="sl-btn" style="background:#16a34a;text-decoration:none;">➕ New Sale</a>
     </div>
 
+    <label><input type="checkbox" id="includeCancelled" onchange="loadSales()"> Include cancelled documents</label>
     <div class="sl-filters">
         <div class="fg"><label>Search</label><input type="text" id="fSearch" placeholder="Customer, Ref, or #" onkeyup="if(event.key==='Enter')loadSales()"></div>
         <div class="fg"><label>From</label><input type="date" id="fFrom"></div>
@@ -89,6 +90,7 @@ async function loadSales(){
     const f = document.getElementById('fFrom').value;
     const t = document.getElementById('fTo').value;
     const qs = new URLSearchParams();
+    if(document.getElementById("includeCancelled").checked) qs.set("includeCancelled", "true");
     if(s) qs.append('search', s);
     if(f) qs.append('from', f);
     if(t) qs.append('to', t);
@@ -97,32 +99,40 @@ async function loadSales(){
     body.innerHTML = '<tr><td colspan="8" class="sl-empty">Loading…</td></tr>';
     try{
         const res = await fetch('/Sale/GetSales?' + qs.toString());
+        if (!res.ok) throw new Error('Load failed');
         const payload = await res.json();
+        if (payload.success === false || !Array.isArray(payload.data)) throw new Error('Load failed');
         const data = payload.data || [];
         if(!data || data.length === 0){
-            body.innerHTML = '<tr><td colspan="8" class="sl-empty">No invoices found.</td></tr>';
+            const matching = !!(s || f || t);
+            PosListState.show(body, { columns:8,
+                title:matching ? 'No matching sales invoices found' : 'No sales invoices yet',
+                message:matching ? 'Try a different search or clear the date filters.' : 'Create a sales invoice to get started.',
+                actionText:matching ? 'Clear filters' : 'Create sales invoice',
+                onAction:matching ? clearFilters : undefined,
+                href:matching ? undefined : '/Sale/Index' });
             return;
         }
         body.innerHTML = data.map(s => `
             <tr>
-                <td><strong>#${s.saleId}</strong></td>
+                <td>${s.isCancelled ? "<span>Cancelled</span> " : ""}<strong>#${s.saleId}</strong></td>
                 <td>${s.saleDate || '-'}</td>
-                <td>${s.customerName || '-'}</td>
-                <td>${s.refNo || '-'}</td>
+                <td>${escapeHtml(s.customerName || '-')}</td>
+                <td>${escapeHtml(s.refNo || '-')}</td>
                 <td><span class="sl-badge ${s.paymentMode==='Credit'?'b-credit':'b-paid'}">${s.paymentMode}</span></td>
                 <td class="sl-num">${s.itemCount}</td>
                 <td class="sl-num">${fmt(s.netAmount)}</td>
                 <td>
                     <div class="sl-actions">
                         <button class="sl-btn sl-view" onclick="viewSale(${s.saleId})">👁 View</button>
-                        <a class="sl-btn sl-edit" style="text-decoration:none;" href="/Sale/Index?id=${s.saleId}">✏ Edit</a>
+                        <a class="sl-btn sl-edit" style="text-decoration:none;" href="${s.isCancelled ? "#" : `/Sale/Index?id=${s.saleId}`}">✏ Edit</a>
                         <a class="sl-btn sl-print" style="text-decoration:none;" target="_blank" href="/Sale/Print/${s.saleId}">🖨</a>
-                        <button class="sl-btn sl-del" onclick="deleteSale(${s.saleId})">🗑</button>
+                        <button ${s.isCancelled ? "disabled" : ""} class="sl-btn sl-del" onclick="deleteSale(${s.saleId})">Cancel</button>
                     </div>
                 </td>
             </tr>`).join('');
     }catch(e){
-        body.innerHTML = '<tr><td colspan="8" class="sl-empty" style="color:#dc2626;">Error loading invoices.</td></tr>';
+        PosListState.show(body, { columns:8, error:true, title:'Could not load sales invoices', message:'Check your connection and try again.', actionText:'Try again', onAction:loadSales });
     }
 }
 
@@ -142,15 +152,15 @@ async function viewSale(id){
         document.getElementById('vmPrint').href = '/Sale/Print/' + inv.saleId;
         document.getElementById('vmMeta').innerHTML = `
             <div><span>Date</span><b>${inv.saleDate||'-'}</b></div>
-            <div><span>Customer</span><b>${inv.customerName||'-'}</b></div>
-            <div><span>Ref No</span><b>${inv.refNo||'-'}</b></div>
+            <div><span>Customer</span><b>${escapeHtml(inv.customerName||'-')}</b></div>
+            <div><span>Ref No</span><b>${escapeHtml(inv.refNo||'-')}</b></div>
             <div><span>GST</span><b>${fmt(inv.gstAmount)}</b></div>
             <div><span>Discount</span><b>${fmt(inv.discount)}</b></div>
             <div><span>Net Amount</span><b>${fmt(inv.netAmount)}</b></div>`;
         document.getElementById('vmBody').innerHTML = (inv.items||[]).map((it,i)=>`
             <tr>
                 <td>${i+1}</td>
-                <td>${it.descr||('#'+it.itemId)}</td>
+                <td>${escapeHtml(it.descr||('#'+it.itemId))}</td>
                 <td class="sl-num">${fmt(it.quantity)}</td>
                 <td class="sl-num">${fmt(it.salePrice)}</td>
                 <td class="sl-num">${fmt(it.discAmt)}</td>
@@ -162,7 +172,7 @@ async function viewSale(id){
 function closeView(){ document.getElementById('viewModal').classList.remove('show'); }
 
 async function deleteSale(id){
-    if(!(await confirmDialog(`Delete Sale Invoice #${id}? This will restore stock and reverse its ledger entries.`, { danger: true }))) return;
+    if(!(await confirmDialog(`Cancel Sale Invoice #${id}? This will restore stock and reverse its ledger entries.`, { danger: true }))) return;
     try{
         const res = await fetch('/Sale/Delete?id=' + id, { method:'POST' });
         const data = await res.json();

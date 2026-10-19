@@ -152,6 +152,8 @@ namespace InventorySystem.Core.Services
     // ── Aging Report ─────────────────────────────────────────────────────────
     public class AgingRow
     {
+        public string BalanceType { get; set; } = "";
+        public string BalanceDescription { get; set; } = "";
         public int PartyId { get; set; }
         public string PartyName { get; set; } = string.Empty;
         public string PartyType { get; set; } = string.Empty;
@@ -205,6 +207,8 @@ namespace InventorySystem.Core.Services
     // ── Outstanding Report ───────────────────────────────────────────────────
     public class OutstandingRow
     {
+        public bool IsRefund { get; set; }
+        public string BalanceDescription { get; set; } = "";
         public int PartyId { get; set; }
         public string PartyName { get; set; } = string.Empty;
         public string PartyType { get; set; } = string.Empty;

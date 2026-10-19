@@ -1,4 +1,4 @@
-﻿@{
+@{
     Layout = "_Layout";
     ViewData["Title"] = "Outstanding Report";
 }
@@ -11,6 +11,8 @@
             <h2>📋 Outstanding Report</h2>
             <p>Net outstanding balance for each party (Payable &amp; Receivable)</p>
         </div>
+        <a class="btn btn-primary" href="/Accounts/ReceiptVoucher">Receive Money / Refund</a>
+        <a class="btn btn-outline" href="/Accounts/PaymentVoucher">Pay Money / Refund</a>
         <button class="btn btn-outline" onclick="window.print()">🖨️ Print</button>
     </div>
 
@@ -21,8 +23,8 @@
                 <label class="form-label">Party Type</label>
                 <select class="form-control" id="partyType" onchange="loadReport()">
                     <option value="all">All Parties</option>
-                    <option value="customer">Customers (Receivable)</option>
-                    <option value="supplier">Suppliers (Payable)</option>
+                    <option value="customer">Customers (including refunds)</option>
+                    <option value="supplier">Suppliers (including refunds)</option>
                 </select>
             </div>
             <div class="form-group" style="align-self:end">
@@ -55,7 +57,7 @@
                 </tbody>
                 <tfoot>
                     <tr class="report-total-row">
-                        <td colspan="5" style="text-align:right;font-weight:700">Grand Total Outstanding</td>
+                        <td colspan="5" style="text-align:right;font-weight:700">Net Receivable − Payable</td>
                         <td style="text-align:right;color:#2d5f7f;font-weight:700" id="grandTotal"></td>
                         <td colspan="2"></td>
                     </tr>
@@ -85,7 +87,7 @@
 
             const totalPayable    = data.filter(r => r.balanceType === 'Payable').reduce((s, r) => s + r.balance, 0);
             const totalReceivable = data.filter(r => r.balanceType === 'Receivable').reduce((s, r) => s + r.balance, 0);
-            const grandTotal      = data.reduce((s, r) => s + r.balance, 0);
+            const grandTotal      = totalReceivable - totalPayable;
 
             document.getElementById('summaryCards').innerHTML = `
                 <div class="summary-card blue">
@@ -116,13 +118,14 @@
             tbody.innerHTML = data.map((r, i) => `
                 <tr>
                     <td>${i + 1}</td>
-                    <td style="font-weight:600">${r.partyName}</td>
+                    <td style="font-weight:600">${escapeHtml(r.partyName)}</td>
                     <td>${ptBadge(r.partyType)}</td>
                     <td style="text-align:right;color:#2d5f7f">${fmt(r.totalDebit)}</td>
                     <td style="text-align:right;color:#28a745">${fmt(r.totalCredit)}</td>
                     <td style="text-align:right;font-weight:700;font-size:1rem;color:${r.balanceType === 'Payable' ? '#dc3545' : '#155724'}">${fmt(r.balance)}</td>
-                    <td><span class="badge ${r.balanceType === 'Payable' ? 'badge-danger' : 'badge-success'}">${r.balanceType}</span></td>
+                    <td><span class="badge ${r.balanceType === 'Payable' ? 'badge-danger' : 'badge-success'}">${r.isRefund ? escapeHtml(r.balanceDescription) : r.balanceType}</span></td>
                     <td>
+                        <a href="/Accounts/${r.balanceType === 'Receivable' ? 'ReceiptVoucher' : 'PaymentVoucher'}?partyId=${encodeURIComponent(r.partyId)}" class="btn btn-primary btn-sm">${r.balanceType === 'Receivable' ? 'Receive Money' : 'Pay Money'}</a>
                         <a href="/Accounts/PartyLedger" onclick="sessionStorage.setItem('osPartyId','${r.partyId}')"
                            class="btn btn-primary btn-sm">📒 Ledger</a>
                     </td>

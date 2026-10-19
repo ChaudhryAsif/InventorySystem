@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace InventorySystem.Core.Models
@@ -17,6 +17,8 @@ namespace InventorySystem.Core.Models
         [StringLength(50)]
         public string? Descr { get; set; }
 
+        public int? PackageCount { get; set; }
+        public string? PackageType { get; set; } // Reel / Drum; quantity remains total net kg.
         public decimal? Quantity { get; set; }
 
         public decimal? PurPrice { get; set; }

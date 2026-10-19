@@ -1,0 +1,49 @@
+<Project>
+  <!-- Upload only the offline page, then keep it in place throughout the main sync.
+       These targets run only on an actual Web Deploy publish, never on Build or file preview. -->
+  <!-- Visual Studio may set IsGetPasswordEnabled=false because its normal
+       publish task obtains credentials from the IDE. Our separate upload needs
+       the saved profile credential explicitly resolved before contacting IIS. -->
+  <Target Name="BrightPackagesResolveMaintenanceCredentials">
+    <GetPassword EncryptedPassword="$(EncryptedPassword)"
+                 Condition="'$(Password)' == '' And '$(EncryptedPassword)' != ''">
+      <Output TaskParameter="ClearPassword" PropertyName="Password" />
+    </GetPassword>
+    <Error Condition="'$(UserName)' == '' Or '$(Password)' == ''"
+           Text="Maintenance deployment needs the publish credentials. Open this publish profile's settings, enter the Web Deploy username and password, enable Save password, and try again." />
+    <PropertyGroup><_BrightPackagesMaintenanceCredentialsResolved>true</_BrightPackagesMaintenanceCredentialsResolved></PropertyGroup>
+  </Target>
+  <Target Name="BrightPackagesStartMaintenance" BeforeTargets="MSDeployPublish"
+          DependsOnTargets="BrightPackagesResolveMaintenanceCredentials"
+          Condition="'$(WebPublishMethod)' == 'MSDeploy' And '$(FilePreview)' != 'true' And '$(DesignTimeBuild)' != 'true'">
+    <Error Condition="'$(SkipExtraFilesOnServer)' != 'true'" Text="Maintenance publishing requires SkipExtraFilesOnServer=true to preserve the offline page during deployment." />
+    <Error Condition="'$(EnableMSDeployAppOffline)' != 'false'" Text="Use the branded maintenance targets instead of the built-in AppOffline rule." />
+    <Error Condition="'$(DeployIisAppPath)' == ''" Text="The Web Deploy site must be configured before publishing." />
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)\Deployment\OfflinePayload\app_offline.htm')" Text="The maintenance page is missing. Publishing was stopped before the site was taken offline." />
+    <MSBuild Projects="$(MSBuildProjectDirectory)\Deployment\MaintenanceCleanup\MaintenanceCleanup.csproj" Targets="Restore;Build"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained;PublishProfile;WebPublishMethod;PublishDir;PublishUrl"
+             Properties="Configuration=Release;TargetFramework=net48" />
+    <NormalizeServiceUrl ServiceUrl="$(MSDeployServiceURL)" UseWMSVC="true" UseRemoteAgent="false" SiteName="$(DeployIisAppPath)">
+      <Output TaskParameter="ResultUrl" PropertyName="_MaintenanceServiceUrl" />
+    </NormalizeServiceUrl>
+    <ItemGroup>
+      <_MaintenanceSource Include="contentPath"><Path>$(MSBuildProjectDirectory)\Deployment\OfflinePayload</Path></_MaintenanceSource>
+      <_MaintenanceDestination Include="contentPath">
+        <Path>$(DeployIisAppPath)</Path><ComputerName>$(_MaintenanceServiceUrl)</ComputerName>
+        <UserName>$(UserName)</UserName><Password>$(Password)</Password><AuthType>Basic</AuthType><IncludeAcls>False</IncludeAcls>
+      </_MaintenanceDestination>
+    </ItemGroup>
+    <Message Importance="high" Text="Showing the Bright Packages maintenance page during deployment." />
+    <MSDeploy Verb="sync" Source="@(_MaintenanceSource)" Destination="@(_MaintenanceDestination)"
+              EnableRule="DoNotDeleteRule" DisableRule="BackupRule" AllowUntrusted="$(AllowUntrustedCertificate)" ExePath="$(MSDeployPath)" />
+    <PropertyGroup><_BrightPackagesMaintenanceStarted>true</_BrightPackagesMaintenanceStarted></PropertyGroup>
+  </Target>
+  <!-- AfterTargets runs only when the main deployment succeeds. A failed/cancelled
+       deployment keeps maintenance visible rather than exposing partially updated files. -->
+  <Target Name="BrightPackagesFinishMaintenance" AfterTargets="MSDeployPublish"
+          Condition="'$(_BrightPackagesMaintenanceStarted)' == 'true'">
+    <Exec Command="&quot;$(MSBuildProjectDirectory)\Deployment\MaintenanceCleanup\bin\Release\net48\MaintenanceCleanup.exe&quot;"
+          EnvironmentVariables="BP_MAINTENANCE_SITE=$(DeployIisAppPath);BP_MAINTENANCE_URL=$(_MaintenanceServiceUrl);BP_MAINTENANCE_USER=$(UserName);BP_MAINTENANCE_PASSWORD=$(Password.Replace('%','%25').Replace(';','%3B'));BP_MAINTENANCE_SOURCE=$(MSBuildProjectDirectory)\Deployment\OfflinePayload\app_offline.htm" />
+    <Message Importance="high" Text="Deployment complete. The maintenance page has been removed." />
+  </Target>
+</Project>

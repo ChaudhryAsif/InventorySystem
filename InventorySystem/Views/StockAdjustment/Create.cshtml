@@ -177,13 +177,7 @@
             padding: 0.4rem 0.4rem;
         }
 
-        .items-table thead th:nth-child(n+4) {
-            display: none;
-        }
-
-        .items-table tbody td:nth-child(n+4) {
-            display: none;
-        }
+        .items-table { min-width: 1100px; }
     }
     
     /* ========== ITEM INPUT ========== */
@@ -574,13 +568,20 @@
                     <option value="Manual Addition">Manual Addition</option>
                 </select>
             </div>
-            <div class="sa-fg">
-                <label>Branch</label>
-                <select class="sa-input" id="branchId">
-                    <option value="1">Main Branch</option>
-                    <option value="2">Branch 2</option>
-                </select>
-            </div>
+            @if (BranchSettings.Value.MultiBranchEnabled)
+            {
+                <div class="sa-fg">
+                    <label>Branch</label>
+                    <select class="sa-input" id="branchId">
+                        <option value="1">Main Branch</option>
+                        <option value="2">Branch 2</option>
+                    </select>
+                </div>
+            }
+            else
+            {
+                <input type="hidden" id="branchId" value="1" />
+            }
         </div>
     </div>
 

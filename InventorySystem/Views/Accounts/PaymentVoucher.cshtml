@@ -168,7 +168,7 @@
                     const o = document.createElement('option');
                     o.value = p.value;
                     o.dataset.type = p.partyType;
-                    o.textContent  = `${p.text} [${capitalize(p.partyType)}]${p.phone ? ' — ' + p.phone : ''}`;
+                    o.textContent  = `${p.text} [${capitalize(p.partyType)}]${escapeHtml(p.phone ? ' — ' + p.phone : '')}`;
                     sel.appendChild(o);
                 });
             });
@@ -257,8 +257,8 @@
                         <td>${r.date}</td>
                         <td><span class="ac-type-badge ac-type-${r.transactionType.toLowerCase()}">${r.transactionType}</span></td>
                         <td class="ac-num"><strong>Rs. ${Math.max(r.debit, r.credit).toFixed(2)}</strong></td>
-                        <td>–</td><td>${r.refNo}</td><td>–</td><td>–</td>
-                        <td><button class="ac-void-btn" onclick="voidVoucher('${r.refNo}')">✕</button></td>
+                        <td>–</td><td>${escapeHtml(r.refNo)}</td><td>–</td><td>–</td>
+                        <td><button class="ac-void-btn" onclick="voidVoucher('${escapeHtml(r.refNo)}')">✕</button></td>
                     </tr>`).join('');
             });
     }

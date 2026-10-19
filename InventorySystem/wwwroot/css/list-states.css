@@ -1,0 +1,8 @@
+td.pos-list-state-cell { padding:0 !important; white-space:normal !important; }
+.pos-list-state { padding:2.5rem 1.25rem; text-align:center; background:#fff; color:#64748b; }
+.pos-list-state-title { display:block; font-size:1.1rem; color:#245571; line-height:1.4; }
+.pos-list-state p { margin:.5rem auto 1rem; max-width:34rem; line-height:1.6; white-space:normal; }
+.pos-list-state-action { display:inline-block; padding:.65rem 1rem; border:1px solid #245571; border-radius:7px; background:#245571; color:#fff !important; font:inherit; font-weight:600; text-decoration:none; cursor:pointer; white-space:normal; }
+.pos-list-state-action:focus-visible { outline:3px solid #38bdf8; outline-offset:3px; }
+@media(max-width:600px) { .pos-list-state { padding:1.75rem 1rem; } .pos-list-state-title { font-size:1rem; } }
+@media(max-width:600px) { .pos-list-state { box-sizing:border-box; position:sticky; left:0; width:min(100%, calc(100vw - 5rem)); } }

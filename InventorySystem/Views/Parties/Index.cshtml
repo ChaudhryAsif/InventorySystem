@@ -1,4 +1,5 @@
-﻿@{
+@{ ViewData["Title"] = "Customers & Suppliers"; }
+@{
     Layout = "_Layout";
 }
 
@@ -7,7 +8,7 @@
 <div>
     <div class="page-header">
         <div class="page-title">
-            <h2>Parties Management (Accounts)</h2>
+            <h2>Customers &amp; Suppliers</h2>
             <p>Manage suppliers and customers for your business</p>
         </div>
         <button class="btn btn-success" id="addPartyBtn">
@@ -219,9 +220,16 @@
 
 // Load all parties
 async function loadParties() {
-            const response = await fetch('/Parties/GetParties');
-    const payload = await response.json();
-    renderPartiesTable(payload.data || []);
+    try {
+        const response = await fetch('/Parties/GetParties');
+        if (!response.ok) throw new Error('Load failed');
+        const payload = await response.json();
+        if (payload.success === false || !Array.isArray(payload.data)) throw new Error('Load failed');
+        renderPartiesTable(payload.data);
+        filterTable();
+    } catch {
+        PosListState.show(document.getElementById('partiesTableBody'), { columns:8, error:true, title:'Customers and suppliers could not be loaded', message:'Check your connection and try again.', actionText:'Try again', onAction:loadParties });
+    }
 }
 
 // Render data into table
@@ -241,11 +249,11 @@ function renderPartiesTable(data) {
 
         const row = `
             <tr data-type="${party.partyType}" data-status="${party.status}">
-                <td>${party.partyName}</td>
+                <td>${escapeHtml(party.partyName)}</td>
                 <td>${typeBadge}</td>
-                <td>${party.contactPerson || '-'}</td>
-                <td>${party.phone || '-'}</td>
-                <td>${party.email || '-'}</td>
+                <td>${escapeHtml(party.contactPerson || '-')}</td>
+                <td>${escapeHtml(party.phone || '-')}</td>
+                <td>${escapeHtml(party.email || '-')}</td>
                 <td>Rs. ${parseFloat(party.openingBalance || 0).toFixed(2)}</td>
                 <td>${statusBadge}</td>
                 <td>
@@ -268,6 +276,18 @@ function renderPartiesTable(data) {
             partyType: document.getElementById('partyType').value,
             partyName: document.getElementById('partyName').value,
             contactPerson: document.getElementById('contactPerson').value,
+            designation: document.getElementById('designation').value,
+            mobile: document.getElementById('mobile').value,
+            website: document.getElementById('website').value,
+            address: document.getElementById('address').value,
+            city: document.getElementById('city').value,
+            state: document.getElementById('state').value,
+            zipCode: document.getElementById('zipCode').value,
+            country: document.getElementById('country').value,
+            creditLimit: parseFloat(document.getElementById('creditLimit').value || 0),
+            paymentTerms: parseInt(document.getElementById('paymentTerms').value || 30),
+            taxId: document.getElementById('taxId').value,
+            notes: document.getElementById('notes').value,
             phone: document.getElementById('phone').value,
             email: document.getElementById('email').value,
             openingBalance: parseFloat(document.getElementById('openingBalance').value || 0),
@@ -295,7 +315,14 @@ function renderPartiesTable(data) {
                 }
             }
 
-                closeSaveModal();
+            if (!response.ok) {
+                const text = await response.text();
+                let message = text || 'Unable to save party. Please try again.';
+                try { message = JSON.parse(text).message || message; } catch {}
+                await alertDialog(message, { type: 'error' });
+                return;
+            }
+        closeSaveModal();
         await loadParties();
     });
 
@@ -326,6 +353,18 @@ function renderPartiesTable(data) {
         document.getElementById('partyType').value = p.partyType;
         document.getElementById('partyName').value = p.partyName;
         document.getElementById('contactPerson').value = p.contactPerson || '';
+        document.getElementById('designation').value = p.designation ?? '';
+        document.getElementById('mobile').value = p.mobile ?? '';
+        document.getElementById('website').value = p.website ?? '';
+        document.getElementById('address').value = p.address ?? '';
+        document.getElementById('city').value = p.city ?? '';
+        document.getElementById('state').value = p.state ?? '';
+        document.getElementById('zipCode').value = p.zipCode ?? '';
+        document.getElementById('country').value = p.country ?? 'United States';
+        document.getElementById('creditLimit').value = p.creditLimit ?? 0;
+        document.getElementById('paymentTerms').value = p.paymentTerms ?? 30;
+        document.getElementById('taxId').value = p.taxId ?? '';
+        document.getElementById('notes').value = p.notes ?? '';
         document.getElementById('phone').value = p.phone || '';
         document.getElementById('email').value = p.email || '';
         document.getElementById('openingBalance').value = p.openingBalance || 0;
@@ -371,11 +410,11 @@ function renderPartiesTable(data) {
         newRow.setAttribute('data-type', data.partyType);
         newRow.setAttribute('data-status', data.status);
         newRow.innerHTML = `
-            <td>${data.partyName}</td>
+            <td>${escapeHtml(data.partyName)}</td>
             <td>${typeBadge}</td>
-            <td>${data.contactPerson || '-'}</td>
-            <td>${data.phone || '-'}</td>
-            <td>${data.email || '-'}</td>
+            <td>${escapeHtml(data.contactPerson || '-')}</td>
+            <td>${escapeHtml(data.phone || '-')}</td>
+            <td>${escapeHtml(data.email || '-')}</td>
             <td>Rs. ${parseFloat(data.openingBalance).toFixed(2)}</td>
             <td>${statusBadge}</td>
             <td>
@@ -401,13 +440,16 @@ function renderPartiesTable(data) {
     });
 
     // Search
-    document.getElementById('searchInput').addEventListener('keyup', filterTable);
+    document.getElementById('searchInput').addEventListener('input', filterTable);
     document.getElementById('filterStatus').addEventListener('change', filterTable);
 
     function filterTable() {
         const searchText = document.getElementById('searchInput').value.toLowerCase();
         const statusFilter = document.getElementById('filterStatus').value;
-        const rows = document.querySelectorAll('#partiesTableBody tr');
+        const body = document.getElementById('partiesTableBody');
+        if (body.querySelector('[data-list-state="error"]')) return;
+        PosListState.clear(body);
+        const rows = [...body.querySelectorAll('tr[data-type]')];
 
         rows.forEach(row => {
             const type = row.getAttribute('data-type');
@@ -424,6 +466,14 @@ function renderPartiesTable(data) {
                 row.style.display = 'none';
             }
         });
+        if (!rows.some(row => row.style.display !== 'none')) {
+            const matching = !!searchText.trim() || !!statusFilter || currentTab !== 'all';
+            PosListState.show(body, { columns:8,
+                title:matching ? 'No matching customers or suppliers found' : 'No customers or suppliers yet',
+                message:matching ? 'Try a different search, tab or status filter.' : 'Add the customers you sell to and the suppliers you buy from.',
+                actionText:matching ? 'Clear filters' : '+ Add Customer / Supplier',
+                onAction:matching ? () => { document.getElementById('searchInput').value=''; document.getElementById('filterStatus').value=''; currentTab='all'; document.querySelectorAll('.tab').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === 'all')); filterTable(); } : () => document.getElementById('addPartyBtn').click() });
+        }
     }
 
     // Close modal on outside click

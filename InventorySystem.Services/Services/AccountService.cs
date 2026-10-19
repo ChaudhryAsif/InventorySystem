@@ -1,4 +1,4 @@
-using InventorySystem.Core.Models;
+﻿using InventorySystem.Core.Models;
 using InventorySystem.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,6 +28,13 @@ namespace InventorySystem.Core.Services
         {
             try
             {
+                model.AccountCode = model.AccountCode?.Trim() ?? "";
+                model.AccountName = model.AccountName?.Trim() ?? "";
+                if (model.AccountCode.Length is < 1 or > 20 || model.AccountName.Length is < 1 or > 150 ||
+                    model.AccountType is not ("Assets" or "Liabilities" or "Equity" or "Income" or "Expenses") ||
+                    model.Level is < 1 or > 3 || model.NormalBalance is not ("Debit" or "Credit") ||
+                    !ValidOpeningBalance(model.OpeningBalance, model.OpeningBalanceType))
+                    return (false, "Enter a valid account code, name, type, level and opening balance.");
                 // Code uniqueness check
                 bool codeExists = await _db.AccountHeads
                     .AnyAsync(a => a.AccountCode == model.AccountCode && a.AccountHeadId != model.AccountHeadId);
@@ -111,6 +118,24 @@ namespace InventorySystem.Core.Services
 
         public async Task<(bool success, string message, int? voucherId)> SaveVoucherAsync(Voucher voucher)
         {
+            if (voucher.VoucherType is not ("PV" or "RV" or "JV" or "CV" or "DN" or "CN") ||
+                voucher.VoucherDate.Year < 2000 || voucher.VoucherDate.Date > DateTime.Today.AddDays(1))
+                return (false, "Select a valid voucher type and date.", null);
+            if (voucher.Details?.Any(d => d.Debit > 100000000 || d.Credit > 100000000 ||
+                d.Debit != decimal.Round(d.Debit, 2) || d.Credit != decimal.Round(d.Credit, 2) ||
+                d.Debit == 0 && d.Credit == 0) == true)
+                return (false, "Enter positive line amounts with at most two decimal places.", null);
+            if (voucher.Details == null || !voucher.Details.Any())
+                return (false, "Voucher must have at least one line.", null);
+            if (voucher.Details == null || voucher.Details.Count < 2 || voucher.Details.Any(d => d.Debit < 0 || d.Credit < 0 || d.Debit > 0 && d.Credit > 0))
+                return (false, "Enter valid debit and credit lines.", null);
+            var accountIds = voucher.Details.Select(d => d.AccountHeadId).Distinct().ToArray();
+            if (await _db.AccountHeads.CountAsync(a => accountIds.Contains(a.AccountHeadId) && a.IsActive && a.Level == 3) != accountIds.Length)
+                return (false, "Select active posting accounts.", null);
+            if (_db.RestrictBranches && !_db.AllowedBranchIds.Contains(voucher.BranchId ?? 1))
+                return (false, "Branch access denied.", null);
+            if (voucher.Status is not ("Draft" or "Posted"))
+                return (false, "Save as Draft or Posted; approval uses a separate action.", null);
             // Validate double-entry balance
             var totalDebit  = voucher.Details.Sum(d => d.Debit);
             var totalCredit = voucher.Details.Sum(d => d.Credit);
@@ -120,12 +145,13 @@ namespace InventorySystem.Core.Services
             if (!voucher.Details.Any())
                 return (false, "Voucher must have at least one line.", null);
 
+            bool participating = _db.Database.CurrentTransaction != null;
             bool isNew = voucher.VoucherId == 0;
             const int maxAttempts = 3;
 
             for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                using var tx = await _db.Database.BeginTransactionAsync();
+                using var tx = await _db.Database.BeginAtomicTransactionAsync();
                 try
                 {
                     Voucher saved;
@@ -198,7 +224,7 @@ namespace InventorySystem.Core.Services
 
                     return (true, $"Voucher {saved.VoucherNo} saved.", saved.VoucherId);
                 }
-                catch (DbUpdateException) when (isNew && attempt < maxAttempts)
+                catch (DbUpdateException) when (isNew && attempt < maxAttempts && !participating)
                 {
                     // Most likely a duplicate VoucherNo from a concurrent save
                     // (unique index on Vouchers.VoucherNo) — regenerate and retry.
@@ -441,38 +467,8 @@ namespace InventorySystem.Core.Services
             return new BalanceSheetResult { AsOf = asOf, AssetRows = assets, LiabilityRows = liabilities, EquityRows = equity };
         }
 
-        public async Task<List<PartyStatementRow>> GetPartyStatementAsync(int partyId, DateTime? from, DateTime? to)
-        {
-            var query = _db.GeneralLedger
-                .Where(g => g.PartyId == partyId && !g.IsVoid)
-                .AsQueryable();
-
-            if (from.HasValue) query = query.Where(g => g.VoucherDate >= from.Value);
-            if (to.HasValue)   query = query.Where(g => g.VoucherDate <= to.Value.Date.AddDays(1).AddTicks(-1));
-
-            var entries = await query.OrderBy(g => g.VoucherDate).ThenBy(g => g.GLId).ToListAsync();
-
-            var party = await _db.Parties.FindAsync(partyId);
-            bool isSupplier = party?.PartyType is "supplier" or "both";
-
-            decimal running = 0;
-            return entries.Select(e =>
-            {
-                running += isSupplier ? e.Credit - e.Debit : e.Debit - e.Credit;
-                return new PartyStatementRow
-                {
-                    Date            = e.VoucherDate,
-                    VoucherNo       = e.VoucherNo,
-                    TransactionType = e.VoucherType,
-                    Description     = e.Narration ?? "",
-                    Debit           = e.Debit,
-                    Credit          = e.Credit,
-                    Balance         = running
-                };
-            }).ToList();
-        }
-
-        // ── VOUCHER NUMBER GENERATOR ──────────────────────────────────────────
+        public Task<List<PartyStatementRow>> GetPartyStatementAsync(int partyId, DateTime? from, DateTime? to)
+            => new PartyBalanceService(_db).StatementAsync(partyId, from, to);
 
         public Task<string> GenerateVoucherNoAsync(string voucherType)
             => GenerateVoucherNoAsync(voucherType, DateTime.Today);
@@ -579,85 +575,30 @@ namespace InventorySystem.Core.Services
 
         public async Task<AgingReportResult> GetAgingReportAsync(string partyType, DateTime asOf)
         {
-            var partiesQuery = _db.Parties.Where(p => p.Status != "inactive");
-            if (!string.IsNullOrEmpty(partyType) && partyType != "all")
-                partiesQuery = partiesQuery.Where(p => p.PartyType == partyType || p.PartyType == "both");
-
-            var parties = await partiesQuery.OrderBy(p => p.PartyName).ToListAsync();
-            var partyIds = parties.Select(p => p.PartyId).ToList();
-
-            // Load GL data grouped by partyId + date bucket
-            var glData = await _db.GeneralLedger
-                .Where(g => !g.IsVoid
-                         && g.PartyId != null
-                         && partyIds.Contains(g.PartyId!.Value)
-                         && g.VoucherDate <= asOf)
-                .Select(g => new
-                {
-                    g.PartyId,
-                    Date = g.VoucherDate.Date,
-                    g.Debit,
-                    g.Credit
-                })
-                .ToListAsync();
-
-            var rows = new List<AgingRow>();
-
+            var parties = await _db.Parties.Where(p => p.Status != "inactive" && (partyType == "all" || partyType == "" || p.PartyType == partyType || p.PartyType == "both")).ToListAsync();
+            var result = new AgingReportResult { AsOf = asOf, PartyType = partyType };
             foreach (var party in parties)
             {
-                bool isSupplier = party.PartyType is "supplier" or "both";
-                var entries = glData.Where(g => g.PartyId == party.PartyId).ToList();
-                if (!entries.Any()) continue;
-
-                decimal current = 0, d31_60 = 0, d61_90 = 0, over90 = 0;
-
-                // Group by date so each day's net is aged together
-                var byDate = entries
-                    .GroupBy(e => e.Date)
-                    .Select(g => new
-                    {
-                        Date = g.Key,
-                        Net = isSupplier
-                                ? g.Sum(e => e.Credit) - g.Sum(e => e.Debit)
-                                : g.Sum(e => e.Debit) - g.Sum(e => e.Credit)
-                    });
-
-                foreach (var day in byDate)
+                var entries = await GetPartyStatementAsync(party.PartyId, null, asOf);
+                var signedBalance = entries.LastOrDefault()?.Balance ?? 0;
+                if (signedBalance == 0) continue;
+                var position = PartyBalanceService.Position(party.PartyType, signedBalance);
+                var multiplier = position.BalanceType == "Receivable" ? 1m : -1m;
+                var credits = entries.Sum(r => Math.Max(0, -(r.Debit-r.Credit)*multiplier));
+                var row = new AgingRow { PartyId = party.PartyId, PartyName = party.PartyName, PartyType = party.PartyType ?? "", BalanceType = position.BalanceType, BalanceDescription = position.Description };
+                foreach (var entry in entries.Where(r => (r.Debit-r.Credit)*multiplier > 0).OrderBy(r => r.Date))
                 {
-                    if (day.Net == 0) continue;
-                    int age = (int)(asOf - day.Date).TotalDays;
-                    if (age <= 30) current += day.Net;
-                    else if (age <= 60) d31_60 += day.Net;
-                    else if (age <= 90) d61_90 += day.Net;
-                    else over90 += day.Net;
+                    var debt = (entry.Debit-entry.Credit)*multiplier;
+                    var applied = Math.Min(debt,credits); credits -= applied; debt -= applied;
+                    var age = (asOf.Date-entry.Date.Date).Days;
+                    if (age <= 30) row.Current += debt; else if (age <= 60) row.Days31_60 += debt; else if (age <= 90) row.Days61_90 += debt; else row.Over90 += debt;
                 }
-
-                // Only show parties with a positive outstanding balance
-                decimal total = current + d31_60 + d61_90 + over90;
-                if (total <= 0) continue;
-
-                rows.Add(new AgingRow
-                {
-                    PartyId = party.PartyId,
-                    PartyName = party.PartyName,
-                    PartyType = party.PartyType ?? "",
-                    Current = current > 0 ? current : 0,
-                    Days31_60 = d31_60 > 0 ? d31_60 : 0,
-                    Days61_90 = d61_90 > 0 ? d61_90 : 0,
-                    Over90 = over90 > 0 ? over90 : 0,
-                    Total = total
-                });
+                row.Total = row.Current+row.Days31_60+row.Days61_90+row.Over90;
+                if (row.Total > 0) result.Rows.Add(row);
             }
-
-            return new AgingReportResult
-            {
-                AsOf = asOf,
-                PartyType = partyType,
-                Rows = rows.OrderByDescending(r => r.Total).ToList()
-            };
+            result.Rows = result.Rows.OrderByDescending(r => r.Total).ToList();
+            return result;
         }
-
-        // ── CASH FLOW STATEMENT ───────────────────────────────────────────────
 
         public async Task<CashFlowResult> GetCashFlowAsync(DateTime from, DateTime to)
         {
@@ -745,56 +686,20 @@ namespace InventorySystem.Core.Services
 
         public async Task<List<OutstandingRow>> GetOutstandingReportAsync(string partyType)
         {
-            var partiesQuery = _db.Parties.Where(p => p.Status != "inactive");
-            if (!string.IsNullOrEmpty(partyType) && partyType != "all")
-                partiesQuery = partiesQuery.Where(p => p.PartyType == partyType || p.PartyType == "both");
-
-            var parties = await partiesQuery.OrderBy(p => p.PartyName).ToListAsync();
-            var partyIds = parties.Select(p => p.PartyId).ToList();
-
-            var glTotals = await _db.GeneralLedger
-                .Where(g => !g.IsVoid && g.PartyId != null && partyIds.Contains(g.PartyId!.Value))
-                .GroupBy(g => g.PartyId)
-                .Select(g => new
-                {
-                    PartyId = g.Key!.Value,
-                    TotalDebit = g.Sum(x => x.Debit),
-                    TotalCredit = g.Sum(x => x.Credit)
-                })
-                .ToListAsync();
-
-            var rows = new List<OutstandingRow>();
-
+            var parties = await _db.Parties.Where(p => p.Status != "inactive" && (partyType == "all" || partyType == "" || p.PartyType == partyType || p.PartyType == "both")).ToListAsync();
+            var result = new List<OutstandingRow>();
             foreach (var party in parties)
             {
-                var gl = glTotals.FirstOrDefault(g => g.PartyId == party.PartyId);
-                if (gl == null) continue;
-
-                bool isSupplier = party.PartyType is "supplier" or "both";
-                decimal balance = isSupplier
-                    ? gl.TotalCredit - gl.TotalDebit
-                    : gl.TotalDebit - gl.TotalCredit;
-
-                if (balance <= 0) continue;  // only show outstanding (positive) balances
-
-                rows.Add(new OutstandingRow
-                {
-                    PartyId = party.PartyId,
-                    PartyName = party.PartyName,
-                    PartyType = party.PartyType ?? "",
-                    TotalDebit = gl.TotalDebit,
-                    TotalCredit = gl.TotalCredit,
-                    Balance = balance,
-                    BalanceType = isSupplier ? "Payable" : "Receivable"
-                });
+                var rows = await GetPartyStatementAsync(party.PartyId, null, null);
+                var balance = rows.LastOrDefault()?.Balance ?? 0;
+                if (balance == 0) continue;
+                var position = PartyBalanceService.Position(party.PartyType, balance);
+                result.Add(new OutstandingRow { PartyId = party.PartyId, PartyName = party.PartyName, PartyType = party.PartyType ?? "",
+                    TotalDebit = rows.Sum(r => r.Debit), TotalCredit = rows.Sum(r => r.Credit), Balance = position.Amount,
+                    BalanceType = position.BalanceType, IsRefund = position.IsRefund, BalanceDescription = position.Description });
             }
-
-            return rows.OrderByDescending(r => r.Balance).ToList();
+            return result.OrderByDescending(r => r.Balance).ToList();
         }
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // DAY BOOK
-        // ═══════════════════════════════════════════════════════════════════════
 
         public async Task<DayBookResult> GetDayBookAsync(DateTime from, DateTime to)
         {
@@ -883,14 +788,21 @@ namespace InventorySystem.Core.Services
         // OPENING BALANCES
         // ═══════════════════════════════════════════════════════════════════════
 
+        private static bool ValidOpeningBalance(decimal amount, string side)
+            => amount >= 0 && amount <= 100000000 && amount == decimal.Round(amount, 2) && side is "Debit" or "Credit";
+
         public async Task<(bool success, string message)> SaveOpeningBalancesAsync(List<AccountHead> accounts)
         {
             try
             {
+                if (accounts == null || accounts.Count == 0 || accounts.Any(a => a.AccountHeadId <= 0 || !ValidOpeningBalance(a.OpeningBalance, a.OpeningBalanceType)))
+                    return (false, "Enter nonnegative opening balances with two decimal places and a Debit or Credit side.");
+                var ids = accounts.Select(a => a.AccountHeadId).Distinct().ToArray();
+                if (ids.Length != accounts.Count || await _db.AccountHeads.CountAsync(a => ids.Contains(a.AccountHeadId) && a.Level == 3) != ids.Length)
+                    return (false, "Select existing ledger accounts once each.");
                 foreach (var item in accounts)
                 {
-                    var existing = await _db.AccountHeads.FindAsync(item.AccountHeadId);
-                    if (existing == null) continue;
+                    var existing = (await _db.AccountHeads.FindAsync(item.AccountHeadId))!;
                     existing.OpeningBalance = item.OpeningBalance;
                     existing.OpeningBalanceType = item.OpeningBalanceType;
                 }

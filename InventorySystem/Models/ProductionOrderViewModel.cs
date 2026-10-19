@@ -1,4 +1,4 @@
-﻿namespace InventorySystem.Models
+namespace InventorySystem.Models
 {
     public class ProductionOrderViewModel
     {
@@ -7,7 +7,11 @@
         public string? CustomerId { get; set; }
         public string? CustomerName { get; set; }
         public string? ProductName { get; set; }
+        public long? FinishedItemId { get; set; }
         public int OrderQty { get; set; }
+        public decimal? AgreedUnitPrice { get; set; }
+        public decimal AgreedGstPercent { get; set; }
+        public string? CustomerReference { get; set; }
         public DateTime OrderDate { get; set; }
         public DateTime DeliveryDate { get; set; }
         public string Status { get; set; } = "Pending";
@@ -16,7 +20,7 @@
         // Cost Sheet summary (for display)
         public string? BoxStyle { get; set; }
         public decimal? FinalRateWithGST { get; set; }
-        public decimal? TotalOrderValue => OrderQty * (FinalRateWithGST ?? 0);
+        public decimal? TotalOrderValue => AgreedUnitPrice.HasValue ? OrderPricing.Total(OrderQty, AgreedUnitPrice.Value, AgreedGstPercent) : null;
     }
 
     public class ProductionMaterialViewModel
@@ -38,6 +42,13 @@
         public string? ItemName { get; set; }
         public decimal PlannedKg { get; set; }
         public decimal ActualKg { get; set; }
+    }
+
+    public class RecordProductionRequest
+    {
+        public int ProductionOrderId { get; set; }
+        public int ProducedQty { get; set; }
+        public string? Reason { get; set; }
     }
 
     public class SaveConsumptionRequest

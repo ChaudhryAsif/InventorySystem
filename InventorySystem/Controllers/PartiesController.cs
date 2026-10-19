@@ -1,4 +1,4 @@
-﻿using InventorySystem.Core.Models;
+using InventorySystem.Core.Models;
 using InventorySystem.Data;
 using InventorySystem.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -26,6 +26,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public async Task<IActionResult> GetParties(int page = 1, int pageSize = 50)
         {
+            page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
             var totalCount = await _context.Parties.CountAsync();
 
             var data = await _context.Parties
@@ -38,6 +39,18 @@ namespace InventorySystem.Controllers
                     PartyType = p.PartyType,
                     PartyName = p.PartyName,
                     ContactPerson = p.ContactPerson,
+                    Designation = p.Designation,
+                    Mobile = p.Mobile,
+                    Website = p.Website,
+                    Address = p.Address,
+                    City = p.City,
+                    State = p.State,
+                    ZipCode = p.ZipCode,
+                    Country = p.Country,
+                    CreditLimit = p.CreditLimit,
+                    PaymentTerms = p.PaymentTerms,
+                    TaxId = p.TaxId,
+                    Notes = p.Notes,
                     Phone = p.Phone,
                     Email = p.Email,
                     OpeningBalance = p.OpeningBalance,
@@ -63,6 +76,18 @@ namespace InventorySystem.Controllers
                 PartyType = party.PartyType,
                 PartyName = party.PartyName,
                 ContactPerson = party.ContactPerson,
+                    Designation = party.Designation,
+                    Mobile = party.Mobile,
+                    Website = party.Website,
+                    Address = party.Address,
+                    City = party.City,
+                    State = party.State,
+                    ZipCode = party.ZipCode,
+                    Country = party.Country,
+                    CreditLimit = party.CreditLimit,
+                    PaymentTerms = party.PaymentTerms,
+                    TaxId = party.TaxId,
+                    Notes = party.Notes,
                 Phone = party.Phone,
                 Email = party.Email,
                 OpeningBalance = party.OpeningBalance,
@@ -78,11 +103,17 @@ namespace InventorySystem.Controllers
         {
             try
             {
-                if (!ModelState.IsValid)
-                    return BadRequest(ModelState);
-
                 if (model == null)
                     return BadRequest("Invalid party data.");
+                model.PartyName = model.PartyName?.Trim() ?? "";
+                model.PartyType = model.PartyType?.Trim().ToLowerInvariant();
+                model.Status = model.Status?.Trim().ToLowerInvariant();
+                if (!ModelState.IsValid || string.IsNullOrWhiteSpace(model.PartyName) ||
+                    model.PartyType is not ("supplier" or "customer" or "both") ||
+                    model.Status is not ("active" or "inactive"))
+                    return BadRequest(new { success = false, message = "Enter a party name, valid party type, and active or inactive status." });
+                if (await _context.Parties.AnyAsync(p => p.PartyId != model.PartyId && p.PartyName.Trim().ToLower() == model.PartyName.ToLower()))
+                    return Conflict(new { success = false, message = "A party with the same name already exists." });
 
                 var party = new Party();
 
@@ -100,6 +131,18 @@ namespace InventorySystem.Controllers
                         PartyType = model.PartyType,
                         PartyName = model.PartyName,
                         ContactPerson = model.ContactPerson,
+                    Designation = model.Designation,
+                    Mobile = model.Mobile,
+                    Website = model.Website,
+                    Address = model.Address,
+                    City = model.City,
+                    State = model.State,
+                    ZipCode = model.ZipCode,
+                    Country = model.Country,
+                    CreditLimit = model.CreditLimit,
+                    PaymentTerms = model.PaymentTerms,
+                    TaxId = model.TaxId,
+                    Notes = model.Notes,
                         Phone = model.Phone,
                         Email = model.Email,
                         OpeningBalance = model.OpeningBalance,
@@ -116,6 +159,18 @@ namespace InventorySystem.Controllers
                     party.PartyType = model.PartyType;
                     party.PartyName = model.PartyName;
                     party.ContactPerson = model.ContactPerson;
+                    party.Designation = model.Designation;
+                    party.Mobile = model.Mobile;
+                    party.Website = model.Website;
+                    party.Address = model.Address;
+                    party.City = model.City;
+                    party.State = model.State;
+                    party.ZipCode = model.ZipCode;
+                    party.Country = model.Country;
+                    party.CreditLimit = model.CreditLimit;
+                    party.PaymentTerms = model.PaymentTerms;
+                    party.TaxId = model.TaxId;
+                    party.Notes = model.Notes;
                     party.Phone = model.Phone;
                     party.Email = model.Email;
                     party.OpeningBalance = model.OpeningBalance;
@@ -140,7 +195,7 @@ namespace InventorySystem.Controllers
             if (party == null)
                 return NotFound();
 
-            _context.Parties.Remove(party);
+            party.Status = "inactive";
             await _context.SaveChangesAsync();
             return NoContent();
         }
