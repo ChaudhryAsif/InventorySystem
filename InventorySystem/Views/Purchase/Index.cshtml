@@ -61,7 +61,7 @@
                     <div class="form-group">
                         <label class="form-label">Supplier Account</label>
                         <div class="supplier-lookup">
-                            <input type="text" class="form-control" id="supplierAccount" disabled placeholder="Search supplier...">
+                            <input type="text" class="form-control" id="supplierAccount" disabled placeholder="Select a Raw Material group...">
                             <input type="hidden" class="form-control" id="hftxtSupplierId">
                             <button type="button" class="btn-icon" id="btnSupplierAccount">👤</button>
                         </div>
@@ -95,9 +95,8 @@
                                 <th style="width: 50px;">#</th>
                                 <th style="width: 120px;">Item ID</th>
                                 <th style="width: 250px;">Item Name</th>
-                                <th style="width: 100px;">Quantity</th>
-                                <th style="width: 120px;">Pur. Price</th>
-                                <th style="width: 120px;">Sale Rate</th>
+                                <th style="width: 100px;">Item Quantity / Unit</th>
+                                <th style="width: 120px;">Pur. Price / Unit</th>
                                 <th style="width: 100px;">Disc %</th>
                                 <th style="width: 120px;">Disc Amt</th>
                                 <th style="width: 120px;">Total</th>
@@ -135,7 +134,7 @@
 
                 <div class="totals-box">
                     <div class="total-row">
-                        <span class="total-label">Total Quantity:</span>
+                        <span class="total-label">Quantities by Unit:</span>
                         <input type="text" class="total-input" id="totalQty" value="0" readonly>
                     </div>
 
@@ -192,15 +191,19 @@
     <div class="modal supplier-modal" id="supplierModal">
         <div class="supplier-modal-dialog">
             <div class="supplier-modal-header">
-                <h3 class="supplier-modal-title">Select Supplier</h3>
+                <h3 class="supplier-modal-title">Select Raw Material Group</h3>
                 <button class="supplier-modal-close" onclick="closeSupplierModal()">&times;</button>
             </div>
             <div class="supplier-modal-body">
+                <label for="supplierGroupFilter" class="form-label">Group Name</label>
+                <select id="supplierGroupFilter" class="form-control" onchange="chooseSupplierGroup()" style="margin-bottom: .75rem;">
+                    <option value="">Select a Raw Material group</option>
+                </select>
                 <div class="supplier-search-box">
                     <input type="text"
                            class="supplier-search-input"
                            id="supplierSearchInput"
-                           placeholder="🔍 Search suppliers by name, phone, or email..."
+                           placeholder="🔍 Search groups by name, phone, or address..."
                            onkeyup="searchSuppliers()">
                 </div>
 
@@ -209,18 +212,17 @@
                         <thead>
                             <tr>
                                 <th style="width: 60px;">ID</th>
-                                <th>Party Name</th>
-                                <th>Type</th>
-                                <th>Contact Person</th>
+                                <th>Group Name</th>
+                                <th>Group Type</th>
+                                <th>Description</th>
                                 <th>Phone</th>
-                                <th>Email</th>
-                                <th>Balance</th>
+                                <th>Address</th>
                             </tr>
                         </thead>
                         <tbody id="supplierTableBody">
                             <tr>
-                                <td colspan="7" style="text-align: center; padding: 2rem;">
-                                    Loading suppliers...
+                                <td colspan="6" style="text-align: center; padding: 2rem;">
+                                    Loading groups...
                                 </td>
                             </tr>
                         </tbody>
@@ -229,19 +231,19 @@
 
                 <div id="emptyState" class="empty-state" style="display: none;">
                     <div class="empty-state-icon">📦</div>
-                    <p>No suppliers found</p>
+                    <p>No Raw Material groups found</p>
                 </div>
             </div>
             <div class="supplier-modal-footer">
                 <button type="button" class="btn btn-danger" onclick="closeSupplierModal()">✖ Cancel</button>
                 <button type="button" class="btn btn-select" id="selectSupplierBtn" onclick="selectSupplier()" disabled>
-                    ✓ Select Supplier
+                    ✓ Select Group
                 </button>
             </div>
         </div>
     </div>
 
-    <div class="modal item-modal" id="itemModal">
+    <div class="modal item-modal" id="itemModal" data-item-paging="client">
         <div class="item-modal-dialog">
             <div class="item-modal-header">
                 <h3 class="item-modal-title">Select Item</h3>
@@ -254,8 +256,11 @@
                            id="itemSearchInput"
                            placeholder="🔍 Search items by name, barcode..."
                            onkeyup="searchItems()">
+                    <select class="item-filter-select" id="itemNameFilter" aria-label="Select item name" onchange="searchItems()"><option value="">All item names</option></select>
                     <select class="item-filter-select" id="categoryFilter" onchange="filterItems()">
-                        <option value="">All Categories</option>
+                        <option value="">All Types</option>
+                        <option value="RawMaterial">Raw Material</option>
+                        <option value="FinishedGoods">Finished Goods</option>
                     </select>
                     <select class="item-filter-select" id="stockFilter" onchange="filterItems()">
                         <option value="">All Stock</option>
@@ -265,6 +270,8 @@
                     </select>
                 </div>
 
+                <p id="purchaseItemCount" aria-live="polite" style="font-size: .875rem; color: #64748b; margin: 0 0 .75rem;"></p>
+
                 <div class="item-table-container">
                     <table class="item-table">
                         <thead>
@@ -272,9 +279,9 @@
                                 <th style="width: 60px;">ID</th>
                                 <th style="width: 60px;">Image</th>
                                 <th>Item Name</th>
-                                <th>Category</th>
+                                <th>Group Name</th>
                                 <th>Barcode</th>
-                                <th style="width: 100px;">Sale Price</th>
+                                <th id="itemLookupPriceHeading" style="width: 100px;">Sale Price</th>
                                 <th style="width: 100px;">Stock</th>
                             </tr>
                         </thead>

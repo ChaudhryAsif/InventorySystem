@@ -20,8 +20,8 @@ public class OtherMaterialsTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options);
         db.Database.EnsureCreated();
-        db.ItemCategory.Add(new ItemCategory { CategoryId = 1, CategoryName = "Test category", IsActive = true });
-        db.Parties.AddRange(new Party { PartyId = 900, PartyName = "Supplier", PartyType = "supplier", Status = "active" },
+        db.ItemCategory.Add(new ItemCategory { CategoryId = 1, CategoryName = "Test category", GroupType="RawMaterial", IsActive = true });
+        db.Parties.AddRange(new Party { PartyId = 900, PartyCode="RAW-GROUP:1", PartyName = "Supplier", PartyType = "supplier", Status = "active" },
             new Party { PartyId = 901, PartyName = "Customer", PartyType = "customer", Status = "active" });
         db.Items.AddRange(
             new Items { ItemID = 900, CategoryID = 1, ItemName = "Paper", IsActive = true, ItemType = "RawMaterial", StockUnit = "kg" },

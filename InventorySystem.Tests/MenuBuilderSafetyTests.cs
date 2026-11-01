@@ -82,11 +82,14 @@ public class MenuBuilderSafetyTests
     }
 
     [Fact]
-    public async Task EditGroup_RejectsNestingEvenWhenEmpty()
+    public async Task EditGroup_AllowsNestingAndRejectsDescendantCycle()
     {
         using var db = Db(); var controller = Controller(db); var before = Version(db);
         await controller.EditMenuItem(902, new() { Name = "Empty group", ParentId = 901, IsActive = true, Version = before });
-        Assert.Equal(before, Version(db)); Assert.Contains("top level", controller.TempData["Error"]!.ToString());
+        Assert.Equal(901,(await db.MenuItems.FindAsync(902))!.ParentId);
+        before=Version(db);
+        await controller.EditMenuItem(901,new() { Name="Raw Material",ParentId=902,IsActive=true,Version=before });
+        Assert.Equal(before,Version(db));Assert.Contains("descendants",controller.TempData["Error"]!.ToString());
     }
 
     [Fact]

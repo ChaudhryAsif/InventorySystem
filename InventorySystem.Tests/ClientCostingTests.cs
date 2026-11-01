@@ -125,7 +125,7 @@ public class ClientCostingTests
 
     [Theory]
     [InlineData("commission")] [InlineData("tax")] [InlineData("moq")] [InlineData("factor")]
-    [InlineData("stock")] [InlineData("style")] [InlineData("unit")] [InlineData("version")]
+    [InlineData("style")] [InlineData("unit")] [InlineData("version")]
     public async Task UnsupportedOrInvalidInputs_AreRejectedBeforeSaving(string field)
     {
         await using var db = Database(); var m = Sample();
@@ -134,7 +134,6 @@ public class ClientCostingTests
             case "tax": m.TaxPct = 101; break;
             case "moq": m.MOQ = 0; break;
             case "factor": m.ClientCosting!.FluteFactor = -1; break;
-            case "stock": m.HasLamination = true; m.ClientCosting!.GlueLaminationItemId = null; break;
             case "style": m.BoxStyle = "Other"; break;
             case "unit": m.HasLamination = true; (await db.Items.FindAsync(4L))!.StockUnit = "pcs"; await db.SaveChangesAsync(); break;
             case "version": m.ClientCosting!.Version = 999; break;

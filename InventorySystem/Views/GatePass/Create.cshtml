@@ -1,0 +1,38 @@
+@{Layout="_Layout";var direction=(string)ViewBag.Direction;ViewData["Title"]=direction+" Gate Pass";}
+<link rel="stylesheet" href="~/css/gatepass.css" asp-append-version="true" />
+<div class="gp-page" id="gatePassApp" data-mode="edit" data-direction="@direction" data-id="@ViewBag.PassId" data-user="@User.Identity?.Name">
+    <div class="gp-heading"><h2>@direction Gate Pass</h2><a href="@Url.Action(direction)">Back to list</a></div>
+    <form id="gpForm">
+        <div id="gpFormError" class="gp-notice gp-error" role="alert" hidden></div>
+        <div class="gp-card gp-grid">
+            <label>Serial No.<input id="gpNumber" readonly value="Assigned on save" /></label><label>Date<input id="PassDate" type="date" required /></label>
+            <h3 class="gp-full gp-section">Party details</h3>
+            <label for="gpGroupType">Group Type<select id="gpGroupType"><option value="">All group types</option><option value="RawMaterial">Raw Material</option><option value="FinishedGoods">Finished Goods</option></select></label>
+            <label class="gp-full" for="gpGroupId">Item Group<select id="gpGroupId" disabled required><option value="">Loading groups…</option></select><small id="gpGroupHelp" class="gp-help" role="status">Select a group to show only its items.</small></label>
+            <div class="gp-field"><label for="PartyName">Party Name <span class="gp-required">Required</span></label><input id="PartyName" maxlength="200" required placeholder="Search or select a party / group" autocomplete="off" /></div><label>Party Phone<input id="PartyPhone" type="tel" maxlength="32" /></label>
+            <label class="gp-full">Party Address<input id="PartyAddress" maxlength="500" /></label>
+        </div>
+        <div class="gp-card gp-grid">
+            <h3 class="gp-full">Transport details</h3>
+            <label>Vehicle Name<input id="VehicleName" maxlength="100" /></label><label>Vehicle Number<input id="VehicleNumber" maxlength="50" /></label>
+            <label>Transport / Adda Name<input id="TransportCompany" maxlength="200" /></label><label>Bilty Number<input id="BiltyNumber" maxlength="80" /></label>
+            <label>Driver Name<input id="DriverName" maxlength="150" /></label><label>Driver Mobile<input id="DriverPhone" type="tel" maxlength="32" /></label>
+            <label>Vehicle Arrival<input id="ArrivalAt" type="datetime-local" step="1" /></label><label>Vehicle Departure<input id="DepartureAt" type="datetime-local" step="1" title="Set to the current local time on first save if left blank." /></label>
+        </div>
+        <div class="gp-card gp-grid gp-weight-grid">
+            <h3 class="gp-full">Vehicle weights</h3>
+            <label>Gross Weight (KG)<input id="GrossWeightKg" type="number" min="0" step="0.001" /></label><label>Tare Weight (KG)<input id="TareWeightKg" type="number" min="0" step="0.001" /></label>
+            <label>Net Weight (KG)<input id="NetWeightKg" readonly placeholder="Calculated automatically" /></label>
+        </div>
+        <div class="gp-card"><h3>Item Details</h3><p class="gp-help">@(direction=="Inward"?"Select an item to import its saved KG/PCS unit and latest purchase price. Enter the quantity received for each item. Total = Quantity × Purchase Price. Vehicle net weight is separate from individual item quantities.":"Select an inventory item from the chosen group. For cartons: total = packing quantity × bundles + open cartons. Enter the actual weight for KG items. Selecting an item imports its saved unit.")</p><div class="gp-table-wrap gp-line-wrap"><table class="gp-table gp-lines"><thead><tr><th>#</th><th>Item Description</th><th>Unit</th>@if(direction=="Inward"){<th>Net Weight / Quantity</th><th>Purchase Price / Unit</th><th>Total</th>}else{<th>Packing Type</th><th>Packing Qty</th><th>Bundle Qty</th><th>Open Ctn</th><th>Total Qty</th>}<th></th></tr></thead><tbody id="gpLines"></tbody></table></div><button type="button" id="gpAddLine" class="gp-button gp-secondary">+ Add Item</button></div>
+        <div class="gp-card gp-grid">
+            <h3 class="gp-full">Authorization</h3>
+            <p class="gp-help gp-full">Enter names below. Signature spaces are provided on the printed pass.</p>
+            <label>@(direction=="Outward"?"Loading By":"Issued By")<select id="IssuedBy"><option>M. Nadeem</option><option>M. Qaswar</option></select></label><label>Driver Signatory Name<input id="DriverSignature" maxlength="150" /></label>
+            <label>Gate Keeper Name<input id="GateKeeper" maxlength="150" value="M. Yameen" /></label><label>@(direction=="Outward"?"Issued By":"Received By")<input id="ReceivedBy" maxlength="150" value="M. Sami Ullah" /></label>
+            <label>Receiver Reference<input id="ReceiverReference" maxlength="150" /></label><label>Remarks<textarea id="Remarks" rows="2" maxlength="500"></textarea></label>
+        </div>
+        <div class="gp-footer"><button type="submit" class="gp-button gp-secondary" id="gpSave">Save Gate Pass</button><button type="submit" class="gp-button" id="gpSavePrint">Save &amp; Print</button></div>
+    </form>
+</div>
+<script src="~/js/gatepass.js" asp-append-version="true"></script>

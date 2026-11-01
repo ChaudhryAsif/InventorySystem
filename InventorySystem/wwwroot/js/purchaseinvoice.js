@@ -4,11 +4,10 @@
 //  cells[2]  Item Name (readonly)
 //  cells[3]  Quantity                              data-field="qty"
 //  cells[4]  Pur. Price                             data-field="price"
-//  cells[5]  Sale Rate
-//  cells[6]  Disc %                                data-field="disc"
-//  cells[7]  Disc Amt (readonly, calculated)
-//  cells[8]  Total    (readonly, calculated)
-//  cells[9]  Remove button
+//  cells[5]  Disc %                                data-field="disc"
+//  cells[6]  Disc Amt (readonly, calculated)
+//  cells[7]  Total    (readonly, calculated)
+//  cells[8]  Remove button
 // ───────────────────────────────────────────────────────────────────────────
 
 // Self-contained placeholder — via.placeholder.com is no longer online, so items
@@ -21,6 +20,7 @@ let allSuppliers = [];
 let selectedItem = null;
 let allItems = [];
 let currentRow = null;
+let itemLookupVersion = 0;
 let editId = null;   // set when editing an existing invoice (?id=)
 
 // ── Init ────────────────────────────────────────────────────────────────────
@@ -41,6 +41,11 @@ async function loadInvoiceForEdit(id) {
         const res = await fetch('/Purchase/GetPurchaseById?id=' + id);
         if (!res.ok) { await alertDialog('Invoice not found.'); window.location.href = '/Purchase/List'; return; }
         const inv = await res.json();
+        if (inv.isCancelled) {
+            await alertDialog('Cancelled invoices cannot be edited.');
+            window.location.href = '/Purchase/List';
+            return;
+        }
 
         const header = document.querySelector('.page-header h2');
         if (header) header.textContent = '✏️ Edit Purchase Invoice #' + inv.purchaseId;
@@ -50,7 +55,7 @@ async function loadInvoiceForEdit(id) {
         if (inv.purchaseDate) document.getElementById('invoiceDate').value = inv.purchaseDate;
         if (document.getElementById("posBranch")) document.getElementById("posBranch").value = inv.branchID || 1;
 
-        document.getElementById('hftxtSupplierId').value = inv.vendorID || '';
+        document.getElementById('hftxtSupplierId').value = inv.supplierGroupId?.startsWith('RAW-GROUP:')?'group:'+inv.supplierGroupId.slice(10):(inv.vendorID || '');
         document.getElementById('supplierAccount').value = inv.vendorName || '';
         document.getElementById('supplierDetails').value = '';
         document.getElementById('remarks').value          = inv.remarks || '';
@@ -75,8 +80,8 @@ async function loadInvoiceForEdit(id) {
             row.querySelector('.package-count').value = it.packageCount || '';
             row.querySelector('.package-type').value = it.packageType || '';
             row.cells[4].querySelector('input').value = parseFloat(it.purPrice || 0).toFixed(2);
-            row.cells[5].querySelector('input').value = parseFloat(it.salePrice || 0).toFixed(2);
-            row.cells[6].querySelector('input').value = it.discPer || 0;
+            row.cells[5].querySelector('input').value = it.discPer || 0;
+            setPurchaseUnit(row,it.stockUnit);
             calculateRowTotal(row);
         });
         if ((inv.items || []).length === 0) addNewRow();
@@ -101,18 +106,17 @@ function addNewRow() {
             <td>${rowCounter}</td>
             <td>
                 <div style="display: flex; align-items: center; gap: 0.3rem;">
-                    <input type="text" class="table-input" placeholder="ID" readonly style="flex: 1;">
+                    <input type="text" class="table-input" placeholder="ID" inputmode="numeric" oninput="invalidatePurchaseItem(this)" onchange="resolvePurchaseItemId(this)" style="flex: 1;">
                     <button type="button" class="item-lookup-icon" onclick="openItemLookup(this)">🔍</button>
                 </div>
             </td>
             <td><input type="text" class="table-input" placeholder="Enter item name" readonly></td>
             <td>
-                <input type="number" class="table-input" value="0" min="0" step="0.001" data-field="qty" aria-label="Quantity">
+                <input type="number" class="table-input" value="0" min="0" step="0.001" data-field="qty" aria-label="Quantity"><strong class="purchase-unit" aria-live="polite"></strong>
                 <input type="hidden" class="package-count" value="">
                 <input type="hidden" class="package-type" value="">
             </td>
-            <td><input type="number" class="table-input" value="0" step="0.01" data-field="price"></td>
-            <td><input type="number" class="table-input" value="0" step="0.01"></td>
+            <td><input type="number" class="table-input" value="0" step="0.01" data-field="price"><small class="purchase-price-unit"></small></td>
             <td><input type="number" class="table-input highlight" value="0" data-field="disc"></td>
             <td><input type="number" class="table-input" value="0" readonly></td>
             <td><input type="number" class="table-input" value="0" readonly></td>
@@ -159,27 +163,27 @@ function calculateRowTotal(row) {
     const cells = row.cells;
     const qty = parseFloat(cells[3].querySelector('input').value) || 0;
     const price = parseFloat(cells[4].querySelector('input').value) || 0;
-    const discPercent = parseFloat(cells[6].querySelector('input').value) || 0;
+    const discPercent = parseFloat(cells[5].querySelector('input').value) || 0;
 
     const subtotal = qty * price;
     const discAmount = (subtotal * discPercent) / 100;
     const total = subtotal - discAmount;
 
-    cells[7].querySelector('input').value = discAmount.toFixed(2);
-    cells[8].querySelector('input').value = total.toFixed(2);
+    cells[6].querySelector('input').value = discAmount.toFixed(2);
+    cells[7].querySelector('input').value = total.toFixed(2);
 
     calculateTotals();
 }
 
 function calculateTotals() {
     const rows = document.querySelectorAll('#itemsBody tr');
-    let totalQty = 0;
+    const quantities = {};
     let invoiceTotal = 0;
 
     rows.forEach(row => {
         const qty = parseFloat(row.cells[3].querySelector('input').value) || 0;
-        const total = parseFloat(row.cells[8].querySelector('input').value) || 0;
-        totalQty += qty;
+        const total = parseFloat(row.cells[7].querySelector('input').value) || 0;
+        if(row.dataset.unit)quantities[row.dataset.unit]=(quantities[row.dataset.unit]||0)+qty;
         invoiceTotal += total;
     });
 
@@ -192,7 +196,7 @@ function calculateTotals() {
     const discAmount = (invoiceTotal * discPercent) / 100;
     const netAmount = invoiceTotal + gstAmount + freight + otherExp - discAmount;
 
-    document.getElementById('totalQty').value = parseFloat(totalQty.toFixed(3)).toString();
+    document.getElementById('totalQty').value = Object.entries(quantities).map(([unit,qty])=>parseFloat(qty.toFixed(3))+' '+unit.toUpperCase()).join(' + ')||'0';
     document.getElementById('invoiceTotal').value = invoiceTotal.toFixed(2);
     document.getElementById('gstAmount').value = gstAmount.toFixed(2);
     document.getElementById('discAmount').value = discAmount.toFixed(2);
@@ -255,11 +259,12 @@ document.getElementById('purchaseForm').addEventListener('submit', async functio
 
     const supplierAccount = document.getElementById('hftxtSupplierId').value;
     if (!supplierAccount) {
-        await alertDialog('Please select a supplier!');
+        await alertDialog('Please select a Raw Material group!');
         return;
     }
 
     const rows = document.querySelectorAll('#itemsBody tr');
+    if([...rows].some(row=>row.dataset.itemLookupPending==='true'||(row.cells[1].querySelector('input').value&&Number(row.cells[3].querySelector('input').value)>0&&!row.cells[2].querySelector('input').value))){await alertDialog('Wait for item lookup to finish and select valid items for this supplier group.');return;}
     let hasValidItem = false;
     rows.forEach(row => {
         const itemName = row.cells[2].querySelector('input').value;
@@ -288,10 +293,9 @@ document.getElementById('purchaseForm').addEventListener('submit', async functio
             PackageType: row.querySelector('.package-type').value || null,
             Quantity: qty,
             PurPrice: parseFloat(row.cells[4].querySelector('input').value) || 0,
-            SalePrice: parseFloat(row.cells[5].querySelector('input').value) || 0,
-            DiscPer: parseFloat(row.cells[6].querySelector('input').value) || 0,
-            DiscAmt: parseFloat(row.cells[7].querySelector('input').value) || 0,
-            Total: parseFloat(row.cells[8].querySelector('input').value) || 0
+            DiscPer: parseFloat(row.cells[5].querySelector('input').value) || 0,
+            DiscAmt: parseFloat(row.cells[6].querySelector('input').value) || 0,
+            Total: parseFloat(row.cells[7].querySelector('input').value) || 0
         });
     });
 
@@ -365,29 +369,57 @@ function closeSupplierModal() {
 
 // Load Suppliers from API
 function loadSuppliers() {
+    selectedSupplier = null;
+    allSuppliers = [];
+    document.getElementById('supplierGroupFilter').innerHTML = '<option value="">Select a Raw Material group</option>';
+    document.getElementById('selectSupplierBtn').disabled = true;
+    document.getElementById('emptyState').style.display = 'none';
     const tbody = document.getElementById('supplierTableBody');
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">Loading suppliers...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">Loading groups...</td></tr>';
 
     // Fetch suppliers from your Parties controller
-    fetch('/Parties/GetSuppliers')
+    fetch('/Purchase/GetSupplierGroups')
         .then(response => response.json())
         .then(data => {
             if (data.success && data.suppliers && data.suppliers.length > 0) {
                 allSuppliers = data.suppliers;
-                displaySuppliers(allSuppliers);
+                populateSupplierGroups();
+                searchSuppliers();
             } else {
                 showEmptyState();
             }
         })
         .catch(error => {
             console.error('Error loading suppliers:', error);
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #dc3545;">Error loading suppliers. Please try again.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #dc3545;">Unable to load groups. Please try again.</td></tr>';
         });
+}
+
+function populateSupplierGroups() {
+    const select = document.getElementById('supplierGroupFilter');
+    select.innerHTML = '<option value="">Select a Raw Material group</option>';
+    allSuppliers.forEach(group => {
+        const option = document.createElement('option');
+        option.value = String(group.groupId);
+        option.textContent = group.partyName;
+        select.appendChild(option);
+    });
+}
+
+function chooseSupplierGroup() {
+    document.getElementById('supplierSearchInput').value = '';
+    searchSuppliers();
+    const groupId = document.getElementById('supplierGroupFilter').value;
+    const group = allSuppliers.find(s => String(s.groupId) === groupId);
+    const row = document.querySelector('#supplierTableBody tr');
+    if (group && row) selectSupplierRow(row, group);
 }
 
 function displaySuppliers(suppliers) {
     const tbody = document.getElementById('supplierTableBody');
     const emptyState = document.getElementById('emptyState');
+    selectedSupplier = null;
+    document.getElementById('selectSupplierBtn').disabled = true;
 
     if (suppliers.length === 0) {
         showEmptyState();
@@ -402,13 +434,12 @@ function displaySuppliers(suppliers) {
         row.setAttribute('data-supplier-id', supplier.partyId);
         row.setAttribute('data-supplier-name', supplier.partyName);
         row.innerHTML = `
-                <td>${supplier.partyId}</td>
+                <td>${supplier.groupId}</td>
                 <td>${escapeHtml(supplier.partyName)}</td>
-                <td><span class="party-badge party-badge-${supplier.partyType}">${formatPartyType(supplier.partyType)}</span></td>
-                <td>${escapeHtml(supplier.contactPerson || '-')}</td>
-                <td>${escapeHtml(supplier.phone)}</td>
-                <td>${escapeHtml(supplier.email || '-')}</td>
-                <td>Rs. ${parseFloat(supplier.openingBalance || 0).toFixed(2)}</td>
+                <td>Raw Material</td>
+                <td>${escapeHtml(supplier.description || '-')}</td>
+                <td>${escapeHtml(supplier.phone || '-')}</td>
+                <td>${escapeHtml(supplier.address || '-')}</td>
             `;
 
         row.addEventListener('click', function () {
@@ -443,6 +474,7 @@ function selectSupplierRow(row, supplier) {
 
 function selectSupplier() {
     if (selectedSupplier) {
+        if(document.getElementById('hftxtSupplierId').value!==selectedSupplier.partyId){closeItemModal();document.getElementById('itemsBody').replaceChildren();rowCounter=0;addNewRow();calculateTotals();allItems=[];}
         document.getElementById('hftxtSupplierId').value = selectedSupplier.partyId;
         document.getElementById('supplierAccount').value = selectedSupplier.partyName;
 
@@ -466,21 +498,10 @@ function selectSupplier() {
 }
 
 function searchSuppliers() {
-    const searchText = document.getElementById('supplierSearchInput').value.toLowerCase();
-
-    if (!searchText) {
-        displaySuppliers(allSuppliers);
-        return;
-    }
-
-    const filtered = allSuppliers.filter(supplier => {
-        return supplier.partyName.toLowerCase().includes(searchText) ||
-            (supplier.phone && supplier.phone.includes(searchText)) ||
-            (supplier.email && supplier.email.toLowerCase().includes(searchText)) ||
-            (supplier.contactPerson && supplier.contactPerson.toLowerCase().includes(searchText));
-    });
-
-    displaySuppliers(filtered);
+    const search = document.getElementById('supplierSearchInput').value.toLowerCase().trim();
+    const groupId = document.getElementById('supplierGroupFilter').value;
+    displaySuppliers(allSuppliers.filter(s => (!groupId || String(s.groupId) === groupId) &&
+        [s.partyName, s.phone, s.address, s.description].some(value => String(value || '').toLowerCase().includes(search))));
 }
 
 document.getElementById('supplierModal').addEventListener('click', function (e) {
@@ -502,12 +523,14 @@ document.addEventListener('keydown', function (e) {
 
 // Open Item Lookup Modal
 function openItemLookup(button) {
+    if(!document.getElementById('hftxtSupplierId').value){alertDialog('Select a supplier group first.');return;}
     currentRow = button.closest('tr');
     document.getElementById('itemModal').classList.add('show');
     loadItems();
 }
 
 function closeItemModal() {
+    itemLookupVersion++;
     document.getElementById('itemModal').classList.remove('show');
     selectedItem = null;
     currentRow = null;
@@ -519,40 +542,59 @@ function closeItemModal() {
 
 // Load Items from API
 function loadItems() {
+    document.getElementById('itemNameFilter').replaceChildren(new Option('All item names',''));
+    allItems = [];
+    selectedItem = null;
+    document.getElementById('selectItemBtn').disabled = true;
+    document.getElementById('itemEmptyState').style.display = 'none';
+    document.getElementById('purchaseItemCount').textContent = '';
     const tbody = document.getElementById('itemTableBody');
     tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">Loading items...</td></tr>';
 
-    fetch('/Item/GetItems')
-        .then(response => response.json())
+    const vendor=document.getElementById('hftxtSupplierId').value, lookupVersion=++itemLookupVersion;
+    (async () => {
+        const items = [];
+        let page = 1, totalCount = 0;
+        do {
+            const response = await fetch('/Purchase/GetItemOptions?vendor='+encodeURIComponent(vendor)+'&page=' + page + '&pageSize=200');
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.message || 'Unable to load items');
+            items.push(...data.items);
+            totalCount = data.totalCount;
+            if (!data.items.length) break;
+            page++;
+        } while (items.length < totalCount);
+        return { success: true, items };
+    })()
         .then(data => {
+            if(lookupVersion!==itemLookupVersion||vendor!==document.getElementById('hftxtSupplierId').value)return;
             if (data.success && data.items && data.items.length > 0) {
+                if(!document.getElementById('itemModal').classList.contains('show')||vendor!==document.getElementById('hftxtSupplierId').value)return;
                 allItems = data.items;
-                displayItems(allItems);
-                loadCategories(data.items);
+                const names=document.getElementById('itemNameFilter');names.replaceChildren(new Option('All item names',''));for(const item of allItems)names.add(new Option(item.itemName,item.itemID));
+                searchItems();
             } else {
-                showItemEmptyState();
+                displayItems([]);
             }
         })
         .catch(error => {
+            if(lookupVersion!==itemLookupVersion)return;
             console.error('Error loading items:', error);
             tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #dc3545;">Error loading items. Please try again.</td></tr>';
         });
 }
 
-function loadCategories(items) {
-    const categoryFilter = document.getElementById('categoryFilter');
-    const categories = [...new Set(items.map(item => item.categoryName))];
-
-    categoryFilter.innerHTML = '<option value="">All Categories</option>';
-    categories.forEach(cat => {
-        const option = document.createElement('option');
-        option.value = cat;
-        option.textContent = cat;
-        categoryFilter.appendChild(option);
-    });
+function itemLookupPrice(item) {
+    const isPurchasePrice = document.getElementById('categoryFilter').value === 'RawMaterial';
+    return Number((isPurchasePrice ? item.purchasePrice : item.salePrice) ?? 0) || 0;
 }
 
 function displayItems(items) {
+    document.getElementById('itemLookupPriceHeading').textContent =
+        document.getElementById('categoryFilter').value === 'RawMaterial' ? 'Purchase Price' : 'Sale Price';
+    selectedItem = null;
+    document.getElementById('selectItemBtn').disabled = true;
+    document.getElementById('purchaseItemCount').textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
     const tbody = document.getElementById('itemTableBody');
     const emptyState = document.getElementById('itemEmptyState');
 
@@ -583,8 +625,8 @@ function displayItems(items) {
                 <td>${escapeHtml(item.itemName)}</td>
                 <td>${escapeHtml(item.categoryName)}</td>
                 <td>${escapeHtml(item.barcode || '-')}</td>
-                <td>Rs. ${parseFloat(item.salePrice).toFixed(2)}</td>
-                <td>${stockBadge}</td>
+                <td>Rs. ${itemLookupPrice(item).toFixed(2)} / ${escapeHtml((item.stockUnit||'').toUpperCase())}</td>
+                <td>${stockBadge} ${escapeHtml((item.stockUnit||'').toUpperCase())}</td>
             `;
 
         row.addEventListener('click', function () {
@@ -610,6 +652,29 @@ function selectItemRow(row, item) {
     document.getElementById('selectItemBtn').disabled = false;
 }
 
+function invalidatePurchaseItem(input){
+    const row=input.closest('tr');row.cells[2].querySelector('input').value='';row.cells[4].querySelector('input').value='0';row.querySelector('.package-count').value='';row.querySelector('.package-type').value='';setPurchaseUnit(row,null);calculateRowTotal(row);
+}
+async function resolvePurchaseItemId(input){
+    const row=input.closest('tr'),itemId=input.value.trim(),vendor=document.getElementById('hftxtSupplierId').value;
+    row.cells[2].querySelector('input').value='';setPurchaseUnit(row,null);row.cells[4].querySelector('input').value='0';calculateRowTotal(row);
+    if(!itemId)return;
+    row.dataset.itemLookupPending='true';
+    try{
+        if(!vendor)throw new Error('Select a supplier group first.');
+        const response=await fetch('/Purchase/GetItemOptions?vendor='+encodeURIComponent(vendor)+'&itemId='+encodeURIComponent(itemId));const data=await response.json();
+        if(!row.isConnected||input.value.trim()!==itemId||vendor!==document.getElementById('hftxtSupplierId').value)return;
+        if(!response.ok||!data.success||data.items.length!==1)throw new Error('This item does not belong to the selected supplier group.');
+        const item=data.items[0];row.cells[2].querySelector('input').value=item.itemName;row.cells[4].querySelector('input').value=item.purchasePrice??0;setPurchaseUnit(row,item.stockUnit);calculateRowTotal(row);
+    }catch(e){if(input.value.trim()===itemId){input.value='';await alertDialog(e.message);}}finally{delete row.dataset.itemLookupPending;}
+}
+
+function setPurchaseUnit(row,unit) {
+    row.dataset.unit=unit==='kg'||unit==='pcs'||unit==='in'?unit:'';
+    row.querySelector('.purchase-unit').textContent=row.dataset.unit.toUpperCase();
+    row.querySelector('.purchase-price-unit').textContent=row.dataset.unit?'Price / '+row.dataset.unit.toUpperCase():'';
+}
+
 function selectItem() {
     if (selectedItem && currentRow) {
         // Fill the row with selected item data
@@ -620,9 +685,9 @@ function selectItem() {
         }
         currentRow.cells[1].querySelector('input').value = selectedItem.itemID;
         currentRow.cells[2].querySelector('input').value = selectedItem.itemName;
-        currentRow.cells[4].querySelector('input').value = selectedItem.purchasePrice || selectedItem.salePrice;
-        currentRow.cells[5].querySelector('input').value = selectedItem.salePrice;
+        currentRow.cells[4].querySelector('input').value = selectedItem.purchasePrice ?? 0;
 
+        setPurchaseUnit(currentRow,selectedItem.stockUnit);
         // Recalculate row total
         calculateRowTotal(currentRow);
 
@@ -636,6 +701,7 @@ function searchItems() {
     const stockFilter = document.getElementById('stockFilter').value;
 
     let filtered = allItems;
+    const itemId=document.getElementById("itemNameFilter").value;if(itemId)filtered=filtered.filter(i=>String(i.itemID)===itemId);
 
     if (searchText) {
         filtered = filtered.filter(item => {
@@ -646,7 +712,7 @@ function searchItems() {
     }
 
     if (categoryFilter) {
-        filtered = filtered.filter(item => item.categoryName === categoryFilter);
+        filtered = filtered.filter(item => item.itemType === categoryFilter);
     }
 
     if (stockFilter) {

@@ -279,6 +279,7 @@ namespace InventorySystem.Controllers
                 .Where(v => v.PartyId.ToString() == purchaseReturn.VendorID)
                 .Select(v => v.PartyName)
                 .FirstOrDefault() ?? $"#{purchaseReturn.VendorID}";
+            ViewBag.PartyContact = string.Join(" · ", _context.Parties.Where(p => p.PartyId.ToString() == purchaseReturn.VendorID).Select(p => new[] { p.Phone, p.Address }).FirstOrDefault()?.Where(x => !string.IsNullOrWhiteSpace(x)) ?? Enumerable.Empty<string?>());
             ViewBag.PaymentMode = GetPaymentModeLabel(purchaseReturn.PaymentMode);
 
             return View(purchaseReturn);

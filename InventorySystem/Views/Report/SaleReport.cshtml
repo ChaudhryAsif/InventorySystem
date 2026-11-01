@@ -1,12 +1,24 @@
 @{
     Layout = "_Layout";
     ViewData["Title"] = "Sales Report";
-    var colCount = BranchSettings.Value.MultiBranchEnabled ? 11 : 10;
+    var colCount = BranchSettings.Value.MultiBranchEnabled ? 12 : 11;
 }
 
-<link href="~/css/report.css" rel="stylesheet" />
+<link href="~/css/report.css" rel="stylesheet" asp-append-version="true" />
+<style>
+    .rpt-group-row td { background:#e8eef6; border-top:2px solid #2a5f87; padding:.65rem .9rem; cursor:pointer; }
+    .rpt-group-row:hover td { background:#dde7f3; }
+    .rpt-group-line { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.4rem 1.2rem; }
+    .rpt-group-title { font-weight:700; color:#1e3a5f; }
+    .rpt-group-title small { font-weight:500; color:#475569; margin-left:.4rem; }
+    .rpt-group-stats { font-size:.86rem; color:#334155; font-variant-numeric:tabular-nums; }
+    .rpt-group-stats b { color:#0f172a; }
+    .rpt-g-hidden { display:none !important; }
+    @@media print { .rpt-group-row td { background:#e8eef6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+</style>
 
 <div id="reportPage">
+    <div class="pdf-brand"><partial name="_CompanyPrintHeader" /></div>
 
     <div class="rpt-page-header">
         <div>
@@ -15,7 +27,7 @@
         </div>
         <div class="rpt-header-actions" id="actionButtons">
             <button class="rpt-btn rpt-btn-ghost" id="expandAllBtn" onclick="expandAll()">⊞ Expand All</button>
-            <button class="rpt-btn rpt-btn-outline" onclick="window.print()">🖨️ Print</button>
+            <button class="rpt-btn rpt-btn-outline" onclick="showAllGroups();PrintTab.open()">🖨️ Print</button>
             <button class="rpt-btn rpt-btn-primary" id="downloadBtn" onclick="downloadPDF()">⬇️ Download PDF</button>
         </div>
     </div>
@@ -40,6 +52,13 @@
                 <label class="rpt-filter-label">Customer</label>
                 <select class="rpt-filter-input" id="customerFilter">
                     <option value="">All Customers</option>
+                </select>
+            </div>
+            <div class="rpt-filter-group">
+                <label class="rpt-filter-label">Group by</label>
+                <select class="rpt-filter-input" id="groupBy" data-default="order">
+                    <option value="order">Production order</option>
+                    <option value="none">No grouping</option>
                 </select>
             </div>
             <div class="rpt-filter-actions">
@@ -86,15 +105,21 @@
                     <input type="text" class="rpt-filter-input" id="refNoSearch" maxlength="20" placeholder="Contains...">
                 </div>
                 <div class="rpt-filter-group">
+                    <label class="rpt-filter-label">Production order</label>
+                    <select class="rpt-filter-input" id="orderFilter">
+                        <option value="">All Orders</option>
+                    </select>
+                </div>
+                <div class="rpt-filter-group">
                     <label class="rpt-filter-label">Item (invoice contains)</label>
                     <select class="rpt-filter-input" id="itemFilter">
                         <option value="">All Items</option>
                     </select>
                 </div>
                 <div class="rpt-filter-group">
-                    <label class="rpt-filter-label">Category (invoice contains)</label>
+                    <label class="rpt-filter-label">Group (invoice contains)</label>
                     <select class="rpt-filter-input" id="categoryFilter">
-                        <option value="">All Categories</option>
+                        <option value="">All Groups</option>
                     </select>
                 </div>
                 <div class="rpt-filter-group">
@@ -163,6 +188,7 @@
                         <th>Date</th>
                         <th>Customer</th>
                         <th>Ref No</th>
+                        <th>Order</th>
                         @if (BranchSettings.Value.MultiBranchEnabled)
                         { <th>Branch</th> }
                         <th>Payment</th>
@@ -201,13 +227,13 @@
     const PAGE_SIZE = 50;
 
     const filterIds = ['invoiceNoSearch', 'fromDate', 'toDate', 'customerFilter', 'paymentFilter', 'refNoSearch',
-        'itemFilter', 'categoryFilter', 'minAmount', 'maxAmount', 'sortBy', 'sortDir'];
+        'itemFilter', 'categoryFilter', 'minAmount', 'maxAmount', 'sortBy', 'sortDir', 'orderFilter', 'groupBy'];
     @if (BranchSettings.Value.MultiBranchEnabled) { <text>filterIds.unshift('branchFilter');</text> }
     RptFilters.init(filterIds);
 
     window.addEventListener('DOMContentLoaded', async function () {
         setDefaultDates();
-        await Promise.all([loadCustomers(), loadItems(), loadCategories()]);
+        await Promise.all([loadCustomers(), loadItems(), loadCategories(), loadOrders()]);
         RptFilters.loadFromUrl();
         applyFilters();
     });
@@ -230,8 +256,9 @@
     }
 
     function loadCustomers()  { return fetch('/Report/GetCustomerList').then(r => r.json()).then(l => fillSelect('customerFilter', l)); }
+    function loadOrders()     { return fetch('/Report/GetSaleOrderList').then(r => r.json()).then(l => fillSelect('orderFilter', l)); }
     function loadItems()      { return fetch('/Report/GetItemList').then(r => r.json()).then(l => fillSelect('itemFilter', l)); }
-    function loadCategories() { return fetch('/Report/GetCategoryList').then(r => r.json()).then(l => fillSelect('categoryFilter', l)); }
+    function loadCategories() { return fetch('/Report/GetCategoryList?itemType=FinishedGoods').then(r => r.json()).then(l => fillSelect('categoryFilter', l)); }
 
     function quickDate(kind) {
         RptFilters.quickDate(kind, 'fromDate', 'toDate');
@@ -260,7 +287,7 @@
         [['invoiceNo', 'invoiceNoSearch'], ['from', 'fromDate'], ['to', 'toDate'], ['customerId', 'customerFilter'],
          ['paymentMode', 'paymentFilter'], ['refNo', 'refNoSearch'], ['itemId', 'itemFilter'], ['categoryId', 'categoryFilter'],
          ['minAmount', 'minAmount'], ['maxAmount', 'maxAmount'], ['sortBy', 'sortBy'], ['sortDir', 'sortDir'],
-         ['branchId', 'branchFilter']].forEach(([key, id]) => {
+         ['branchId', 'branchFilter'], ['orderId', 'orderFilter'], ['groupBy', 'groupBy']].forEach(([key, id]) => {
             const el = document.getElementById(id);
             if (el && el.value !== '') params.set(key, el.value);
         });
@@ -291,7 +318,7 @@
                     return;
                 }
 
-                tbody.innerHTML = reportData.map((r, i) => buildInvoiceRows(r, i)).join('');
+                tbody.innerHTML = renderRows(reportData, result.groups);
                 allExpanded = false;
                 document.getElementById('expandAllBtn').textContent = '⊞ Expand All';
             })
@@ -300,7 +327,51 @@
             });
     }
 
-    function buildInvoiceRows(r, i) {
+    function groupKey(orderId) { return orderId ? 'o' + orderId : 'none'; }
+
+    function renderRows(rows, groups) {
+        if (!groups) return rows.map((r, i) => buildInvoiceRows(r, i)).join('');
+        const byKey = {};
+        groups.forEach(g => { byKey[groupKey(g.orderId)] = g; });
+        const onPage = {};
+        rows.forEach(r => { const k = groupKey(r.orderId); onPage[k] = (onPage[k] || 0) + 1; });
+        let last = null, html = '';
+        rows.forEach((r, i) => {
+            const key = groupKey(r.orderId);
+            if (key !== last) { html += buildGroupRow(key, byKey[key], onPage[key]); last = key; }
+            html += buildInvoiceRows(r, i, key);
+        });
+        return html;
+    }
+
+    function buildGroupRow(key, g, shown) {
+        if (!g) return '';
+        const money = n => 'Rs. ' + parseFloat(n || 0).toFixed(2);
+        const title = g.orderId
+            ? 'Order #' + g.orderId + '<small>' + escHtml(g.productName || '') + (g.customerName ? ' · ' + escHtml(g.customerName) : '') + '</small>'
+            : 'Sales without a production order';
+        const boxes = g.orderId ? ' · <b>' + parseFloat(g.boxes) + '</b> boxes' + (g.producedQty != null ? ' of ' + g.producedQty + ' produced' : '') : '';
+        const partial = shown < g.invoices ? ' · showing ' + shown + ' of ' + g.invoices + ' on this page' : '';
+        return '<tr class="rpt-group-row" onclick="toggleGroup(\'' + key + '\')" title="Click to collapse or expand this group"><td colspan="@colCount"><div class="rpt-group-line">'
+            + '<span class="rpt-group-title"><span id="gicon-' + key + '">▼</span> ' + title + '</span>'
+            + '<span class="rpt-group-stats"><b>' + g.invoices + '</b> invoice' + (g.invoices === 1 ? '' : 's') + boxes
+            + ' · Total <b>' + money(g.totalAmount) + '</b> · Net <b>' + money(g.netAmount) + '</b>' + partial + '</span></div></td></tr>';
+    }
+
+    function toggleGroup(key) {
+        const rows = document.querySelectorAll('[data-g="' + key + '"]');
+        const hide = !(rows.length && rows[0].classList.contains('rpt-g-hidden'));
+        rows.forEach(r => r.classList.toggle('rpt-g-hidden', hide));
+        const icon = document.getElementById('gicon-' + key);
+        if (icon) icon.textContent = hide ? '▶' : '▼';
+    }
+
+    function showAllGroups() {
+        document.querySelectorAll('.rpt-g-hidden').forEach(r => r.classList.remove('rpt-g-hidden'));
+        document.querySelectorAll('[id^="gicon-"]').forEach(i => { i.textContent = '▼'; });
+    }
+
+    function buildInvoiceRows(r, i, key) {
         const itemsHtml = r.items && r.items.length > 0
             ? r.items.map(item => `
                 <tr>
@@ -315,7 +386,7 @@
             : '<tr><td colspan="7" style="text-align:center;color:#999;padding:0.75rem;">No items found</td></tr>';
 
         return `
-            <tr class="rpt-master-row" onclick="toggleDetails(${r.invoiceNo})" title="Click to expand">
+            <tr class="rpt-master-row"${key ? ` data-g="${key}"` : ''} onclick="toggleDetails(${r.invoiceNo})" title="Click to expand">
                 <td>
                     <span class="rpt-expand-icon" id="icon-${r.invoiceNo}">▶</span>
                 </td>
@@ -324,13 +395,14 @@
                 <td>${r.saleDate}</td>
                 <td>${escHtml(r.customerName ?? '–')}</td>
                 <td>${escapeHtml(r.refNo)}</td>
+                <td>${r.orderId ? '#' + r.orderId : '–'}</td>
                 ${@(BranchSettings.Value.MultiBranchEnabled ? "true" : "false") ? '<td>' + escapeHtml(r.branchName) + '</td>' : ''}
                 <td><span class="rpt-badge rpt-badge-blue">${r.paymentMode}</span></td>
                 <td class="rpt-amount">Rs. ${parseFloat(r.totalAmount).toFixed(2)}</td>
                 <td class="rpt-amount"><strong>Rs. ${parseFloat(r.netAmount).toFixed(2)}</strong></td>
                 <td class="rpt-remarks" title="${escHtml(r.remarks)}">${escHtml(r.remarks) || '–'}</td>
             </tr>
-            <tr class="rpt-detail-row" id="detail-${r.invoiceNo}">
+            <tr class="rpt-detail-row" id="detail-${r.invoiceNo}"${key ? ` data-g="${key}"` : ''}>
                 <td colspan="@colCount">
                     <div class="rpt-detail-container">
                         <div class="rpt-detail-header">
@@ -382,6 +454,7 @@
     function resetFilters() {
         filterIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         document.getElementById('sortDir').value = 'desc';
+        document.getElementById('groupBy').value = 'order';
         setDefaultDates();
         applyFilters();
     }
@@ -395,12 +468,15 @@
             .replace(/"/g, '&quot;');
     }
 
+    window.addEventListener('beforeprint', () => { document.getElementById('generatedDate').textContent = new Date().toLocaleString(); showAllGroups(); });
+
     function downloadPDF() {
         const btn         = document.getElementById('downloadBtn');
         const filterPanel = document.getElementById('filterPanel');
         const actionBtns  = document.getElementById('actionButtons');
         const printHeader = document.getElementById('printHeader');
 
+        showAllGroups();
         reportData.forEach(r => {
             const row = document.getElementById(`detail-${r.invoiceNo}`);
             if (row) row.classList.add('open');
@@ -413,6 +489,7 @@
         btn.disabled    = true;
         btn.textContent = '⏳ Generating...';
 
+        document.body.classList.add('pdf-exporting');
         html2pdf().set({
             margin:      [10, 8, 10, 8],
             filename:    `SaleReport_${new Date().toISOString().split('T')[0]}.pdf`,
@@ -420,6 +497,7 @@
             html2canvas: { scale: 2, useCORS: true, logging: false },
             jsPDF:       { unit: 'mm', format: 'a4', orientation: 'landscape' }
         }).from(document.getElementById('reportPage')).save().then(() => {
+            document.body.classList.remove('pdf-exporting');
             filterPanel.style.display = '';
             actionBtns.style.display  = '';
             printHeader.style.display = 'none';

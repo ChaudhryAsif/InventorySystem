@@ -46,11 +46,12 @@ public static class InvoiceValidation
     {
         var unit = await db.Items.Where(i => i.ItemID == itemId).Select(i => i.StockUnit).SingleAsync();
         if (unit == "pcs" && quantity != decimal.Truncate(quantity) || quantity != decimal.Round(quantity, 3))
-            throw new InvalidOperationException("Enter whole pieces, or kilograms to at most 3 decimal places.");
+            throw new InvalidOperationException("Enter whole pieces, or KG/Inches to at most 3 decimal places.");
     }
     public static async Task Validate(ApplicationDbContext db, SaleInvoiceViewModel m)
     {
         TextLimits(m.RefNo, m.Remarks);
+        await SaleGroupSelection.ValidateItemsAsync(db,m);
         await OrderPricing.ValidateSaleAsync(db, m);
         await Header(db, m.CustomerID, m.BranchID, m.PaymentMode, m.SaleDate, m.Items.Select(i => i.ItemId), requiredPartyType: "customer");
         foreach (var i in m.Items) { await Quantity(db, i.ItemId, i.Quantity); (i.DiscAmt, i.Total) = Line(i.Quantity, i.SalePrice, i.DiscPer); }

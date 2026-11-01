@@ -21,8 +21,8 @@ public class ManufacturingFlowTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options);
         db.Database.EnsureCreated();
-        db.ItemCategory.Add(new ItemCategory { CategoryId = 1, CategoryName = "Test category", IsActive = true });
-        db.Parties.AddRange(new Party { PartyId=900, PartyName="Supplier", PartyType="supplier", Status="active" },
+        db.ItemCategory.Add(new ItemCategory { CategoryId = 1, CategoryName = "Test category", GroupType="RawMaterial", IsActive = true });
+        db.Parties.AddRange(new Party { PartyId=900, PartyCode="RAW-GROUP:1", PartyName="Supplier", PartyType="supplier", Status="active" },
             new Party { PartyId=901, PartyName="Customer", PartyType="customer", Status="active" });
         db.Items.AddRange(new Items { ItemID=900, CategoryID=1, ItemName="Paper", IsActive=true, ItemType="RawMaterial", StockUnit="kg" },
             new Items { ItemID=901, CategoryID=1, ItemName="Glue", IsActive=true, ItemType="RawMaterial", StockUnit="kg" },
@@ -114,7 +114,7 @@ public class ManufacturingFlowTests
         using var db=Db();var sheet=Sheet();sheet.FinalRateWithGST=1;sheet.ManufacturingTotal=99999;
         await CostSheetCalculation.ValidateAndCalculateAsync(db,sheet);
         Assert.Equal(102,sheet.PaperCost);Assert.Equal(112.20m,sheet.FinalRateWithGST);
-        sheet.GlueItemId=null;await Assert.ThrowsAsync<InvalidOperationException>(()=>CostSheetCalculation.ValidateAndCalculateAsync(db,sheet));
+        sheet.GlueItemId=null;await CostSheetCalculation.ValidateAndCalculateAsync(db,sheet); // Costing no longer requires inventory links.
     }
     [Theory] [InlineData(true)] [InlineData(false)]
     public async Task CashSale_IsCleared_WithOrWithoutInvoiceGLPosting(bool gl)

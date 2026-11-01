@@ -1,50 +1,148 @@
 @model InventorySystem.Core.Models.ProductionOrder
 @using System.Globalization
-@{ Layout = "_Layout"; ViewData["Title"] = "Record Production";
+@using InventorySystem.Core.Models
+@{ bool popup = Context.Request.Query["popup"] == "1"; Layout = popup ? "_PopupLayout" : "_Layout"; ViewData["Title"] = "Record Production";
    var materials = Model.Materials?.ToList() ?? [];
-   var ready = Model.UsesEstimatedConsumption && Model.Status == "Pending"; }
+   var batches = ViewBag.Batches as List<ProductionBatch> ?? new();
+   var invoiced = (decimal)(ViewBag.Invoiced ?? 0m);
+   var remaining = Math.Max(0, Model.OrderQty - Model.ProducedQty);
+   var open = Model.UsesEstimatedConsumption && Model.Status is "Pending" or "InProduction" && Model.ClosedShortUtc == null;
+   var canReverse = Model.UsesEstimatedConsumption && Model.Status is "Completed" or "InProduction" && Model.ReversedUtc == null;
+   var statusText = Model.Status == "InProduction" ? "In Production" : Model.ClosedShortUtc != null ? "Completed (closed short)" : Model.Status; }
 <link href="~/css/accounts.css" rel="stylesheet" />
-<div class="ac-page">
-    <h2>Record Boxes Produced — Order #@Model.ProductionOrderId</h2>
-    <p><strong>@Model.ProductName</strong> · Ordered: @Model.OrderQty boxes · Status: @Model.Status</p>
-    <p>Material usage is an <strong>estimate from the saved cost sheet</strong>, not measured consumption. Posting deducts materials and adds finished boxes together.</p>
+<style>
+    .rp { max-width:1100px; margin:0 auto; padding:@(popup ? "1.25rem 1.5rem 1.5rem" : "1.5rem"); color:#1e293b; }
+    .rp h2 { margin:0 0 .25rem; font-size:1.5rem; color:#1e3a5f; }
+    .rp h3 { margin:1.5rem 0 .6rem; font-size:1.05rem; color:#1e3a5f; }
+    .rp-sub { display:flex; flex-wrap:wrap; align-items:center; gap:.6rem; margin-bottom:1.1rem; color:#475569; }
+    .rp-sub strong { color:#1e293b; font-size:1.05rem; }
+    .rp-badge { display:inline-block; padding:.15rem .7rem; border-radius:999px; font-size:.78rem; font-weight:700; background:#e2e8f0; color:#334155; }
+    .rp-badge.pending { background:#fef3c7; color:#92400e; } .rp-badge.prod { background:#dbeafe; color:#1e40af; } .rp-badge.done { background:#dcfce7; color:#166534; }
+    .rp-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; }
+    .rp-stat { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:.8rem 1rem; }
+    .rp-stat span { display:block; font-size:.74rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+    .rp-stat b { display:block; font-size:1.5rem; color:#1e3a5f; margin-top:.15rem; }
+    .rp-bar { height:8px; background:#e2e8f0; border-radius:999px; overflow:hidden; margin:.8rem 0 0; }
+    .rp-bar i { display:block; height:100%; background:#16a34a; }
+    .rp-note { background:#eff6ff; border:1px solid #bfdbfe; color:#1e3a8a; border-radius:10px; padding:.75rem 1rem; margin:1rem 0; font-size:.88rem; line-height:1.45; }
+    .rp-warn { background:#fffbeb; border-color:#fde68a; color:#92400e; }
+    .rp-form { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:1rem 1.1rem; }
+    .rp-form label { display:block; font-weight:600; margin-bottom:.4rem; }
+    .rp-row { display:flex; flex-wrap:wrap; align-items:center; gap:.7rem; }
+    .rp-row .ac-input { width:11rem; max-width:100%; }
+    .rp-hint { color:#64748b; font-size:.86rem; }
+    .rp-link { background:none; border:0; padding:0; color:#1d4ed8; font-weight:600; cursor:pointer; font-size:.86rem; }
+    .rp-table { width:100%; border-collapse:collapse; background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; font-size:.9rem; }
+    .rp-table th { background:#1e3a5f; color:#fff; text-align:left; padding:.65rem .9rem; font-weight:600; white-space:nowrap; }
+    .rp-table td { padding:.6rem .9rem; border-top:1px solid #eef2f7; }
+    .rp-table .n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .rp-table td.estimate-kg { font-weight:700; color:#1e3a5f; }
+    .rp-sold { display:inline-block; padding:.2rem .75rem; border-radius:999px; background:#f1f5f9; color:#64748b; font-size:.8rem; font-weight:700; cursor:help; }
+    .rp-actions { display:flex; flex-wrap:wrap; gap:.6rem; margin-top:1.25rem; padding-top:1rem; border-top:1px solid #e2e8f0; }
+    @@media (max-width:640px) { .rp-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+</style>
+@{ var done = Math.Min(100, Model.OrderQty <= 0 ? 0 : (int)Math.Round(Model.ProducedQty * 100m / Model.OrderQty));
+   var badge = Model.Status == "InProduction" ? "prod" : Model.Status == "Completed" ? "done" : "pending"; }
+<div class="rp">
+    @if (!popup) { <h2>Record Production, Order #@Model.ProductionOrderId</h2> }
+    <div class="rp-sub"><strong>@Model.ProductName</strong><span class="rp-badge @badge">@statusText</span>@if (popup) { <span>Order #@Model.ProductionOrderId</span> }</div>
+    <div class="rp-stats">
+        <div class="rp-stat"><span>Ordered</span><b>@Model.OrderQty</b></div>
+        <div class="rp-stat"><span>Produced</span><b>@Model.ProducedQty</b></div>
+        <div class="rp-stat"><span>Remaining</span><b id="remainingQty">@remaining</b></div>
+        <div class="rp-stat"><span>Invoiced</span><b>@invoiced.ToString("0.##")</b></div>
+    </div>
+    <div class="rp-bar" title="@done% produced"><i style="width:@done%"></i></div>
+    <div class="rp-note">Material usage is an <strong>estimate from the saved cost sheet</strong>, not measured consumption. Each batch deducts its own materials and adds its own finished boxes to stock.</div>
     @if (!Model.UsesEstimatedConsumption)
-    { <p class="ac-empty">This older order has no saved production estimate. Edit and save an unstarted order first. Orders with previous consumption require an administrator to reconcile their stock.</p> }
-    @if (ready)
+    { <div class="rp-note rp-warn">This older order has no saved production estimate. Edit and save an unstarted order first. Orders with previous consumption require an administrator to reconcile their stock.</div> }
+    @if (open)
     {
-        <label for="producedQty">Boxes produced</label>
-        <input id="producedQty" type="number" min="1" max="@Model.OrderQty" step="1" value="@Model.OrderQty" oninput="previewProduction()" class="ac-input" />
-        <p>One posting per order. A smaller quantity closes the order at that quantity; create another order for any balance.</p>
+        <div class="rp-form">
+            <label for="producedQty">Boxes in this batch</label>
+            <div class="rp-row">
+                <input id="producedQty" type="number" min="1" max="@remaining" step="1" value="@remaining" oninput="previewProduction()" class="ac-input" />
+                <span class="rp-hint">of @remaining remaining</span>
+                <button type="button" class="rp-link" onclick="document.getElementById('producedQty').value=@remaining;previewProduction()">Use all remaining</button>
+            </div>
+            <div class="rp-hint" style="margin-top:.5rem">The order stays open until the full quantity is recorded. Boxes already produced can be dispatched and invoiced meanwhile.</div>
+        </div>
     }
-    else { <p>Recorded output: <strong>@Model.ProducedQty boxes</strong>. This order cannot be posted again.</p> }
-    <div class="ac-table-card"><table class="ac-table"><thead><tr><th>Estimated material</th><th>Unit</th><th>Qty / Box</th><th>Estimated qty to deduct</th></tr></thead>
+    else if (Model.ClosedShortUtc != null) { <div class="rp-note rp-warn">Order closed short with @Model.ProducedQty of @Model.OrderQty boxes. Reason: @Model.CloseReason</div> }
+    else if (Model.Status == "Completed") { <div class="rp-note">The full ordered quantity has been recorded.</div> }
+    <h3>@(open ? "Materials for this batch" : "Materials per box (estimate)")</h3>
+    <table class="rp-table"><thead><tr><th style="width:42%">Material</th><th style="width:12%">Unit</th><th class="n" style="width:20%">Per box</th>@if (open) { <th class="n" style="width:26%">Will be deducted</th> }</tr></thead>
         <tbody>@foreach (var m in materials) {
-            <tr data-per-box="@m.KgPerUnit.ToString(CultureInfo.InvariantCulture)" data-unit="@m.Unit"><td>@m.ItemName</td><td>@m.Unit</td><td>@m.KgPerUnit.ToString("N6")</td><td class="estimate-kg">—</td></tr>
-        }</tbody></table></div>
-    @if (ready) { <button id="recordBtn" class="ac-btn ac-btn-primary" onclick="recordProduction()">Record Production &amp; Update Stock</button> }
-    <a class="ac-btn ac-btn-outline" href="/Production/Index">Back to Orders</a>
+            <tr data-per-box="@m.KgPerUnit.ToString(CultureInfo.InvariantCulture)" data-unit="@m.Unit"><td>@m.ItemName</td><td>@m.Unit</td><td class="n">@m.KgPerUnit.ToString("N6")</td>@if (open) { <td class="n estimate-kg">—</td> }</tr>
+        }</tbody></table>
+    <div class="rp-actions">
+        @if (open) { <button id="recordBtn" class="ac-btn ac-btn-primary" onclick="recordProduction()">Record Batch &amp; Update Stock</button> }
+        @if (Model.Status == "InProduction" && Model.ClosedShortUtc == null) { <button class="ac-btn ac-btn-outline" onclick="closeOrder()">Close order (no more batches)</button> }
+        @if (Model.ProducedQty - invoiced > 0 && Model.AgreedUnitPrice.HasValue) { <a class="ac-btn ac-btn-outline" target="@(popup ? "_top" : "_self")" href="/Sale/Index?productionOrderId=@Model.ProductionOrderId">Create Sale</a> }
+        @if (!popup) { <a class="ac-btn ac-btn-outline" href="/Production/Index">Back to Orders</a> }
+    </div>
+    @if (batches.Count > 0)
+    {
+        <h3>Batches</h3>
+        @if (invoiced > 0) { <div class="rp-hint" style="margin:-.2rem 0 .6rem">@invoiced.ToString("0.##") of @Model.ProducedQty produced boxes are invoiced, @((Model.ProducedQty - invoiced).ToString("0.##")) unsold. Sales use the oldest batches first, so only batches after the sold boxes can be reversed. Cancel the sale invoice to reverse an older batch.</div> }
+        <table class="rp-table"><thead><tr><th>Batch</th><th>Date</th><th class="n">Boxes</th><th>Recorded by</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>@foreach (var b in batches) {
+                <tr>
+                    <td>#@b.BatchNo</td>
+                    <td>@b.ProducedUtc.ToLocalTime().ToString("dd-MMM-yyyy HH:mm")</td>
+                    <td class="n">@b.Quantity</td>
+                    <td>@(b.ProducedBy ?? "-")</td>
+                    <td>@(b.ReversedUtc == null ? "Active" : "Reversed: " + b.ReversalReason)</td>
+                    <td>@if (b.ReversedUtc == null && canReverse)
+                        {
+                            if (InventorySystem.Services.Services.EstimatedProductionService.BatchHasSoldBoxes(batches, b, invoiced)) { <span class="rp-sold" title="Boxes from this order are already invoiced. Cancel the sale invoice first to reverse this batch.">Sold</span> }
+                            else { <button class="ac-btn ac-btn-outline" onclick="reverseBatch(@b.BatchId, @b.BatchNo)">Reverse batch</button> }
+                        }</td>
+                </tr>
+            }</tbody></table>
+    }
 </div>
 <script>
+const orderId = @Model.ProductionOrderId, remaining = @remaining;
 function previewProduction() {
-    const boxes = Number(document.getElementById('producedQty')?.value || @Model.ProducedQty);
+    const boxes = Number(document.getElementById('producedQty')?.value || 0);
     document.querySelectorAll('[data-per-box]').forEach(row => {
         const raw = Number(row.dataset.perBox) * boxes;
-        row.querySelector('.estimate-kg').textContent = row.dataset.unit === 'pcs'
+        const cell = row.querySelector('.estimate-kg'); if (!cell) return;
+        cell.textContent = boxes < 1 ? '—' : row.dataset.unit === 'pcs'
             ? String(Math.ceil(raw - 1e-9))
             : (Math.ceil(raw * 1000 - 1e-9) / 1000).toFixed(3);
     });
 }
+function refreshed() { if (window.parent !== window && parent.markProductionChanged) parent.markProductionChanged(); location.reload(); }
+async function post(url, body) {
+    const response = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.success) throw new Error(data?.message || 'The request could not be completed.');
+    return data;
+}
 async function recordProduction() {
     const boxes = Number(document.getElementById('producedQty').value);
-    if (!Number.isInteger(boxes) || boxes < 1 || boxes > @Model.OrderQty) { await alertDialog('Enter a whole number between 1 and the ordered quantity.'); return; }
-    if (!(await confirmDialog(`Record ${boxes} boxes, deduct estimated materials, and close this order?`))) return;
+    if (!Number.isInteger(boxes) || boxes < 1 || boxes > remaining) { await alertDialog('Enter a whole number between 1 and the remaining ' + remaining + ' boxes.'); return; }
+    const closing = boxes === remaining;
+    if (!(await confirmDialog(`Record a batch of ${boxes} boxes and deduct its estimated materials?` + (closing ? ' This completes the order.' : ' The order stays open.')))) return;
     const button = document.getElementById('recordBtn'); button.disabled = true;
-    try {
-        const response = await fetch('/Production/Record', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({productionOrderId:@Model.ProductionOrderId, producedQty:boxes})});
-        const data = await response.json();
-        if (!response.ok || !data.success) throw new Error(data.message || 'Production could not be recorded.');
-        await alertDialog(data.message); location.href = '/Production/Index';
-    } catch(error) { await alertDialog(error.message); button.disabled = false; }
+    try { const data = await post('/Production/Record', {productionOrderId: orderId, producedQty: boxes}); await alertDialog(data.message); refreshed(); }
+    catch (error) { await alertDialog(error.message); button.disabled = false; }
+}
+async function reverseBatch(batchId, batchNo) {
+    const reason = await requestOperationReason('Reason for reversing batch #' + batchNo, 'Confirm reason');
+    if (!reason || reason.trim().length < 3) return;
+    if (!(await confirmDialog(`Reverse batch #${batchNo}? Its boxes leave stock and its estimated materials come back.`, {danger:true}))) return;
+    try { const data = await post('/Production/Reverse', {productionOrderId: orderId, batchId, reason}); await alertDialog(data.message); refreshed(); }
+    catch (error) { await alertDialog(error.message); }
+}
+async function closeOrder() {
+    const reason = await requestOperationReason('Reason for closing this order early', 'Confirm reason');
+    if (!reason || reason.trim().length < 3) return;
+    if (!(await confirmDialog('Close this order now? Boxes already produced stay in stock; no more batches can be recorded.', {danger:true}))) return;
+    try { const data = await post('/Production/Complete', {productionOrderId: orderId, reason}); await alertDialog(data.message); refreshed(); }
+    catch (error) { await alertDialog(error.message); }
 }
 previewProduction();
 </script>

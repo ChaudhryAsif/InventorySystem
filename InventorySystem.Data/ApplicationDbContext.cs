@@ -1,4 +1,4 @@
-﻿using InventorySystem.Core.Models;
+using InventorySystem.Core.Models;
 using InventorySystem.Core.Options;
 using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +23,8 @@ namespace InventorySystem.Data
         // ── Master data ──────────────────────────────────────────────────────────
         public DbSet<ItemCategory> ItemCategory => Set<ItemCategory>();
         public DbSet<Items> Items => Set<Items>();
+        public DbSet<GatePass> GatePasses => Set<GatePass>();
+        public DbSet<GatePassLine> GatePassLines => Set<GatePassLine>();
         public DbSet<Party> Parties => Set<Party>();
 
         // ── Inventory ────────────────────────────────────────────────────────────
@@ -50,6 +52,12 @@ namespace InventorySystem.Data
         public DbSet<SaleReturnBody> SaleReturnBody => Set<SaleReturnBody>();
 
         // ── Accounts ─────────────────────────────────────────────────────────────
+        public DbSet<Employee> Employees => Set<Employee>();
+        public DbSet<SalarySlip> SalarySlips => Set<SalarySlip>();
+        public DbSet<PayrollMonth> PayrollMonths => Set<PayrollMonth>();
+        public DbSet<PayrollLine> PayrollLines => Set<PayrollLine>();
+        public DbSet<ExpenseEntry> ExpenseEntries => Set<ExpenseEntry>();
+        public DbSet<ProductionBatch> ProductionBatch => Set<ProductionBatch>();
         public DbSet<AccountLedger> AccountLedger => Set<AccountLedger>();
         public DbSet<PaymentVoucher> PaymentVoucher => Set<PaymentVoucher>();
 
@@ -90,6 +98,18 @@ namespace InventorySystem.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<Employee>().HasIndex(e=>e.EmployeeCode).IsUnique();
+            modelBuilder.Entity<SalarySlip>().HasIndex(s=>new { s.EmployeeId,s.Period }).IsUnique();
+            modelBuilder.Entity<SalarySlip>().HasOne(s=>s.Employee).WithMany().HasForeignKey(s=>s.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SalarySlip>().HasIndex(s=>s.PayrollMonthId);
+            modelBuilder.Entity<ExpenseEntry>().HasIndex(e=>e.ExpenseDate);
+            modelBuilder.Entity<ProductionBatch>().HasIndex(b=>new { b.ProductionOrderId,b.BatchNo }).IsUnique();
+            modelBuilder.Entity<ProductionBatch>().HasOne(b=>b.ProductionOrder).WithMany(o=>o.Batches).HasForeignKey(b=>b.ProductionOrderId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ExpenseEntry>().HasOne(e=>e.AccountHead).WithMany().HasForeignKey(e=>e.AccountHeadId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PayrollMonth>().HasIndex(p=>p.Period).IsUnique();
+            modelBuilder.Entity<PayrollMonth>().HasMany(p=>p.Lines).WithOne(l=>l.PayrollMonth).HasForeignKey(l=>l.PayrollMonthId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<PayrollLine>().HasIndex(l=>new { l.PayrollMonthId,l.EmployeeId }).IsUnique();
+            modelBuilder.Entity<PayrollLine>().HasOne(l=>l.Employee).WithMany().HasForeignKey(l=>l.EmployeeId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<OperationRecord>().HasIndex(o => new { o.UserId, o.Action, o.RequestId }).IsUnique().HasFilter("[RequestId] IS NOT NULL");
             modelBuilder.Entity<Stock>().Property(s => s.Quantity).IsConcurrencyToken();
             modelBuilder.Entity<ProductionOrder>().Property(o => o.RowVersion).IsRowVersion();
@@ -114,6 +134,21 @@ namespace InventorySystem.Data
             modelBuilder.Entity<Items>().Property(i => i.StockUnit).HasDefaultValue("pcs");
             modelBuilder.Entity<ProductionOrder>().Property(o => o.BranchId).HasDefaultValue(1);
             modelBuilder.Entity<Items>().HasIndex(i => i.Barcode).IsUnique().HasFilter("[Barcode] IS NOT NULL");
+            modelBuilder.Entity<GatePass>().Ignore(g=>g.PassNumber);
+            modelBuilder.Entity<GatePass>().HasMany(g=>g.Lines).WithOne().HasForeignKey(l=>l.GatePassId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<GatePass>().Property(g=>g.Revision).IsConcurrencyToken();
+            modelBuilder.Entity<GatePass>().HasIndex(g=>new { g.Direction, g.PassDate });
+            modelBuilder.Entity<GatePass>().HasQueryFilter(g=>!RestrictBranches || AllowedBranchIds.Contains(g.BranchId));
+            modelBuilder.Entity<GatePass>().Property(g=>g.GrossWeightKg).HasPrecision(18,3);
+            modelBuilder.Entity<GatePass>().Property(g=>g.TareWeightKg).HasPrecision(18,3);
+            modelBuilder.Entity<GatePass>().Property(g=>g.NetWeightKg).HasPrecision(18,3);
+            modelBuilder.Entity<GatePassLine>().Property(g=>g.PackingQuantity).HasPrecision(18,3);
+            modelBuilder.Entity<GatePassLine>().Property(g=>g.BundleQuantity).HasPrecision(18,3);
+            modelBuilder.Entity<GatePassLine>().Property(g=>g.OpenCartonQuantity).HasPrecision(18,3);
+            modelBuilder.Entity<GatePassLine>().Property(g=>g.OpenCartonQuantity).HasDefaultValue(0m);
+            modelBuilder.Entity<GatePassLine>().Property(g=>g.CalculateFromBundles).HasDefaultValue(false);
+            modelBuilder.Entity<GatePassLine>().Property(g=>g.UnitPrice).HasPrecision(18,4);
+            modelBuilder.Entity<GatePassLine>().Property(g=>g.TotalQuantity).HasPrecision(18,3);
             modelBuilder.Entity<Stock>().HasQueryFilter(s => !RestrictBranches || AllowedBranchIds.Contains(s.BranchId));
             modelBuilder.Entity<SaleInvoice>().HasQueryFilter(s => !s.IsCancelled && (!RestrictBranches || AllowedBranchIds.Contains(s.BranchID ?? 1)));
             modelBuilder.Entity<PurchaseInvoice>().HasQueryFilter(s => !s.IsCancelled && (!RestrictBranches || AllowedBranchIds.Contains(s.BranchID ?? 1)));
@@ -1078,6 +1113,9 @@ namespace InventorySystem.Data
         new AccountHead { AccountHeadId=511, AccountCode="5202", AccountName="Rent Expense",          AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
         new AccountHead { AccountHeadId=512, AccountCode="5203", AccountName="Utilities Expense",     AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
         new AccountHead { AccountHeadId=513, AccountCode="5204", AccountName="Depreciation",          AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
+        new AccountHead { AccountHeadId=514, AccountCode="5205", AccountName="Office & Factory Expenses", AccountType="Expenses", Level=3, NormalBalance="Debit", IsSystem=false, ParentId=51 },
+        new AccountHead { AccountHeadId=515, AccountCode="5206", AccountName="Repairs & Maintenance", AccountType="Expenses",  Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
+        new AccountHead { AccountHeadId=516, AccountCode="5207", AccountName="Kitchen Expenses",      AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
         new AccountHead { AccountHeadId=520, AccountCode="5301", AccountName="Bank Charges",          AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=52 },
         new AccountHead { AccountHeadId=521, AccountCode="5302", AccountName="Discount Allowed",      AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=52 },
             };

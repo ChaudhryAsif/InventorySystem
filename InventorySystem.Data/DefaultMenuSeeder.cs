@@ -21,7 +21,7 @@ public static class DefaultMenuSeeder
             var legacy = LegacyMenuSeed.Create();
             var extra = rows.Where(x => !legacy.Any(y => y.Id == x.Id)).ToList();
             if (legacy.Any(expected => !rows.Any(actual => Same(actual, expected))) ||
-                extra.Any(x => !IsOriginalStockLink(x)) ||
+                extra.Any(x => !IsOriginalStockLink(x) && !IsPurchaseNeedsLink(x)) ||
                 extra.GroupBy(x => x.Action).Any(g => g.Count() > 1))
                 return false;
 
@@ -82,6 +82,8 @@ public static class DefaultMenuSeeder
             }
             Stock("RawMaterialStock", "Raw Material Stock", "🧱", raw.Id, 5);
             Stock("FinishedGoodsStock", "Finished Goods Stock", "📦", finished.Id, 1);
+            var purchaseNeeds = extra.SingleOrDefault(IsPurchaseNeedsLink);
+            if (purchaseNeeds != null) { purchaseNeeds.ParentId = 16; purchaseNeeds.SortOrder = 3; }
             await db.SaveChangesAsync();
             if (transaction != null) await transaction.CommitAsync();
             return true;
@@ -93,6 +95,10 @@ public static class DefaultMenuSeeder
         a.Icon == b.Icon && a.Controller == b.Controller && a.Action == b.Action &&
         a.ParentId == b.ParentId && a.SortOrder == b.SortOrder && a.IsActive == b.IsActive &&
         a.RequiredPermission == b.RequiredPermission;
+
+    // Added by the AddMaterialsToPurchaseMenu migration under the Production group.
+    private static bool IsPurchaseNeedsLink(MenuItem x) => x.Controller == "Production" && x.Action == "PurchaseNeeds" &&
+        x.Name == "Materials to Purchase" && x.ParentId == 16 && x.IsActive && x.RequiredPermission == "Production.View";
 
     private static bool IsOriginalStockLink(MenuItem x) => x.Controller == "Report" &&
         x.ParentId == 31 && x.IsActive && x.RequiredPermission == "Report.View" &&

@@ -1,0 +1,97 @@
+@model InventorySystem.Models.PrintPage<InventorySystem.Models.ItemPrintRow>
+@{
+    Layout = null;
+    var typeLabel = (string?)ViewBag.ItemType == "FinishedGoods" ? "Finished Goods" : (string?)ViewBag.ItemType == "RawMaterial" ? "Raw Material" : "";
+    string Unit(string? u) => u == "kg" ? "KG" : u == "pcs" ? "PCS" : u ?? "";
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>@typeLabel Items - B. Packages</title>
+    <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:@(Model.Popup ? "1rem" : "2rem"); }
+        .inv { max-width:960px; margin:0 auto; }
+        .inv-head { border-bottom:3px solid #1e3a5f; padding-bottom:.8rem; margin-bottom:1rem; }
+        .inv-head h1 { margin:0; font-size:1.4rem; color:#1e3a5f; }
+        .muted { color:#64748b; font-size:.85rem; }
+        table { width:100%; border-collapse:collapse; }
+        th, td { padding:.5rem .7rem; border-bottom:1px solid #e2e8f0; font-size:.9rem; text-align:left; vertical-align:middle; }
+        th { background:#1e3a5f; color:#fff; text-transform:uppercase; font-size:.75rem; }
+        .num { text-align:right; font-variant-numeric:tabular-nums; }
+        .thumb { width:40px; height:40px; object-fit:cover; border-radius:6px; background:#e2e8f0; }
+        .card { border:1px solid #e2e8f0; border-radius:10px; padding:1rem; margin-bottom:1rem; break-inside:avoid; display:flex; gap:1rem; }
+        .card img { width:110px; height:110px; object-fit:cover; border-radius:8px; background:#e2e8f0; }
+        .grid { display:grid; grid-template-columns:1fr 1fr; gap:.5rem 2rem; flex:1; }
+        .grid div span { display:block; font-size:.72rem; color:#64748b; text-transform:uppercase; }
+        .badge { padding:.15rem .6rem; border-radius:10px; font-size:.78rem; font-weight:600; }
+        .on { background:#dcfce7; color:#166534; } .off { background:#fee2e2; color:#991b1b; }
+        .actions { text-align:center; margin-bottom:1rem; }
+        .actions button { padding:.5rem 1.2rem; border:none; border-radius:8px; background:#1e3a5f; color:#fff; cursor:pointer; font-size:.9rem; }
+        @@media print { .actions { display:none; } body { padding:0; } }
+    </style>
+</head>
+<body>
+    @if (!Model.Popup)
+    {
+        <div class="actions"><button onclick="window.print()">🖨 Print</button> <button style="background:#64748b" onclick="window.close()">Close</button></div>
+    }
+    <div class="inv">
+        @if (!Model.Popup) { <partial name="_CompanyPrintHeader" /> }
+        <div class="inv-head">
+            <h1>@(Model.Detail ? "ITEM DETAILS" : (typeLabel + " ITEMS").Trim())</h1>
+            <div class="muted">@Model.Rows.Count record(s) · Printed @DateTime.Now.ToString("dd MMM yyyy HH:mm")</div>
+        </div>
+        @if (!Model.Rows.Any())
+        {
+            <p class="muted">No items found.</p>
+        }
+        else if (Model.Detail)
+        {
+            foreach (var r in Model.Rows)
+            {
+                <div class="card">
+                    <img src="@(string.IsNullOrEmpty(r.ImagePath) ? "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23e2e8f0'/%3E%3C/svg%3E" : r.ImagePath)" alt="" />
+                    <div class="grid">
+                        <div><span>Item Name</span><strong>@r.ItemName</strong></div>
+                        <div><span>Group</span><strong>@(r.CategoryName == "" ? "-" : r.CategoryName)</strong></div>
+                        <div><span>Item Type</span><strong>@(r.ItemType == "FinishedGoods" ? "Finished Goods" : "Raw Material")</strong></div>
+                        <div><span>Stock Unit</span><strong>@Unit(r.StockUnit)</strong></div>
+                        <div><span>Material Role</span><strong>@(string.IsNullOrEmpty(r.MaterialRole) ? "-" : r.MaterialRole)</strong></div>
+                        <div><span>Sale Price</span><strong>@r.SalePrice.ToString("N2")</strong></div>
+                        <div><span>Size</span><strong>@(string.IsNullOrEmpty(r.Size) ? "-" : r.Size)</strong></div>
+                        <div><span>Barcode</span><strong>@(string.IsNullOrEmpty(r.Barcode) ? "-" : r.Barcode)</strong></div>
+                        <div><span>Reorder Level</span><strong>@r.ReorderLevel.ToString("0.##")</strong></div>
+                        <div><span>Status</span><strong class="badge @(r.IsActive ? "on" : "off")">@(r.IsActive ? "Active" : "Inactive")</strong></div>
+                        <div><span>Created</span><strong>@(r.CreatedDate?.ToString("dd MMM yyyy") ?? "-")</strong></div>
+                        <div style="grid-column:1 / -1"><span>Description</span><strong>@(string.IsNullOrEmpty(r.Description) ? "-" : r.Description)</strong></div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <table>
+                <thead>
+                    <tr><th style="width:56px;">Image</th><th>Item Name</th><th>Group Name</th><th>Stock Unit</th><th class="num">Sale Price</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var r in Model.Rows)
+                {
+                    <tr>
+                        <td>@if (!string.IsNullOrEmpty(r.ImagePath)) { <img class="thumb" src="@r.ImagePath" alt="" /> }</td>
+                        <td>@r.ItemName</td>
+                        <td>@r.CategoryName</td>
+                        <td>@Unit(r.StockUnit)</td>
+                        <td class="num">@r.SalePrice.ToString("N2")</td>
+                        <td><span class="badge @(r.IsActive ? "on" : "off")">@(r.IsActive ? "Active" : "Inactive")</span></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+</body>
+</html>

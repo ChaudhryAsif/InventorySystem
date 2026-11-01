@@ -1,6 +1,8 @@
-﻿@model InventorySystem.Core.Models.CostSheet
+@model InventorySystem.Core.Models.CostSheet
 @{
     Layout = null;
+    bool Show(params decimal?[] values)=>values.Any(v=>decimal.Round(v.GetValueOrDefault(),2)!=0);
+    string Val(decimal? value,string format)=>value.GetValueOrDefault()!=0?value!.Value.ToString(format):"";
     var client = string.IsNullOrEmpty(Model.ClientCostingJson) ? null : System.Text.Json.JsonSerializer.Deserialize<InventorySystem.Core.Models.ClientCostingOptions>(Model.ClientCostingJson);
     var rateUnit = client == null ? "%" : " / paper KG";
     var plies = Model.Plies?.OrderBy(p => p.SrNo).ToList() ?? new List<InventorySystem.Core.Models.CostSheetPly>();
@@ -9,7 +11,7 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Cost Sheet #@Model.CostSheetId — Bright Packages</title>
+    <title>Cost Sheet #@Model.CostSheetId — B. Packages</title>
     <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
     <style>
         * { box-sizing: border-box; }
@@ -39,7 +41,7 @@
     </style>
 </head>
 <body>
-    <div class="actions"><button onclick="window.print()">🖨 Print</button></div>
+    <div class="actions"><button onclick="window.print()">🖨 Print</button> <button style="background:#64748b" onclick="window.close()">Close</button></div>
     <div class="inv">
         <partial name="_CompanyPrintHeader" />
         <div class="inv-head">
@@ -57,8 +59,8 @@
             <div><span>Usage</span><strong>Reusable recipe — customer and agreed price are selected on each order.</strong></div>
             <div><span>Item Name</span><strong>@(Model.ItemName ?? "-")</strong></div>
             <div><span>Box Style</span><strong>@(Model.BoxStyle ?? "-")</strong></div>
-            <div><span>Size</span><strong>@Model.Length?.ToString("0.##") x @Model.Width?.ToString("0.##") x @Model.Height?.ToString("0.##") @Model.SizeUnit</strong></div>
-            <div><span>Flap</span><strong>@(Model.Flap?.ToString("0.##") ?? "-")</strong></div>
+            @if(Show(Model.Length,Model.Width,Model.Height)){<div><span>Size</span><strong>@Val(Model.Length,"0.##") x @Val(Model.Width,"0.##") x @Val(Model.Height,"0.##") @Model.SizeUnit</strong></div>}
+            @if(Show(Model.Flap)){<div><span>Flap</span><strong>@Model.Flap?.ToString("0.##")</strong></div>}
             <div><span>Status</span><strong>@(Model.Status ?? "-")</strong></div>
         </div>
 
@@ -82,10 +84,10 @@
                         <td>@p.SrNo</td>
                         <td>@(p.PlyName ?? "-")</td>
                         <td>@(p.Specification ?? "-")</td>
-                        <td class="num">@p.GSM?.ToString("0.##")</td>@if (client != null) { <td>@((p.SrNo > 0 && p.SrNo <= client.FlutedLayers.Count && client.FlutedLayers[p.SrNo - 1]) ? "Fluted" : "Plain")</td> }
-                        <td class="num">@p.Rate?.ToString("0.00")</td>
-                        <td class="num">@p.KGs?.ToString("0.000")</td>
-                        <td class="num">@p.Cost?.ToString("0.00")</td>
+                        <td class="num">@Val(p.GSM,"0.##")</td>@if (client != null) { <td>@((p.SrNo > 0 && p.SrNo <= client.FlutedLayers.Count && client.FlutedLayers[p.SrNo - 1]) ? "Fluted" : "Plain")</td> }
+                        <td class="num">@Val(p.Rate,"0.00")</td>
+                        <td class="num">@Val(p.KGs,"0.000")</td>
+                        <td class="num">@Val(p.Cost,"0.00")</td>
                     </tr>
                 }
                 @if (!plies.Any())
@@ -96,7 +98,7 @@
         </table>
 
         @{
-            var others = Model.Materials?.OrderBy(x => x.SrNo).ToList() ?? new List<InventorySystem.Core.Models.CostSheetMaterial>();
+            var others = Model.Materials?.Where(m=>m.Quantity!=0||m.Rate!=0||m.Cost!=0).OrderBy(x => x.SrNo).ToList() ?? new List<InventorySystem.Core.Models.CostSheetMaterial>();
             var materialNames = ViewBag.MaterialNames as Dictionary<long, string> ?? new Dictionary<long, string>();
         }
         @if (others.Any())
@@ -120,9 +122,9 @@
                             <td>@o.SrNo</td>
                             <td>@(materialNames.TryGetValue(o.ItemId, out var nm) ? nm : "#" + o.ItemId)</td>
                             <td>@o.Unit</td>
-                            <td class="num">@o.Quantity.ToString("0.######")</td>
-                            <td class="num">@o.Rate.ToString("0.00")</td>
-                            <td class="num">@o.Cost.ToString("0.00")</td>
+                            <td class="num">@Val(o.Quantity,"0.######")</td>
+                            <td class="num">@Val(o.Rate,"0.00")</td>
+                            <td class="num">@Val(o.Cost,"0.00")</td>
                         </tr>
                     }
                 </tbody>
@@ -132,58 +134,58 @@
         @if (client?.Totals is { } ct)
         {
             <span class="section-title">Client Carton Costing</span>
-            <p>RSC sheet: @Model.AdjWidthMm?.ToString("0.###") × @Model.AdjLengthMm?.ToString("0.###") mm; @Model.TotalSheetSqIn?.ToString("0.######") sq.in. Paper: @ct.PaperWeightKg.ToString("0.######") KG. Deckel: @ct.DeckelIn.ToString("0.00") in.</p>
+            <p>@if(Show(Model.AdjWidthMm,Model.AdjLengthMm)){<span>RSC sheet: @Val(Model.AdjWidthMm,"0.###") × @Val(Model.AdjLengthMm,"0.###") mm. </span>}@if(Show(Model.TotalSheetSqIn)){<span>Area: @Val(Model.TotalSheetSqIn,"0.######") sq.in. </span>}@if(ct.PaperWeightKg!=0){<span>Paper: @Val(ct.PaperWeightKg,"0.######") KG. </span>}@if(Show(ct.DeckelIn)){<span>Deckel: @Val(ct.DeckelIn,"0.00") in.</span>}</p>
             <div class="cost-grid">
-                <div class="cost-row"><span>Lamination</span><span>@(Model.HasLamination == true ? "Yes" : "No")</span></div>
-                <div class="cost-row"><span>Pin Rate</span><span>@client.PinRate.ToString("0.00")</span></div>
-                <div class="cost-row"><span>Wood Cost</span><span>@ct.WoodCost.ToString("0.00")</span></div>
-                <div class="cost-row"><span>Starch &amp; Chemicals</span><span>@ct.StarchCost.ToString("0.00")</span></div>
-                <div class="cost-row"><span>Glue Lamination</span><span>@ct.GlueLaminationCost.ToString("0.00")</span></div>
-                <div class="cost-row"><span>Lamination Chemicals</span><span>@ct.LaminationChemicalCost.ToString("0.00")</span></div>
-                <div class="cost-row"><span>Operating Costs incl. Adhesives</span><span>@ct.OperatingCost.ToString("0.00")</span></div>
-                <div class="cost-row"><span>Base Cost before Profit</span><span>@Model.ManufacturingTotal?.ToString("0.00")</span></div>
-                <div class="cost-row"><span>GST on Cost + Profit</span><span>@ct.GstAmount.ToString("0.00")</span></div>
-                <div class="cost-row"><span>Additional Tax on Base Cost (@Model.TaxPct?.ToString("0.##")%)</span><span>@ct.AdditionalTaxAmount.ToString("0.00")</span></div>
-                <div class="cost-row"><span>Withholding on Operating Costs</span><span>@ct.WithholdingAmount.ToString("0.00")</span></div>
-                <div class="cost-row"><span>MOQ Divisor / Price after Divisor</span><span>@Model.MOQ / @ct.PricePerUnit.ToString("0.00")</span></div>
+                @if(Model.HasLamination == true){<div class="cost-row"><span>Lamination</span><span>@(Model.HasLamination == true ? "Yes" : "No")</span></div>}
+                @if(Show(client.PinRate)){<div class="cost-row"><span>Pin Rate</span><span>@client.PinRate.ToString("0.00")</span></div>}
+                @if(Show(ct.WoodCost)){<div class="cost-row"><span>Wood Cost</span><span>@ct.WoodCost.ToString("0.00")</span></div>}
+                @if(Show(ct.StarchCost)){<div class="cost-row"><span>Starch &amp; Chemicals</span><span>@ct.StarchCost.ToString("0.00")</span></div>}
+                @if(Show(ct.GlueLaminationCost)){<div class="cost-row"><span>Glue Lamination</span><span>@ct.GlueLaminationCost.ToString("0.00")</span></div>}
+                @if(Show(ct.LaminationChemicalCost)){<div class="cost-row"><span>Lamination Chemicals</span><span>@ct.LaminationChemicalCost.ToString("0.00")</span></div>}
+                @if(Show(ct.OperatingCost)){<div class="cost-row"><span>Operating Costs incl. Adhesives</span><span>@ct.OperatingCost.ToString("0.00")</span></div>}
+                @if(Show(Model.ManufacturingTotal)){<div class="cost-row"><span>Base Cost before Profit</span><span>@Model.ManufacturingTotal?.ToString("0.00")</span></div>}
+                @if(Show(ct.GstAmount)){<div class="cost-row"><span>GST on Cost + Profit</span><span>@ct.GstAmount.ToString("0.00")</span></div>}
+                @if(Show(ct.AdditionalTaxAmount)){<div class="cost-row"><span>Additional Tax on Base Cost (@Model.TaxPct?.ToString("0.##")%)</span><span>@ct.AdditionalTaxAmount.ToString("0.00")</span></div>}
+                @if(Show(ct.WithholdingAmount)){<div class="cost-row"><span>Withholding on Operating Costs</span><span>@ct.WithholdingAmount.ToString("0.00")</span></div>}
+                @if(Show(Model.MOQ,ct.PricePerUnit)){<div class="cost-row"><span>MOQ Divisor / Price after Divisor</span><span>@string.Join(" / ",new[]{Show(Model.MOQ)?Model.MOQ?.ToString():null,Show(ct.PricePerUnit)?ct.PricePerUnit.ToString("0.00"):null}.Where(v=>v!=null))</span></div>}
             </div>
         }
 
-        <span class="section-title">Cost Breakdown</span>
+        @if(Show(Model.PaperCost,Model.PrintingCost,Model.LaminationCost,Model.GlueSilicateCost,Model.LabourCost,Model.EnergyCost,Model.BindingCost,Model.FreightCost,Model.SubTotal)){<span class="section-title">Cost Breakdown</span>
         <div class="cost-grid">
-            <div class="cost-row"><span>Paper Cost</span><span>@Model.PaperCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Printing Cost</span><span>@Model.PrintingCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Lamination Cost</span><span>@Model.LaminationCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Glue/Silicate Cost</span><span>@Model.GlueSilicateCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Labour Cost</span><span>@Model.LabourCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Energy Cost</span><span>@Model.EnergyCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Binding Cost</span><span>@Model.BindingCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Freight Cost</span><span>@Model.FreightCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Sub Total</span><span>@Model.SubTotal?.ToString("0.00")</span></div>
-        </div>
+            @if(Show(Model.PaperCost)){<div class="cost-row"><span>Paper Cost</span><span>@Model.PaperCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.PrintingCost)){<div class="cost-row"><span>Printing Cost</span><span>@Model.PrintingCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.LaminationCost)){<div class="cost-row"><span>Lamination Cost</span><span>@Model.LaminationCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.GlueSilicateCost)){<div class="cost-row"><span>Glue/Silicate Cost</span><span>@Model.GlueSilicateCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.LabourCost)){<div class="cost-row"><span>Labour Cost</span><span>@Model.LabourCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.EnergyCost)){<div class="cost-row"><span>Energy Cost</span><span>@Model.EnergyCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.BindingCost)){<div class="cost-row"><span>Binding Cost</span><span>@Model.BindingCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.FreightCost)){<div class="cost-row"><span>Freight Cost</span><span>@Model.FreightCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.SubTotal)){<div class="cost-row"><span>Sub Total</span><span>@Model.SubTotal?.ToString("0.00")</span></div>}
+        </div>}
 
-        <span class="section-title">Overheads</span>
+        @if(Show(Model.WasteCost,Model.AdminExpCost,Model.SellingDistCost,Model.RepairMaintCost,Model.StoreSparesCost,Model.MfgCostValue)){<span class="section-title">Overheads</span>
         <div class="cost-grid">
-            <div class="cost-row"><span>Waste (@Model.WastePct?.ToString("0.##")@rateUnit)</span><span>@Model.WasteCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Admin Exp (@Model.AdminExpPct?.ToString("0.##")@rateUnit)</span><span>@Model.AdminExpCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Selling/Dist (@Model.SellingDistPct?.ToString("0.##")@rateUnit)</span><span>@Model.SellingDistCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Repair/Maint (@Model.RepairMaintPct?.ToString("0.##")@rateUnit)</span><span>@Model.RepairMaintCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Store/Spares (@Model.StoreSparesPct?.ToString("0.##")@rateUnit)</span><span>@Model.StoreSparesCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Mfg Cost (@Model.MfgCostPct?.ToString("0.##")@rateUnit)</span><span>@Model.MfgCostValue?.ToString("0.00")</span></div>
-        </div>
+            @if(Show(Model.WasteCost)){<div class="cost-row"><span>Waste (@Model.WastePct?.ToString("0.##")@rateUnit)</span><span>@Model.WasteCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.AdminExpCost)){<div class="cost-row"><span>Admin Exp (@Model.AdminExpPct?.ToString("0.##")@rateUnit)</span><span>@Model.AdminExpCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.SellingDistCost)){<div class="cost-row"><span>Selling/Dist (@Model.SellingDistPct?.ToString("0.##")@rateUnit)</span><span>@Model.SellingDistCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.RepairMaintCost)){<div class="cost-row"><span>Repair/Maint (@Model.RepairMaintPct?.ToString("0.##")@rateUnit)</span><span>@Model.RepairMaintCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.StoreSparesCost)){<div class="cost-row"><span>Store/Spares (@Model.StoreSparesPct?.ToString("0.##")@rateUnit)</span><span>@Model.StoreSparesCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.MfgCostValue)){<div class="cost-row"><span>Mfg Cost (@Model.MfgCostPct?.ToString("0.##")@rateUnit)</span><span>@Model.MfgCostValue?.ToString("0.00")</span></div>}
+        </div>}
 
-        <span class="section-title">Commission &amp; Tax</span>
+        @if(Show(Model.CommPersonACost,Model.CommPersonBCost,Model.WHTaxPct,Model.GSTPercentage,Model.ProfitPct,Model.ProfitAmount)){<span class="section-title">Commission &amp; Tax</span>
         <div class="cost-grid">
-            <div class="cost-row"><span>Commission A (@(Model.CommPersonA ?? "-") @Model.CommPersonAPct?.ToString("0.##")%)</span><span>@Model.CommPersonACost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>Commission B (@(Model.CommPersonB ?? "-") @Model.CommPersonBPct?.ToString("0.##")%)</span><span>@Model.CommPersonBCost?.ToString("0.00")</span></div>
-            <div class="cost-row"><span>WH Tax %</span><span>@Model.WHTaxPct?.ToString("0.##")</span></div>
-            <div class="cost-row"><span>GST %</span><span>@Model.GSTPercentage?.ToString("0.##")</span></div>
-            <div class="cost-row"><span>Profit % / Amount</span><span>@Model.ProfitPct?.ToString("0.##")% / @Model.ProfitAmount?.ToString("0.00")</span></div>
-        </div>
+            @if(Show(Model.CommPersonACost)){<div class="cost-row"><span>Commission A (@(Model.CommPersonA ?? "-") @Model.CommPersonAPct?.ToString("0.##")%)</span><span>@Model.CommPersonACost?.ToString("0.00")</span></div>}
+            @if(Show(Model.CommPersonBCost)){<div class="cost-row"><span>Commission B (@(Model.CommPersonB ?? "-") @Model.CommPersonBPct?.ToString("0.##")%)</span><span>@Model.CommPersonBCost?.ToString("0.00")</span></div>}
+            @if(Show(Model.WHTaxPct)){<div class="cost-row"><span>WH Tax %</span><span>@Model.WHTaxPct?.ToString("0.##")</span></div>}
+            @if(Show(Model.GSTPercentage)){<div class="cost-row"><span>GST %</span><span>@Model.GSTPercentage?.ToString("0.##")</span></div>}
+            @if(Show(Model.ProfitPct,Model.ProfitAmount)){<div class="cost-row"><span>Profit % / Amount</span><span>@string.Join(" / ",new[]{Show(Model.ProfitPct)?Model.ProfitPct?.ToString("0.##")+"%":null,Show(Model.ProfitAmount)?Model.ProfitAmount?.ToString("0.00"):null}.Where(v=>v!=null))</span></div>}
+        </div>}
 
         <table class="totals">
-            <tr><td>Final Cost (w/o GST)</td><td class="num">@Model.FinalCostWOGST?.ToString("0.00")</td></tr>
-            <tr class="grand"><td>Final Rate (w/ GST)</td><td class="num">@Model.FinalRateWithGST?.ToString("0.00")</td></tr>
+            @if(Show(Model.FinalCostWOGST)){<tr><td>Final Cost (w/o GST)</td><td class="num">@Model.FinalCostWOGST?.ToString("0.00")</td></tr>}
+            @if(Show(Model.FinalRateWithGST)){<tr class="grand"><td>Final Rate (w/ GST)</td><td class="num">@Model.FinalRateWithGST?.ToString("0.00")</td></tr>}
         </table>
 
         @if (!string.IsNullOrWhiteSpace(Model.Remarks))

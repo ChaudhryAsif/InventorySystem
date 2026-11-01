@@ -293,13 +293,12 @@ async function loadAdjustments() {
                 <td><span class="badge badge-${status.toLowerCase()}">${status}</span></td>
                 <td>${remarks}</td>
                 <td>
-                    <div class="sa-actions">
-                        <button class="btn btn-sm btn-info" onclick="viewDetails(${adjustmentId})">👁️ View</button>
-                        ${status === 'Draft' ? `
-                            <button class="btn btn-sm btn-success" onclick="postAdjustment(${adjustmentId})">✅ Post</button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteAdjustment(${adjustmentId})">🗑️ Delete</button>
-                        ` : ''}
-                    </div>
+                    ${status === 'Draft'
+                        ? AM.wrap(`<button class="btn btn-sm btn-success" onclick="postAdjustment(${adjustmentId})">✅ Post</button>`, [
+                            `<button onclick="viewDetails(${adjustmentId})">👁️ View</button>`,
+                            '-',
+                            `<button class="am-danger" onclick="deleteAdjustment(${adjustmentId})">🗑️ Delete</button>`])
+                        : AM.wrap(`<button class="btn btn-sm btn-info" onclick="viewDetails(${adjustmentId})">👁️ View</button>`, [])}
                 </td>
             </tr>
             `;

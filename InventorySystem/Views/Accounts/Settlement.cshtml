@@ -11,7 +11,7 @@
         <label>Method<select class="ac-select" id="paymentMode"><option>Cash</option><option>Bank Transfer</option></select></label>
         <label>Reference / Note<input class="ac-input" id="paymentReference" maxlength="100" /></label>
         <button class="ac-btn ac-btn-primary" id="paymentSave" disabled>@(receipt?"Receive Money":"Pay Money")</button>
-    </form><p><a href="/Accounts/PartyLedger">Party Ledger</a> · <a href="/Accounts/OutstandingReport">Payments &amp; Refunds Due</a> · <a href="/Accounts/VoucherList">Voucher History</a></p>
+    </form><p><a href="/Accounts/PartyLedger">Party Ledger</a> · <a href="/Accounts/VoucherList">Voucher History</a></p>
 </div>
 <script>
 let outstanding=0, balanceRequest=0, balanceReady=false;

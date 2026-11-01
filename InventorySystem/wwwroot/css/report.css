@@ -404,20 +404,27 @@
     margin-bottom: 1.5rem;
 }
 
-    .rpt-print-header h2 {
-        font-size: 1.4rem;
-        color: var(--text-primary);
+    /* Title is already on the page, so the print header keeps only the generated date. */
+    .rpt-print-header h2,
+    .rpt-print-header hr {
+        display: none;
+    }
+
+    .rpt-print-header {
+        text-align: center;
+        margin-bottom: 0.75rem;
+    }
+
+    /* Printed and PDF copies centre the title block under the logo. */
+    body.pdf-exporting .rpt-page-header {
+        justify-content: center;
+        text-align: center;
     }
 
     .rpt-print-header p {
         color: var(--text-secondary);
         font-size: 0.85rem;
-    }
-
-    .rpt-print-header hr {
-        margin-top: 0.75rem;
-        border: none;
-        border-top: 2px solid var(--border-color);
+        margin: 0;
     }
 
 /* ── Print / PDF media ────────────────────────────────────────── */
@@ -429,6 +436,11 @@
 
     .rpt-print-header {
         display: block !important;
+    }
+
+    .rpt-page-header {
+        justify-content: center;
+        text-align: center;
     }
 
     .rpt-detail-row {

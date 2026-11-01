@@ -48,6 +48,7 @@ namespace InventorySystem.Models
     {
         public int ProductionOrderId { get; set; }
         public int ProducedQty { get; set; }
+        public int BatchId { get; set; }
         public string? Reason { get; set; }
     }
 

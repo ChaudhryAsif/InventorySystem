@@ -1,0 +1,9 @@
+/* Read-only record popup (iframe) with a Print button. */
+.vp { display:none; position:fixed; inset:0; z-index:4000; background:rgba(15,23,42,.55); align-items:center; justify-content:center; padding:1rem; }
+.vp.open { display:flex; }
+.vp-box { width:min(900px,100%); height:min(84vh,680px); background:#fff; border-radius:12px; box-shadow:0 20px 50px rgba(0,0,0,.35); display:flex; flex-direction:column; overflow:hidden; }
+.vp-bar { display:flex; justify-content:space-between; align-items:center; gap:.6rem; padding:.6rem 1rem; background:#1e3a5f; color:#fff; font-weight:600; }
+.vp-bar .vp-actions { display:flex; align-items:center; gap:.6rem; }
+.vp-bar button { background:none; border:none; color:#fff; font-size:1.5rem; line-height:1; cursor:pointer; }
+.vp-bar .vp-print { font-size:.85rem; padding:.3rem .8rem; border:1px solid rgba(255,255,255,.6); border-radius:7px; }
+.vp iframe { flex:1; width:100%; border:0; }

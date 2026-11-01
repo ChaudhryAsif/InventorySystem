@@ -17,7 +17,7 @@
     <div class="card">
         <form id="saleForm">
             <div class="form-group" style="padding:1rem;">
-                <label class="form-label" for="productionOrderSelect">Completed Production Order (optional)</label>
+                <label class="form-label" for="productionOrderSelect">Production Order (optional)</label>
                 <select id="productionOrderSelect" class="form-control" onchange="selectProductionOrder()">
                     <option value="">Normal sale — no production order</option>
                 </select>
@@ -189,6 +189,7 @@
             </div>
             <div class="customer-modal-body">
                 <div class="customer-search-box">
+                    <select id="customerGroupFilter" class="customer-search-input" aria-label="Finished Goods group" onchange="searchCustomers()"><option value="">All Groups — Finished Goods</option></select>
                     <input type="text"
                            class="customer-search-input"
                            id="customerSearchInput"
@@ -248,7 +249,7 @@
                            placeholder="🔍 Search items by name, barcode..."
                            onkeyup="filterItems()">
                     <select class="item-filter-select" id="categoryFilter" onchange="filterItems()">
-                        <option value="">All Categories</option>
+                        <option value="">All Groups — Finished Goods</option>
                     </select>
                     <select class="item-filter-select" id="stockFilter" onchange="filterItems()">
                         <option value="">All Stock</option>

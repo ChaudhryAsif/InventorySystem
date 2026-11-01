@@ -1,4 +1,4 @@
-﻿@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
 @inject InventorySystem.Data.ApplicationDbContext PosDb
 @using System.Security.Claims
 @inject InventorySystem.Core.Services.IMenuService MenuService
@@ -10,7 +10,7 @@
     <meta name="multi-branch-enabled" content="@(BranchSettings.Value.MultiBranchEnabled ? "true" : "false")" />
     <meta name="csrf-token" content="@Antiforgery.GetAndStoreTokens(Context).RequestToken" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@ViewData["Title"] - Bright Packages</title>
+    <title>@ViewData["Title"] - B. Packages</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/Admin.css" asp-append-version="true" />
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -22,6 +22,11 @@
     <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/list-states.css" asp-append-version="true" />
     <script src="~/js/list-states.js" asp-append-version="true"></script>
+    <link rel="stylesheet" href="~/css/action-menu.css" asp-append-version="true" />
+    <script src="~/js/action-menu.js" asp-append-version="true"></script>
+    <link rel="stylesheet" href="~/css/view-popup.css" asp-append-version="true" />
+    <script src="~/js/view-popup.js" asp-append-version="true"></script>
+    <script src="~/js/print-tab.js" asp-append-version="true"></script>
 
     <style>
         .sidebar-submenu {
@@ -34,9 +39,12 @@
         }
 
             .sidebar-item.open > .sidebar-submenu {
-                max-height: 1000px; /* was 200px — increased to fit large submenus */
+                max-height: none;
             }
 
+        .sidebar-submenu .sidebar-submenu { padding-left: .75rem; }
+        .sidebar-submenu .sidebar-link { font-size: .875rem; padding-left: 2.4rem; }
+        .sidebar-link[aria-expanded="true"] .sidebar-arrow { transform: rotate(180deg); }
         .sidebar-sublink {
             display: flex;
             align-items: center;
@@ -160,7 +168,7 @@
                 <button class="menu-toggle">☰</button>
                 <div class="header-logo">
                     <partial name="_CompanyLogo" />
-                    <h1>Bright Packages</h1>
+                    <h1>B. Packages</h1>
                 </div>
             </div>
 
@@ -217,49 +225,7 @@
                 // SuperAdmin gets ALL menus; others get only permitted menus
                 var menuItems = await MenuService.GetMenuForUserAsync(userId, isSuperAdmin);
 
-                @foreach (var item in menuItems)
-                {
-                    if (item.Children != null && item.Children.Count > 0)
-                    {
-                        var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
-                        var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
-                        var isOpen = item.Children.Any(c => c.Controller == currentController && c.Action == currentAction);
-                        var menuIdSafe = $"sidebar-menu-{item.Id}";
-
-                        <li class="sidebar-item @(isOpen ? "open" : "")" id="@menuIdSafe">
-                            <a href="#" class="sidebar-link"
-                                   onclick="event.preventDefault(); document.getElementById('@menuIdSafe').classList.toggle('open')">
-                                <span class="sidebar-icon">@item.Icon</span>
-                                <span class="sidebar-text">@item.Name</span>
-                                <span class="sidebar-arrow">▼</span>
-                            </a>
-                            <ul class="sidebar-submenu">
-                                @foreach (var subitem in item.Children)
-                                {
-                                    var isSubActive = ViewContext.RouteData.Values["controller"]?.ToString() == subitem.Controller &&
-                                                      ViewContext.RouteData.Values["action"]?.ToString() == subitem.Action;
-                                    <li>
-                                        <a asp-controller="@subitem.Controller" asp-action="@subitem.Action"
-                                               class="sidebar-sublink @(isSubActive ? "active" : "")">
-                                            @subitem.Icon @subitem.Name
-                                        </a>
-                                    </li>
-                                }
-                            </ul>
-                        </li>
-                    }
-                    else
-                    {
-                        var isActive = ViewContext.RouteData.Values["controller"]?.ToString() == item.Controller;
-                        <li class="sidebar-item">
-                            <a asp-controller="@item.Controller" asp-action="@item.Action"
-                                   class="sidebar-link @(isActive ? "active" : "")">
-                                <span class="sidebar-icon">@item.Icon</span>
-                                <span class="sidebar-text">@item.Name</span>
-                            </a>
-                        </li>
-                    }
-                }
+                <partial name="_SidebarNodes" model="menuItems" />
 
                 <!-- Match the AdminController access rule. -->
                 @if (User.IsInRole("SuperAdmin"))
@@ -288,6 +254,7 @@
 
     <!-- Main Content -->
     <main class="main-wrapper" id="mainContent">
+        <div class="app-print-header"><partial name="_CompanyPrintHeader" /></div>
         @RenderBody()
     </main>
 

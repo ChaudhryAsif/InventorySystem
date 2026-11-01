@@ -1,9 +1,10 @@
-﻿namespace InventorySystem.Models
+namespace InventorySystem.Models
 {
     public class ItemCategoryViewModel
     {
         public int CategoryId { get; set; }
         public string CategoryName { get; set; }
+        public string? PageGroupType { get; set; }
         public string? GroupType { get; set; }
         public string Description { get; set; }
         public string? Address { get; set; }

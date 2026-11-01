@@ -23,7 +23,7 @@
             <div class="filter-group" style="align-self:flex-end">
                 <button class="btn btn-primary" onclick="loadDayBook()">🔍 Load</button>
                 <button class="btn btn-secondary" onclick="exportPDF()">📄 PDF</button>
-                <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
+                <button class="btn btn-secondary" onclick="PrintTab.open()">🖨️ Print</button>
             </div>
         </div>
     </div>
@@ -50,6 +50,7 @@
     </div>
 
     <div id="reportArea">
+        <div class="pdf-brand"><partial name="_CompanyPrintHeader" /></div>
         <div class="section-header">Day Book Entries</div>
         <div style="overflow-x:auto">
             <table class="data-table" id="dayBookTable">
@@ -152,12 +153,13 @@
     function exportPDF() {
         const from = document.getElementById('from').value;
         const to   = document.getElementById('to').value;
+        document.body.classList.add('pdf-exporting');
         html2pdf().set({
             margin: 8,
             filename: `DayBook_${from}_to_${to}.pdf`,
-            html2canvas: { scale: 2 },
+            html2canvas: { scale: 2, useCORS: true },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-        }).from(document.getElementById('reportArea')).save();
+        }).from(document.getElementById('reportArea')).save().then(() => document.body.classList.remove('pdf-exporting'));
     }
 </script>
 }

@@ -39,6 +39,9 @@
 
     .prod-table-wrap { overflow-x:auto; }
     .prod-table { min-width:900px; }
+    .prod-table th:last-child, .prod-table td:last-child { position:sticky; right:0; box-shadow:-6px 0 8px -6px rgba(15,23,42,.18); }
+    .prod-table td:last-child { background:#fff; }
+    .prod-table tbody tr:hover td:last-child { background:#f8fafc; }
     @@media screen and (max-width:768px) {
         .summary-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
     }
@@ -59,10 +62,12 @@
         <h2 style="font-size:1.6rem;font-weight:700;color:#1e3a5f;margin:0;">🏭 Production Orders</h2>
         <p style="color:#6b7280;margin:.2rem 0 0;font-size:.9rem;">Manufacturing orders linked to approved cost sheets</p>
     </div>
-    <a href="/Production/Create"
-       style="background:#1e3a5f;color:#fff;padding:.55rem 1.4rem;border-radius:8px;text-decoration:none;font-weight:600;font-size:.9rem;">
-        + New Production Order
-    </a>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;">
+        <a href="/Production/Create"
+           style="background:#1e3a5f;color:#fff;padding:.55rem 1.4rem;border-radius:8px;text-decoration:none;font-weight:600;font-size:.9rem;">
+            + New Production Order
+        </a>
+    </div>
 </div>
 
 <div class="summary-cards">
@@ -121,53 +126,64 @@
                     <td>@o.CustomerName</td>
                     <td>@o.ProductName</td>
                     <td><span style="font-size:.78rem;color:#6b7280">@o.BoxStyle</span></td>
-                    <td>@((int)o.OrderQty) / @((int)o.ProducedQty)</td>
+                    <td>@((int)o.OrderQty) / @((int)o.ProducedQty)@if (status == "InProduction") { <small style="display:block;">@(((int)o.OrderQty) - ((int)o.ProducedQty)) remaining</small> }@{ var soldQty = (decimal)o.Invoiced; var unsoldQty = (int)o.ProducedQty - soldQty; }@if (soldQty > 0) { <small style="display:block;color:@(unsoldQty > 0 ? "#b45309" : "#166534")">@(unsoldQty > 0 ? unsoldQty.ToString("0.##") + " unsold" : "fully invoiced")</small> }</td>
                     <td>@(fRate?.ToString("N2") ?? "Not recorded")<small style="display:block;">GST @(((decimal)o.AgreedGstPercent).ToString("0.##"))%</small></td>
                     <td><strong>@(fRate.HasValue ? tVal.ToString("N2") : "Not recorded")</strong></td>
                     <td>@(((DateTime)o.OrderDate).ToString("dd-MMM-yyyy"))</td>
                     <td>@(((DateTime)o.DeliveryDate).ToString("dd-MMM-yyyy"))</td>
                     <td><span class="@daysClass">@daysText</span></td>
-                    <td><span class="status-badge status-@status">@status</span></td>
+                    <td><span class="status-badge status-@status">@(status == "InProduction" ? "In Production" : status)</span>@if (o.ClosedShortUtc != null) { <small style="display:block;">closed short</small> }</td>
                     <td>
-                        <div class="action-btns">
-                            <button class="btn-materials"
-                                    onclick="location.href='/Production/Materials/@orderId'">
-                                📋 Materials
-                            </button>
-                            <button class="btn-print"
-                                    onclick="location.href='/Production/Print/@orderId'">
-                                🖨 Print
-                            </button>
-                            @if (status == "Pending")
+                        @{
+                            bool canRecord = status == "Pending" || status == "InProduction";
+                            bool usesEst   = (status == "Completed" || status == "InProduction") && (bool)o.UsesEstimatedConsumption;
+                            decimal invoiced = (decimal)o.Invoiced, unsold = (int)o.ProducedQty - invoiced;
+                            bool canSale   = usesEst && fRate.HasValue && unsold > 0;
+                            bool hasBatch  = (bool)o.HasBatches;
+                        }
+                        <div class="am">
+                            @if (canRecord)
                             {
-                                <button class="btn-edit"
-                                        onclick="location.href='/Production/Edit/@orderId'">
-                                    ✏️ Edit
-                                </button>
+                                <button class="btn-consume" onclick="openRecord(@orderId)">📦 @(status == "InProduction" ? "Record Batch" : "Record Production")</button>
                             }
-                            @if (status == "Pending" || status == "InProduction")
+                            else if (canSale)
                             {
-                                <button class="btn-consume"
-                                        onclick="location.href='/Production/Consume/@orderId'">
-                                    📦 Record Production
-                                </button>
+                                <a class="btn-materials" style="text-decoration:none;" href="/Sale/Index?productionOrderId=@orderId">Create Sale</a>
                             }
-                            @if (status == "Completed" && (bool)o.UsesEstimatedConsumption)
+                            else
                             {
-                                @if (fRate.HasValue)
+                                <button class="btn-materials" onclick="openMaterials(@orderId)">📋 Materials</button>
+                            }
+                            <button type="button" class="am-toggle" aria-haspopup="menu" aria-expanded="false" title="More actions">&#8943;</button>
+                            <div class="am-menu" role="menu">
+                                @if (canRecord || canSale)
                                 {
-                                    <a class="btn-materials" href="/Sale/Index?productionOrderId=@orderId">Create Sale</a>
+                                    <button onclick="openMaterials(@orderId)">📋 Materials</button>
                                 }
-                                <button class="btn-cancel" onclick="reverseOrder(@orderId)">Reverse Production</button>
-                            }
-                            @if (status == "Pending")
-                            {
-                                <button class="btn-cancel" onclick="cancelOrder(@orderId)">✖ Cancel</button>
-                            }
-                            @if (status == "Pending")
-                            {
-                                <button class="btn-delete" onclick="deleteOrder(@orderId)">🗑 Delete</button>
-                            }
+                                <a href="/Production/Print/@orderId" target="_blank" rel="noopener">🖨 Print</a>
+                                @if (status == "Pending" && User.IsInRole("SuperAdmin"))
+                                {
+                                    <button onclick="location.href='/Production/Edit/@orderId'">✏️ Edit</button>
+                                }
+                                @if (canRecord && canSale)
+                                {
+                                    <a href="/Sale/Index?productionOrderId=@orderId">Create Sale</a>
+                                }
+                                @if (usesEst && hasBatch && status == "Completed")
+                                {
+                                    <button onclick="openRecord(@orderId)">📦 Batches</button>
+                                }
+                                @if (usesEst && !hasBatch)
+                                {
+                                    <button class="am-danger" onclick="reverseOrder(@orderId)">Reverse Production</button>
+                                }
+                                @if (status == "Pending")
+                                {
+                                    <hr>
+                                    <button class="am-danger" onclick="cancelOrder(@orderId)">✖ Cancel</button>
+                                    <button class="am-danger" onclick="deleteOrder(@orderId)">🗑 Delete</button>
+                                }
+                            </div>
                         </div>
                     </td>
                 </tr>
@@ -180,7 +196,39 @@
     </table>
 </div>
 
+<style>
+    .mat-pop { display:none; position:fixed; inset:0; z-index:4000; background:rgba(15,23,42,.55); align-items:center; justify-content:center; padding:1rem; }
+    .mat-pop.open { display:flex; }
+    .mat-pop-box { width:min(1100px,100%); height:min(86vh,760px); background:#f8fafc; border-radius:12px; box-shadow:0 20px 50px rgba(0,0,0,.35); display:flex; flex-direction:column; overflow:hidden; }
+    .mat-pop-bar { display:flex; justify-content:space-between; align-items:center; padding:.6rem 1rem; background:#1e3a5f; color:#fff; font-weight:600; }
+    .mat-pop-bar button { background:none; border:none; color:#fff; font-size:1.5rem; line-height:1; cursor:pointer; }
+    .mat-pop iframe { flex:1; width:100%; border:0; }
+</style>
+<div class="mat-pop" id="matPop" onclick="if(event.target===this)closeMaterials()">
+    <div class="mat-pop-box" role="dialog" aria-modal="true" aria-label="Material requirements">
+        <div class="mat-pop-bar"><span id="matPopTitle">Material Requirements</span><button type="button" aria-label="Close" onclick="closeMaterials()">&times;</button></div>
+        <iframe id="matPopFrame" title="Material requirements"></iframe>
+    </div>
+</div>
+
 <script>
+let productionChanged = false;
+function markProductionChanged() { productionChanged = true; }
+function openPopup(title, url) {
+    document.getElementById('matPopTitle').textContent = title;
+    document.getElementById('matPopFrame').src = url;
+    document.getElementById('matPop').classList.add('open');
+}
+function openMaterials(id) { openPopup('Material Requirements - Order #' + id, '/Production/Materials/' + id + '?popup=1'); }
+function openRecord(id) { openPopup('Record Production - Order #' + id, '/Production/Consume/' + id + '?popup=1'); }
+function closeMaterials() {
+    document.getElementById('matPop').classList.remove('open');
+    document.getElementById('matPopFrame').removeAttribute('src');
+    if (productionChanged) location.reload();
+}
+const newOrderId = Number(new URLSearchParams(location.search).get('record'));
+if (newOrderId > 0) { history.replaceState(null, '', '/Production/Index'); openRecord(newOrderId); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMaterials(); });
 async function reverseOrder(id) {
     const reason = await requestOperationReason('Production reversal reason', 'Confirm reason');
     if (!reason || reason.trim().length < 3) return;

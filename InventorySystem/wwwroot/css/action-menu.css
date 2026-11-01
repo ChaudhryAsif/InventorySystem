@@ -1,0 +1,11 @@
+/* Row action menu: one main button plus a "more" dropdown. */
+.am { display:inline-flex; align-items:center; gap:.3rem; white-space:nowrap; }
+.am-toggle { width:30px; height:30px; padding:0; border:1px solid #cbd5e1; border-radius:7px; background:#fff; color:#334155; font-size:1.05rem; line-height:1; cursor:pointer; }
+.am-toggle:hover, .am.open .am-toggle { background:#e2e8f0; }
+.am-menu { display:none; position:fixed; z-index:3000; min-width:170px; padding:.3rem 0; background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 10px 25px rgba(15,23,42,.18); }
+.am.open .am-menu { display:block; }
+.am-menu > a, .am-menu > button { display:flex !important; align-items:center; gap:.4rem; width:100%; margin:0 !important; padding:.5rem .9rem !important; border:none !important; border-radius:0 !important; background:none !important; color:#1e293b !important; font-size:.85rem !important; font-weight:500 !important; text-align:left; text-decoration:none !important; cursor:pointer; box-shadow:none !important; }
+.am-menu > a:hover, .am-menu > button:hover:not(:disabled) { background:#f1f5f9 !important; }
+.am-menu > .am-danger { color:#dc2626 !important; }
+.am-menu > button:disabled { color:#94a3b8 !important; cursor:not-allowed; }
+.am-menu > hr { margin:.3rem 0; border:0; border-top:1px solid #e2e8f0; }

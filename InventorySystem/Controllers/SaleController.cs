@@ -3,6 +3,7 @@ using InventorySystem.Core.Options;
 using InventorySystem.Core.Services;
 using InventorySystem.Data;
 using InventorySystem.Models;
+using InventorySystem.Services.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -36,7 +37,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public async Task<IActionResult> GetProductionOrders(int? saleId = null)
         {
-            var orders = await _context.ProductionOrder.Where(o => o.Status == "Completed" && o.UsesEstimatedConsumption && o.AgreedUnitPrice > 0 &&
+            var orders = await _context.ProductionOrder.Where(o => (o.Status == "Completed" || o.Status == "InProduction") && o.UsesEstimatedConsumption && o.AgreedUnitPrice > 0 &&
                 _context.Parties.Any(p => p.PartyId.ToString() == o.CustomerId && p.Status == "active" && (p.PartyType == "customer" || p.PartyType == "both")) &&
                 _context.Items.Any(i => i.ItemID == o.FinishedItemId && i.IsActive == true &&
                     _context.ItemCategory.Any(c => c.CategoryId == i.CategoryID && c.IsActive == true)))
@@ -57,6 +58,33 @@ namespace InventorySystem.Controllers
                     remainingQuantity = o.ProducedQty - o.Invoiced, availableStock = o.AvailableStock + o.EditQuantity }) });
         }
 
+        [HttpGet]
+        public async Task<IActionResult> GetCustomerGroups()
+        {
+            var groups=await _context.ItemCategory.Where(g=>g.GroupType=="FinishedGoods"&&g.IsActive==true).OrderBy(g=>g.CategoryName).ToListAsync();
+            var parties=await _context.Parties.Where(p=>p.Status=="active"&&(p.PartyType=="customer"||p.PartyType=="both")).ToListAsync();
+            return Json(new{success=true,customers=groups.Select(g=>new{partyId="group:"+g.CategoryId,groupId=g.CategoryId,partyName=g.CategoryName,partyType="customer",phone=g.ContactNumber,address=g.Address,contactPerson="",email="",openingBalance=parties.Where(p=>p.PartyCode=="FG-GROUP:"+g.CategoryId).Select(p=>p.OpeningBalance??0).FirstOrDefault()})});
+        }
+        [HttpGet]
+        public async Task<IActionResult> GetCustomerGroup(string? customer)
+        {
+            try{return Json(new{success=true,groupId=await SaleGroupSelection.GroupIdAsync(_context,customer)});}catch(InvalidOperationException ex){return BadRequest(new{success=false,message=ex.Message});}
+        }
+        [HttpGet]
+        public async Task<IActionResult> GetItemOptions(string? customer,int branchId=1,int page=1,int pageSize=200,string? search=null,long? itemId=null)
+        {
+            if(string.IsNullOrWhiteSpace(customer))return BadRequest(new{success=false,message="Select a Finished Goods customer group first."});
+            int? group;try{group=await SaleGroupSelection.GroupIdAsync(_context,customer);}catch(InvalidOperationException ex){return BadRequest(new{success=false,message=ex.Message});}
+            if(!group.HasValue&&(!int.TryParse(customer,out var partyId)||!await _context.Parties.AnyAsync(p=>p.PartyId==partyId&&p.Status=="active"&&(p.PartyType=="customer"||p.PartyType=="both"))))return BadRequest(new{success=false,message="Select a valid customer."});
+            if(_context.RestrictBranches&&!_context.AllowedBranchIds.Contains(branchId))return Forbid();
+            var q=_context.Items.Where(i=>i.IsActive==true&&i.ItemType=="FinishedGoods"&&i.Category.GroupType=="FinishedGoods"&&i.Category.IsActive==true);
+            if(group.HasValue)q=q.Where(i=>i.CategoryID==group);if(itemId.HasValue)q=q.Where(i=>i.ItemID==itemId);
+            if(!string.IsNullOrWhiteSpace(search))q=q.Where(i=>(i.ItemName??"").Contains(search)||i.Barcode==search);
+            page=Math.Clamp(page,1,1000000);pageSize=Math.Clamp(pageSize,1,200);var totalCount=await q.CountAsync();
+            var items=await q.OrderBy(i=>i.ItemName).ThenBy(i=>i.ItemID).Skip((page-1)*pageSize).Take(pageSize).Select(i=>new{itemID=i.ItemID,itemName=i.ItemName,categoryID=i.CategoryID,categoryName=i.Category.CategoryName,itemType=i.ItemType,stockUnit=i.StockUnit,barcode=i.Barcode,imageUrl=i.ImagePath,salePrice=i.SalePrice??0,currentStock=_context.Stock.Where(st=>st.ItemId==i.ItemID&&st.BranchId==branchId).Select(st=>(decimal?)st.Quantity).FirstOrDefault()??0}).ToListAsync();
+            return Json(new{success=true,items,totalCount,page,pageSize});
+        }
+
         [HttpPost]
         public async Task<IActionResult> Save([FromBody] SaleInvoiceViewModel model)
         {
@@ -67,7 +95,9 @@ namespace InventorySystem.Controllers
             model.SaleId = null;
             using var transaction = _context.Database.BeginAtomicTransaction();
             var branchId   = model.BranchID ?? 1;
-            try { await InvoiceValidation.Validate(_context, model); }
+            try { await SaleGroupSelection.ValidateItemsAsync(_context,model);
+                if(model.CustomerID?.StartsWith("group:",StringComparison.Ordinal)==true)model.CustomerID=await FinishedGoodsCustomers.ResolveAsync(_context,model.CustomerID);
+                await InvoiceValidation.Validate(_context, model); }
             catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
 
             var validItems = model.Items.Where(i => i.ItemId != null && i.Quantity > 0).ToList();
@@ -226,29 +256,44 @@ namespace InventorySystem.Controllers
 
         // ── LIST data (with optional search + date range) ─────────────────────
         [HttpGet]
-        public IActionResult GetSales(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50, bool includeCancelled = false)
+        public IActionResult GetSales(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50, bool includeCancelled = false, int? orderId = null,
+            string? customerId = null, int? paymentMode = null, string? status = null, long? itemId = null, decimal? minAmount = null, decimal? maxAmount = null)
         {
-            var query = includeCancelled
+            status = string.IsNullOrWhiteSpace(status) ? (includeCancelled ? "all" : "active") : status.Trim().ToLowerInvariant();
+            if (status is not ("active" or "cancelled" or "all")) status = "active";
+            var query = status != "active"
                 ? _context.SaleInvoice.IgnoreQueryFilters().Where(s => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(s.BranchID ?? 1))
                 : _context.SaleInvoice.AsQueryable();
+            if (status == "cancelled") query = query.Where(s => s.IsCancelled);
             page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var term = search.Trim();
                 var parties = _context.Parties.Where(p => p.PartyName.Contains(term)).Select(p => p.PartyId.ToString());
-                query = query.Where(s => parties.Contains(s.CustomerID) || (s.RefNo != null && s.RefNo.Contains(term)) || s.SaleId.ToString().Contains(term));
+                query = query.Where(s => parties.Contains(s.CustomerID) || (s.RefNo != null && s.RefNo.Contains(term)) || (s.Remarks != null && s.Remarks.Contains(term)) || s.SaleId.ToString().Contains(term)
+                    || _context.SaleInvoiceBody.Any(b => b.SaleId == s.SaleId && b.Descr != null && b.Descr.Contains(term)));
             }
 
 
+            if (orderId.HasValue) query = query.Where(s => s.ProductionOrderId == orderId.Value);
+            if (!string.IsNullOrWhiteSpace(customerId)) query = query.Where(s => s.CustomerID == customerId);
+            if (paymentMode.HasValue) query = paymentMode.Value is 1 or 2 or 3
+                ? query.Where(s => s.PaymentMode == paymentMode.Value)
+                : query.Where(s => s.PaymentMode != 1 && s.PaymentMode != 2 && s.PaymentMode != 3);
+            if (itemId.HasValue) query = query.Where(s => _context.SaleInvoiceBody.Any(b => b.SaleId == s.SaleId && b.ItemId == itemId.Value));
+            if (minAmount.HasValue) query = query.Where(s => s.NetAmount >= minAmount.Value);
+            if (maxAmount.HasValue) query = query.Where(s => s.NetAmount <= maxAmount.Value);
             if (from.HasValue) query = query.Where(s => s.SaleDate >= from.Value.Date);
             if (to.HasValue)   query = query.Where(s => s.SaleDate < to.Value.Date.AddDays(1));
 
             var totalCount = query.Count();
+            var totalNet = query.Where(s => !s.IsCancelled).Sum(s => (decimal?)(s.NetAmount ?? 0)) ?? 0m;
             var sales = query
                 .OrderByDescending(s => s.SaleId)
                 .Select(s => new
                 {
                     s.SaleId,
+                    s.ProductionOrderId,
                 s.IsCancelled,
                     SaleDate = s.SaleDate,
                     s.CustomerID,
@@ -266,6 +311,7 @@ namespace InventorySystem.Controllers
             var result = sales.Select(s => new
             {
                 s.SaleId,
+                s.ProductionOrderId,
                 s.IsCancelled,
                 SaleDate = s.SaleDate.HasValue ? s.SaleDate.Value.ToString("yyyy-MM-dd") : "",
                 CustomerName = s.CustomerName ?? $"#{s.CustomerID}",
@@ -277,7 +323,40 @@ namespace InventorySystem.Controllers
 
             var paged = result.ToList();
 
-            return Json(new { data = paged, totalCount, page, pageSize });
+            return Json(new { data = paged, totalCount, totalNet, page, pageSize });
+        }
+
+        // Customers and items that appear on sales, for the Sale list filter dropdowns.
+        [HttpGet]
+        public IActionResult GetSaleFilterOptions()
+        {
+            var sales = _context.SaleInvoice.IgnoreQueryFilters().Where(s => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(s.BranchID ?? 1));
+            var customerIds = sales.Where(s => s.CustomerID != null).Select(s => s.CustomerID!).Distinct().ToList();
+            var customers = _context.Parties.Where(p => customerIds.Contains(p.PartyId.ToString())).OrderBy(p => p.PartyName)
+                .Select(p => new { id = p.PartyId.ToString(), name = p.PartyName }).ToList();
+            var itemIds = _context.SaleInvoiceBody.Where(b => b.ItemId != null && sales.Any(s => s.SaleId == b.SaleId)).Select(b => b.ItemId!.Value).Distinct().ToList();
+            var items = _context.Items.Where(i => itemIds.Contains(i.ItemID)).OrderBy(i => i.ItemName).Select(i => new { id = i.ItemID, name = i.ItemName }).ToList();
+            return Json(new { success = true, customers, items });
+        }
+
+        // Production orders that have sales, for the Sale list order filter and its summary line.
+        [HttpGet]
+        public IActionResult GetSaleOrders(bool includeCancelled = false)
+        {
+            var sales = includeCancelled
+                ? _context.SaleInvoice.IgnoreQueryFilters().Where(s => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(s.BranchID ?? 1))
+                : _context.SaleInvoice.AsQueryable();
+            var ids = sales.Where(s => s.ProductionOrderId != null).Select(s => s.ProductionOrderId!.Value).Distinct().ToList();
+            var orders = _context.ProductionOrder.Where(o => ids.Contains(o.ProductionOrderId))
+                .OrderByDescending(o => o.ProductionOrderId)
+                .Select(o => new
+                {
+                    o.ProductionOrderId, o.ProductName, o.OrderQty, o.ProducedQty,
+                    CustomerName = _context.Parties.Where(p => p.PartyId.ToString() == o.CustomerId).Select(p => p.PartyName).FirstOrDefault(),
+                    Invoiced = _context.SaleInvoiceBody.Where(b => _context.SaleInvoice.Any(x => x.SaleId == b.SaleId && x.ProductionOrderId == o.ProductionOrderId)).Sum(b => (decimal?)(b.Quantity ?? 0)) ?? 0m,
+                    InvoicedAmount = _context.SaleInvoice.Where(x => x.ProductionOrderId == o.ProductionOrderId).Sum(x => (decimal?)(x.NetAmount ?? 0)) ?? 0m
+                }).ToList();
+            return Json(new { success = true, orders });
         }
 
         // ── Single invoice (for view + edit) ──────────────────────────────────
@@ -299,6 +378,7 @@ namespace InventorySystem.Controllers
                 .Select(b => new
                 {
                     b.ItemId,
+                    StockUnit=_context.Items.Where(i=>i.ItemID==b.ItemId).Select(i=>i.StockUnit).FirstOrDefault(),
                     b.Descr,
                     b.Quantity,
                     b.SalePrice,
@@ -319,6 +399,7 @@ namespace InventorySystem.Controllers
                 invoice.ProductionOrderId,
                 SaleDate = invoice.SaleDate.HasValue ? invoice.SaleDate.Value.ToString("yyyy-MM-dd") : "",
                 invoice.CustomerID,
+                CustomerGroupId=CustomerGroupId(invoice.CustomerID),
                 CustomerName = customerName ?? $"#{invoice.CustomerID}",
                 invoice.BranchID,
                 invoice.PaymentMode,
@@ -335,6 +416,12 @@ namespace InventorySystem.Controllers
             });
         }
 
+        private int? CustomerGroupId(string? customer)
+        {
+            var code=_context.Parties.Where(p=>p.PartyId.ToString()==customer).Select(p=>p.PartyCode).FirstOrDefault();
+            return code?.StartsWith("FG-GROUP:",StringComparison.Ordinal)==true&&int.TryParse(code[9..],out var id)?id:null;
+        }
+
         // ── Print view ────────────────────────────────────────────────────────
         [HttpGet]
         public IActionResult Print(int id)
@@ -348,7 +435,9 @@ namespace InventorySystem.Controllers
                 .Where(p => p.PartyId.ToString() == invoice.CustomerID)
                 .Select(p => p.PartyName)
                 .FirstOrDefault() ?? $"#{invoice.CustomerID}";
+            ViewBag.PartyContact = string.Join(" · ", _context.Parties.Where(p => p.PartyId.ToString() == invoice.CustomerID).Select(p => new[] { p.Phone, p.Address }).FirstOrDefault()?.Where(x => !string.IsNullOrWhiteSpace(x)) ?? Enumerable.Empty<string?>());
             ViewBag.PaymentMode = GetPaymentModeLabel(invoice.PaymentMode);
+            var itemIds=invoice.SaleInvoiceBodies.Select(b=>b.ItemId).ToArray();ViewBag.ItemUnits=_context.Items.Where(i=>itemIds.Contains(i.ItemID)).ToDictionary(i=>i.ItemID,i=>i.StockUnit);
 
             return View(invoice);
         }

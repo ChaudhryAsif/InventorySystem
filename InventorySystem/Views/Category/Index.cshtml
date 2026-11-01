@@ -1,4 +1,4 @@
-﻿@{ ViewData["Title"] = "Groups"; }
+@{ var pageGroupType=(string?)ViewBag.GroupType??"RawMaterial"; var pageLabel=pageGroupType=="FinishedGoods"?"Finished Goods":"Raw Material"; ViewData["Title"] = pageLabel+" Groups"; }
 @model IEnumerable<InventorySystem.Core.Models.ItemCategory>
 
 @{
@@ -12,16 +12,28 @@
     <!-- Page Header -->
     <div class="page-header">
         <div class="page-title">
-            <h2>Groups</h2>
+            <h2>@pageLabel Groups</h2>
             <p>Organize inventory items into groups</p>
         </div>
-        <button class="btn btn-success" onclick="openModal()">
-            ➕ Add Group
-        </button>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;">
+            <button class="btn btn-primary" onclick="printGroups(true)" title="Print the ticked rows">🖨 Print Selected</button>
+            <button class="btn btn-primary" onclick="printGroups(false)" title="Print the groups shown on screen">🖨 Print List</button>
+            <button class="btn btn-success" onclick="openModal()">
+                ➕ Add Group
+            </button>
+        </div>
     </div>
 
     <!-- Search Section -->
-    <div class="search-section">
+    <div class="search-section" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;">
+        <select id="groupNameFilter" class="search-input" aria-label="Group Name" onchange="searchTable()" style="width:240px;">
+            <option value="">All Groups</option>
+            @foreach (var group in Model.OrderBy(g => g.CategoryName))
+            {
+                <option value="@group.CategoryId">@group.CategoryName</option>
+            }
+        </select>
+        <select id="groupTypeFilter" class="search-input" aria-label="Group Type" disabled><option value="@pageGroupType">@pageLabel</option></select>
         <div class="search-box">
             <span style="font-size: 1.2rem;">🔍</span>
             <input type="text" class="search-input" placeholder="Search groups..." id="searchInput" oninput="searchTable()">
@@ -35,6 +47,7 @@
                 <thead>
                     <tr>
                         @* <th style="width: 100px;">Category ID</th> *@
+                        <th style="width: 40px;"><input type="checkbox" id="pickAll" aria-label="Select all groups" onchange="toggleAllGroups(this.checked)"></th>
                         <th>Group Name</th>
                         <th>Group Type</th>
                         <th>Description</th>
@@ -48,7 +61,8 @@
                 <tbody id="categoryTableBody">
                     @foreach (var category in Model)
                     {
-                        <tr data-category-id="@category.CategoryId">
+                        <tr data-category-id="@category.CategoryId" data-group-type="@category.GroupType">
+                            <td><input type="checkbox" class="group-pick" value="@category.CategoryId" aria-label="Select group" onchange="syncPickAll()"></td>
                             <td>@category.CategoryName</td>
                             <td>@(category.GroupType == "RawMaterial" ? "Raw Material" : category.GroupType == "FinishedGoods" ? "Finished Goods" : "Not set")</td>
                             <td>@category.Description</td>
@@ -61,16 +75,17 @@
                                 </span>
                             </td>
                             <td>
-                                <div class="action-buttons">
-                                    <button class="btn btn-primary btn-sm"
-                                            onclick="editCategory(@category.CategoryId)">
-                                        ✏️ Edit
-                                    </button>
-@if (User.IsInRole("SuperAdmin")) {
-                                    <button class="btn btn-danger btn-sm"
-                                            onclick="deleteCategory('@category.CategoryId')">
-                                        🗑️ Delete
-                                    </button>
+                                @{ var canEditGroup = User.IsInRole("SuperAdmin"); var canDeleteGroup = ViewBag.CanDelete == true; }
+                                <div class="am">
+                                    <button class="btn btn-sm btn-info" onclick="viewGroup(@category.CategoryId)">👁️ View</button>
+                                    @if (canEditGroup || canDeleteGroup)
+                                    {
+                                        <button type="button" class="am-toggle" aria-haspopup="menu" aria-expanded="false" title="More actions">&#8943;</button>
+                                        <div class="am-menu" role="menu">
+                                            @if (canEditGroup) { <button onclick="editCategory(@category.CategoryId)">✏️ Edit</button> }
+                                            @if (canEditGroup && canDeleteGroup) { <hr> }
+                                            @if (canDeleteGroup) { <button class="am-danger" onclick="deleteCategory('@category.CategoryId')">🗑️ Delete</button> }
+                                        </div>
                                     }
                                 </div>
                             </td>
@@ -78,7 +93,7 @@
                     }
                     @if (!Model.Any())
                     {
-                        <partial name="_ListEmptyState" model='new InventorySystem.Models.ListEmptyState(8, "No groups yet", "Create your first group to organize your inventory.", "+ Add Group", ActionId: "emptyAddGroup")' />
+                        <partial name="_ListEmptyState" model='new InventorySystem.Models.ListEmptyState(9, "No groups yet", "Create your first group to organize your inventory.", "+ Add Group", ActionId: "emptyAddGroup")' />
                     }
                 </tbody>
 
@@ -119,10 +134,8 @@
 
                 <div class="form-group">
                     <label class="form-label required" for="groupType">Group Type</label>
-                    <select class="form-control" id="groupType" required>
-                        <option value="">Select Group Type</option>
-                        <option value="RawMaterial">Raw Material</option>
-                        <option value="FinishedGoods">Finished Goods</option>
+                    <select class="form-control" id="groupType" required disabled>
+                        <option value="@pageGroupType">@pageLabel</option>
                     </select>
                 </div>
 
@@ -162,21 +175,43 @@
 </dialog>
 
 <script>
+    const pageGroupType=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(pageGroupType));
+    const canEditGroups = @(User.IsInRole("SuperAdmin") ? "true" : "false");
+
+    function viewGroup(id) {
+        const type = encodeURIComponent(pageGroupType);
+        ViewPopup.open('Group Details', `/Category/Print?ids=${id}&groupType=${type}&detail=true&popup=true`, `/Category/Print?ids=${id}&groupType=${type}&detail=true`);
+    }
+    function toggleAllGroups(checked) { document.querySelectorAll('.group-pick').forEach(c => { if (!c.closest('tr').hidden) c.checked = checked; }); }
+    function syncPickAll() {
+        const picks = [...document.querySelectorAll('.group-pick')].filter(c => !c.closest('tr').hidden);
+        document.getElementById('pickAll').checked = picks.length > 0 && picks.every(c => c.checked);
+    }
+    async function printGroups(selectedOnly) {
+        const picks = [...document.querySelectorAll('.group-pick')].filter(c => selectedOnly ? c.checked : !c.closest('tr').hidden);
+        if (!picks.length) { await alertDialog(selectedOnly ? 'Tick at least one group to print.' : 'There are no groups to print.'); return; }
+        window.open(`/Category/Print?ids=${picks.map(c => c.value).join(',')}&groupType=${encodeURIComponent(pageGroupType)}`, '_blank', 'noopener');
+    }
 
     // Load all categories
 function loadCategories() {
-    fetch('/Category/GetList')
+    fetch('/Category/GetList?groupType='+pageGroupType)
         .then(response => { if (!response.ok) throw new Error('Load failed'); return response.json(); })
         .then(result => {
             if (result.success) {
                 const tableBody = document.getElementById("categoryTableBody");
                 tableBody.innerHTML = ""; // Clear old rows
 
+                const groupSelect = document.getElementById('groupNameFilter');
+                const selectedGroup = groupSelect.value;
+                groupSelect.innerHTML = '<option value="">All Groups</option>';
                 result.data.forEach(category => {
+                    const option = document.createElement('option'); option.value=category.categoryId; option.textContent=category.categoryName; groupSelect.appendChild(option);
                     const row = document.createElement("tr");
                     row.dataset.categoryId = category.categoryId;
+                    row.dataset.groupType = category.groupType || "";
                     row.innerHTML = `
-                        
+                        <td><input type="checkbox" class="group-pick" value="${category.categoryId}" aria-label="Select group" onchange="syncPickAll()"></td>
                         <td>${escapeHtml(category.categoryName)}</td>
                         <td>${category.groupType === "RawMaterial" ? "Raw Material" : category.groupType === "FinishedGoods" ? "Finished Goods" : "Not set"}</td>
                         <td>${escapeHtml(category.description || "")}</td>
@@ -189,24 +224,22 @@ function loadCategories() {
                             </span>
                         </td>
                         <td>
-                            <div class="action-buttons">
-                                <button class="btn btn-primary btn-sm" 
-                                    onclick="editCategory(${category.categoryId})">
-                                    ✏️ Edit
-                                </button>
-                                ${result.canDelete === true ? `<button class="btn btn-danger btn-sm" onclick="deleteCategory(${category.categoryId})">🗑️ Delete</button>` : ''}
-                            </div>
+                            ${AM.wrap(`<button class="btn btn-sm btn-info" onclick="viewGroup(${category.categoryId})">👁️ View</button>`, [
+                                canEditGroups ? `<button onclick="editCategory(${category.categoryId})">✏️ Edit</button>` : '',
+                                result.canDelete === true ? '-' : '',
+                                result.canDelete === true ? `<button class="am-danger" onclick="deleteCategory(${category.categoryId})">🗑️ Delete</button>` : ''])}
                         </td>
                     `;
 
                     tableBody.appendChild(row);
                 });
+                groupSelect.value = selectedGroup;
                 searchTable();
             } else {
                 throw new Error('Load failed');
             }
         })
-        .catch(() => PosListState.show(document.getElementById('categoryTableBody'), { columns:8, error:true, title:'Groups could not be loaded', message:'Check your connection and try again.', actionText:'Try again', onAction:loadCategories }));
+        .catch(() => PosListState.show(document.getElementById('categoryTableBody'), { columns:9, error:true, title:'Groups could not be loaded', message:'Check your connection and try again.', actionText:'Try again', onAction:loadCategories }));
 }
 
             let categorySaveInProgress = false;
@@ -224,7 +257,7 @@ function loadCategories() {
 
             async function editCategory(id) {
                 try {
-                const response = await fetch(`/Category/GetById?id=${id}`);
+                const response = await fetch(`/Category/GetById?id=${id}&groupType=${pageGroupType}`);
                 if (!response.ok) throw new Error('Group could not be loaded. Refresh the list and try again.');
                 const category = await response.json();
                 document.getElementById('modalTitle').textContent = 'Edit Group';
@@ -293,7 +326,8 @@ function loadCategories() {
             Description: description,
             Address: document.getElementById('groupAddress').value.trim(),
             ContactNumber: document.getElementById('groupContactNumber').value.trim(),
-            GroupType: groupType,
+            GroupType: pageGroupType,
+            PageGroupType: pageGroupType,
             IsActive: status
         };
 
@@ -326,7 +360,7 @@ function loadCategories() {
     async function deleteCategory(id) {
         if (await confirmDialog('Are you sure you want to delete this group?', { danger: true })) {
             try {
-                    const response = await fetch(`/Category/Delete?id=${id}`, { method: 'POST' });
+                    const response = await fetch(`/Category/Delete?id=${id}&groupType=${pageGroupType}`, { method: 'POST' });
 
                 const result = await response.json();
 
@@ -353,14 +387,22 @@ function loadCategories() {
         PosListState.clear(body);
         const filter = document.getElementById('searchInput').value.trim().toLowerCase();
         const rows = [...body.querySelectorAll('tr[data-category-id]')];
-        rows.forEach(row => row.hidden = !row.textContent.toLowerCase().includes(filter));
+        const type = document.getElementById('groupTypeFilter').value;
+        const groupSelect = document.getElementById('groupNameFilter');
+        const selectedGroup = groupSelect.value;
+        const availableRows = rows.filter(row => !type || row.dataset.groupType === type);
+        groupSelect.replaceChildren(new Option('All Groups', ''));
+        availableRows.slice().sort((a,b)=>a.cells[1].textContent.localeCompare(b.cells[1].textContent)).forEach(row=>groupSelect.add(new Option(row.cells[1].textContent.trim(),row.dataset.categoryId)));
+        groupSelect.value = availableRows.some(row=>row.dataset.categoryId === selectedGroup) ? selectedGroup : '';
+        const groupId = groupSelect.value;
+        rows.forEach(row => row.hidden = !row.textContent.toLowerCase().includes(filter) || (groupId && row.dataset.categoryId !== groupId) || (type && row.dataset.groupType !== type));
         if (!rows.some(row => !row.hidden)) {
             const matching = rows.length > 0 || !!filter;
-            PosListState.show(body, { columns:8,
+            PosListState.show(body, { columns:9,
                 title:matching ? 'No matching groups found' : 'No groups yet',
                 message:matching ? 'Try a different search or clear the search.' : 'Create your first group to organize your inventory.',
                 actionText:matching ? 'Clear search' : '+ Add Group',
-                onAction:matching ? () => { document.getElementById('searchInput').value=''; searchTable(); document.getElementById('searchInput').focus(); } : openModal });
+                onAction:matching ? () => { document.getElementById('searchInput').value=''; document.getElementById('groupNameFilter').value=''; document.getElementById('groupTypeFilter').value=pageGroupType; searchTable(); document.getElementById('searchInput').focus(); } : openModal });
         }
     }
     document.getElementById('emptyAddGroup')?.addEventListener('click', openModal);

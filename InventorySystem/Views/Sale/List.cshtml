@@ -10,7 +10,18 @@
     .sl-filters { display:flex; gap:.5rem; flex-wrap:wrap; align-items:end; margin-bottom:1rem; background:#f8fafc; padding:1rem; border-radius:10px; }
     .sl-filters .fg { display:flex; flex-direction:column; gap:.25rem; }
     .sl-filters label { font-size:.75rem; color:#64748b; font-weight:600; }
+    .sl-filters select { padding:.5rem .75rem; border:1px solid #cbd5e1; border-radius:8px; max-width:20rem; background:#fff; }
+    .sl-order-note { background:#eff6ff; border:1px solid #bfdbfe; color:#1e3a8a; border-radius:10px; padding:.7rem 1rem; margin-bottom:1rem; font-size:.9rem; }
+    .sl-order-note a { color:#1d4ed8; font-weight:600; cursor:pointer; margin-left:.5rem; }
     .sl-filters input { padding:.5rem .75rem; border:1px solid #cbd5e1; border-radius:8px; }
+    .sl-filters .more { display:none; flex-basis:100%; gap:.5rem; flex-wrap:wrap; align-items:end; padding-top:.5rem; border-top:1px dashed #cbd5e1; }
+    .sl-filters.open .more { display:flex; }
+    .sl-quick { display:flex; gap:.3rem; flex-wrap:wrap; }
+    .sl-quick button { border:1px solid #cbd5e1; background:#fff; color:#334155; border-radius:999px; padding:.25rem .65rem; font-size:.74rem; font-weight:600; cursor:pointer; }
+    .sl-quick button:hover { background:#e2e8f0; }
+    .sl-link { background:none; border:0; color:#1d4ed8; font-weight:600; cursor:pointer; font-size:.82rem; padding:.5rem .25rem; }
+    .sl-count { background:#0f172a; color:#fff; border-radius:999px; padding:0 .45rem; font-size:.7rem; margin-left:.25rem; }
+    .sl-result { display:flex; justify-content:space-between; flex-wrap:wrap; gap:.5rem; margin:.25rem 0 .6rem; font-size:.88rem; color:#475569; }
     .sl-table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.08); }
     .sl-table th, .sl-table td { padding:.7rem .9rem; text-align:left; border-bottom:1px solid #eef2f7; font-size:.9rem; }
     .sl-table th { background:#0f172a; color:#fff; font-size:.8rem; text-transform:uppercase; letter-spacing:.03em; }
@@ -22,13 +33,6 @@
     .sl-btn { border:none; border-radius:7px; padding:.35rem .6rem; cursor:pointer; font-size:.78rem; font-weight:600; color:#fff; }
     .sl-view { background:#0ea5e9; } .sl-edit { background:#f59e0b; } .sl-del { background:#ef4444; } .sl-print { background:#64748b; }
     .sl-actions { display:flex; gap:.35rem; flex-wrap:wrap; }
-    .sl-modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:center; justify-content:center; z-index:1000; }
-    .sl-modal-bg.show { display:flex; }
-    .sl-modal { background:#fff; border-radius:12px; width:min(760px,94vw); max-height:90vh; overflow:auto; padding:1.5rem; }
-    .sl-modal h3 { margin-top:0; }
-    .sl-meta { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.6rem; margin-bottom:1rem; }
-    .sl-meta div span { display:block; font-size:.72rem; color:#64748b; }
-    .sl-meta div b { font-size:.95rem; }
     .sl-empty { text-align:center; padding:2.5rem; color:#94a3b8; }
 </style>
 
@@ -38,14 +42,30 @@
         <a href="/Sale/Index" class="sl-btn" style="background:#16a34a;text-decoration:none;">➕ New Sale</a>
     </div>
 
-    <label><input type="checkbox" id="includeCancelled" onchange="loadSales()"> Include cancelled documents</label>
-    <div class="sl-filters">
-        <div class="fg"><label>Search</label><input type="text" id="fSearch" placeholder="Customer, Ref, or #" onkeyup="if(event.key==='Enter')loadSales()"></div>
-        <div class="fg"><label>From</label><input type="date" id="fFrom"></div>
-        <div class="fg"><label>To</label><input type="date" id="fTo"></div>
+    <div class="sl-filters" id="slFilters">
+        <div class="fg"><label>Search</label><input type="text" id="fSearch" placeholder="Customer, ref, remarks, item or #" onkeyup="if(event.key==='Enter')loadSales()"></div>
+        <div class="fg"><label>Customer</label><select id="fCustomer" onchange="loadSales()"><option value="">All customers</option></select></div>
+        <div class="fg"><label>Payment</label><select id="fPayment" onchange="loadSales()"><option value="">All payments</option><option value="1">Cash</option><option value="2">Cheque</option><option value="3">Bank Transfer</option><option value="0">Credit</option></select></div>
+        <div class="fg"><label>Status</label><select id="fStatus" onchange="loadOrders().then(loadSales)"><option value="active">Active</option><option value="cancelled">Cancelled only</option><option value="all">Active and cancelled</option></select></div>
+        <div class="fg"><label>Production order</label><select id="fOrder" onchange="loadSales()"><option value="">All orders</option></select></div>
+        <div class="fg"><label>From</label><input type="date" id="fFrom" onchange="loadSales()"></div>
+        <div class="fg"><label>To</label><input type="date" id="fTo" onchange="loadSales()"></div>
         <div class="fg"><label>&nbsp;</label><button class="sl-btn" style="background:#0f172a;" onclick="loadSales()">🔍 Filter</button></div>
         <div class="fg"><label>&nbsp;</label><button class="sl-btn" style="background:#94a3b8;" onclick="clearFilters()">✖ Clear</button></div>
+        <div class="fg" style="flex-basis:100%"><div class="sl-quick">
+            <button type="button" onclick="quickDate('today')">Today</button><button type="button" onclick="quickDate('yesterday')">Yesterday</button>
+            <button type="button" onclick="quickDate('week')">This week</button><button type="button" onclick="quickDate('month')">This month</button>
+            <button type="button" onclick="quickDate('lastmonth')">Last month</button>
+            <button type="button" class="sl-link" id="moreBtn" onclick="toggleMore()" style="padding:.25rem .5rem">More filters ▾</button></div></div>
+        <div class="more">
+            <div class="fg"><label>Item sold</label><select id="fItem" onchange="loadSales()"><option value="">All items</option></select></div>
+            <div class="fg"><label>Net amount from</label><input type="number" id="fMin" min="0" step="0.01" placeholder="0.00" style="width:9rem" onkeyup="if(event.key==='Enter')loadSales()" onchange="loadSales()"></div>
+            <div class="fg"><label>Net amount to</label><input type="number" id="fMax" min="0" step="0.01" placeholder="any" style="width:9rem" onkeyup="if(event.key==='Enter')loadSales()" onchange="loadSales()"></div>
+        </div>
     </div>
+    <div class="sl-result" id="slResult" hidden><span id="slResultText"></span><span id="slFilterCount"></span></div>
+
+    <div class="sl-order-note" id="orderNote" hidden></div>
 
     <table class="sl-table">
         <thead>
@@ -54,6 +74,7 @@
                 <th>Date</th>
                 <th>Customer</th>
                 <th>Ref No</th>
+                <th>Order</th>
                 <th>Payment</th>
                 <th class="sl-num">Items</th>
                 <th class="sl-num">Net Amount</th>
@@ -61,42 +82,35 @@
             </tr>
         </thead>
         <tbody id="salesBody">
-            <tr><td colspan="8" class="sl-empty">Loading…</td></tr>
+            <tr><td colspan="9" class="sl-empty">Loading…</td></tr>
         </tbody>
     </table>
 </div>
 
-<!-- View modal -->
-<div class="sl-modal-bg" id="viewModal" onclick="if(event.target===this)closeView()">
-    <div class="sl-modal">
-        <h3 id="vmTitle">Invoice</h3>
-        <div class="sl-meta" id="vmMeta"></div>
-        <table class="sl-table">
-            <thead><tr><th>#</th><th>Item</th><th class="sl-num">Qty</th><th class="sl-num">Price</th><th class="sl-num">Disc</th><th class="sl-num">Total</th></tr></thead>
-            <tbody id="vmBody"></tbody>
-        </table>
-        <div style="text-align:right;margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
-            <a id="vmPrint" class="sl-btn sl-print" target="_blank" style="text-decoration:none;">🖨 Print</a>
-            <button class="sl-btn" style="background:#0f172a;" onclick="closeView()">Close</button>
-        </div>
-    </div>
-</div>
 
 <script>
+    const canEditRecords = @(User.IsInRole("SuperAdmin") ? "true" : "false");
 function fmt(n){ return (parseFloat(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
 async function loadSales(){
     const s = document.getElementById('fSearch').value.trim();
     const f = document.getElementById('fFrom').value;
     const t = document.getElementById('fTo').value;
+    const o = document.getElementById('fOrder').value;
     const qs = new URLSearchParams();
-    if(document.getElementById("includeCancelled").checked) qs.set("includeCancelled", "true");
+    const extra = { customerId: document.getElementById('fCustomer').value, paymentMode: document.getElementById('fPayment').value,
+        status: document.getElementById('fStatus').value, itemId: document.getElementById('fItem').value,
+        minAmount: document.getElementById('fMin').value, maxAmount: document.getElementById('fMax').value };
+    if(o) qs.append('orderId', o);
+    showOrderNote(o);
+    for(const [k, v] of Object.entries(extra)) if(v !== '' && !(k === 'status' && v === 'active')) qs.append(k, v);
     if(s) qs.append('search', s);
     if(f) qs.append('from', f);
     if(t) qs.append('to', t);
+    const filterCount = [s, f, t, o, extra.customerId, extra.paymentMode, extra.itemId, extra.minAmount, extra.maxAmount].filter(v => v !== '').length + (extra.status !== 'active' ? 1 : 0);
 
     const body = document.getElementById('salesBody');
-    body.innerHTML = '<tr><td colspan="8" class="sl-empty">Loading…</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="sl-empty">Loading…</td></tr>';
     try{
         const res = await fetch('/Sale/GetSales?' + qs.toString());
         if (!res.ok) throw new Error('Load failed');
@@ -104,35 +118,40 @@ async function loadSales(){
         if (payload.success === false || !Array.isArray(payload.data)) throw new Error('Load failed');
         const data = payload.data || [];
         if(!data || data.length === 0){
-            const matching = !!(s || f || t);
-            PosListState.show(body, { columns:8,
+            document.getElementById('slResult').hidden = true;
+            const matching = filterCount > 0;
+            PosListState.show(body, { columns:9,
                 title:matching ? 'No matching sales invoices found' : 'No sales invoices yet',
-                message:matching ? 'Try a different search or clear the date filters.' : 'Create a sales invoice to get started.',
+                message:matching ? 'Try different filters or clear them.' : 'Create a sales invoice to get started.',
                 actionText:matching ? 'Clear filters' : 'Create sales invoice',
                 onAction:matching ? clearFilters : undefined,
                 href:matching ? undefined : '/Sale/Index' });
             return;
         }
+        const result = document.getElementById('slResult');
+        result.hidden = false;
+        document.getElementById('slResultText').innerHTML = '<strong>' + payload.totalCount + '</strong> invoice' + (payload.totalCount === 1 ? '' : 's') + ', active net total <strong>' + fmt(payload.totalNet) + '</strong>';
+        document.getElementById('slFilterCount').textContent = filterCount ? filterCount + ' filter' + (filterCount === 1 ? '' : 's') + ' applied' : '';
         body.innerHTML = data.map(s => `
             <tr>
                 <td>${s.isCancelled ? "<span>Cancelled</span> " : ""}<strong>#${s.saleId}</strong></td>
                 <td>${s.saleDate || '-'}</td>
                 <td>${escapeHtml(s.customerName || '-')}</td>
                 <td>${escapeHtml(s.refNo || '-')}</td>
+                <td>${s.productionOrderId ? `<a href="#" title="View order details" onclick="viewOrder(${s.productionOrderId});return false;">#${s.productionOrderId}</a>` : '-'}</td>
                 <td><span class="sl-badge ${s.paymentMode==='Credit'?'b-credit':'b-paid'}">${s.paymentMode}</span></td>
                 <td class="sl-num">${s.itemCount}</td>
                 <td class="sl-num">${fmt(s.netAmount)}</td>
                 <td>
-                    <div class="sl-actions">
-                        <button class="sl-btn sl-view" onclick="viewSale(${s.saleId})">👁 View</button>
-                        <a class="sl-btn sl-edit" style="text-decoration:none;" href="${s.isCancelled ? "#" : `/Sale/Index?id=${s.saleId}`}">✏ Edit</a>
-                        <a class="sl-btn sl-print" style="text-decoration:none;" target="_blank" href="/Sale/Print/${s.saleId}">🖨</a>
-                        <button ${s.isCancelled ? "disabled" : ""} class="sl-btn sl-del" onclick="deleteSale(${s.saleId})">Cancel</button>
-                    </div>
+                    ${AM.wrap(`<button class="sl-btn sl-view" onclick="viewSale(${s.saleId})">👁 View</button>`, [
+                        canEditRecords ? `<a href="${s.isCancelled ? "#" : `/Sale/Index?id=${s.saleId}`}">✏ Edit</a>` : '',
+                        `<a target="_blank" href="/Sale/Print/${s.saleId}">🖨 Print</a>`,
+                        '-',
+                        `<button ${s.isCancelled ? "disabled" : ""} class="am-danger" onclick="deleteSale(${s.saleId})">🗑 Delete</button>`])}
                 </td>
             </tr>`).join('');
     }catch(e){
-        PosListState.show(body, { columns:8, error:true, title:'Could not load sales invoices', message:'Check your connection and try again.', actionText:'Try again', onAction:loadSales });
+        PosListState.show(body, { columns:9, error:true, title:'Could not load sales invoices', message:'Check your connection and try again.', actionText:'Try again', onAction:loadSales });
     }
 }
 
@@ -140,46 +159,68 @@ function clearFilters(){
     document.getElementById('fSearch').value='';
     document.getElementById('fFrom').value='';
     document.getElementById('fTo').value='';
+    for(const id of ['fOrder','fCustomer','fPayment','fItem','fMin','fMax']) document.getElementById(id).value='';
+    document.getElementById('fStatus').value='active';
+    loadOrders().then(loadSales);
+}
+function toggleMore(){
+    const box = document.getElementById('slFilters'), open = box.classList.toggle('open');
+    document.getElementById('moreBtn').textContent = open ? 'Fewer filters ▴' : 'More filters ▾';
+}
+const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+function quickDate(kind){
+    const now = new Date(), day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let from = day, to = day;
+    if(kind === 'yesterday'){ from = to = new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1); }
+    else if(kind === 'week'){ const back = (day.getDay() + 6) % 7; from = new Date(day.getFullYear(), day.getMonth(), day.getDate() - back); }
+    else if(kind === 'month'){ from = new Date(day.getFullYear(), day.getMonth(), 1); }
+    else if(kind === 'lastmonth'){ from = new Date(day.getFullYear(), day.getMonth() - 1, 1); to = new Date(day.getFullYear(), day.getMonth(), 0); }
+    document.getElementById('fFrom').value = iso(from);
+    document.getElementById('fTo').value = iso(to);
     loadSales();
 }
-
-async function viewSale(id){
+async function loadFilterOptions(){
     try{
-        const res = await fetch('/Sale/GetSaleById?id=' + id);
-        if(!res.ok){ await alertDialog('Invoice not found.', { type: 'error' }); return; }
-        const inv = await res.json();
-        document.getElementById('vmTitle').textContent = 'Sale Invoice #' + inv.saleId;
-        document.getElementById('vmPrint').href = '/Sale/Print/' + inv.saleId;
-        document.getElementById('vmMeta').innerHTML = `
-            <div><span>Date</span><b>${inv.saleDate||'-'}</b></div>
-            <div><span>Customer</span><b>${escapeHtml(inv.customerName||'-')}</b></div>
-            <div><span>Ref No</span><b>${escapeHtml(inv.refNo||'-')}</b></div>
-            <div><span>GST</span><b>${fmt(inv.gstAmount)}</b></div>
-            <div><span>Discount</span><b>${fmt(inv.discount)}</b></div>
-            <div><span>Net Amount</span><b>${fmt(inv.netAmount)}</b></div>`;
-        document.getElementById('vmBody').innerHTML = (inv.items||[]).map((it,i)=>`
-            <tr>
-                <td>${i+1}</td>
-                <td>${escapeHtml(it.descr||('#'+it.itemId))}</td>
-                <td class="sl-num">${fmt(it.quantity)}</td>
-                <td class="sl-num">${fmt(it.salePrice)}</td>
-                <td class="sl-num">${fmt(it.discAmt)}</td>
-                <td class="sl-num">${fmt(it.total)}</td>
-            </tr>`).join('');
-        document.getElementById('viewModal').classList.add('show');
-    }catch(e){ await alertDialog('Error loading invoice.', { type: 'error' }); }
+        const res = await fetch('/Sale/GetSaleFilterOptions'), data = await res.json();
+        const fill = (id, label, rows) => { const el = document.getElementById(id); el.replaceChildren(new Option(label, '')); for(const r of rows || []) el.add(new Option(r.name, r.id)); };
+        fill('fCustomer', 'All customers', data.customers);
+        fill('fItem', 'All items', data.items);
+    }catch(e){ /* filters stay at "All" */ }
 }
-function closeView(){ document.getElementById('viewModal').classList.remove('show'); }
+
+let saleOrders = [];
+async function loadOrders(){
+    const select = document.getElementById('fOrder'), keep = select.value;
+    try{
+        const res = await fetch('/Sale/GetSaleOrders' + (document.getElementById('fStatus').value !== 'active' ? '?includeCancelled=true' : ''));
+        const data = await res.json();
+        saleOrders = data.orders || [];
+    }catch(e){ saleOrders = []; }
+    select.replaceChildren(new Option('All orders', ''));
+    for(const o of saleOrders) select.add(new Option('#' + o.productionOrderId + '  ' + (o.productName || '') + (o.customerName ? ', ' + o.customerName : ''), o.productionOrderId));
+    select.value = keep; if(select.value !== keep) select.value = '';
+    showOrderNote(select.value);
+}
+function showOrderNote(id){
+    const box = document.getElementById('orderNote'), o = saleOrders.find(x => String(x.productionOrderId) === String(id));
+    if(!o){ box.hidden = true; return; }
+    const unsold = o.producedQty - o.invoiced;
+    box.innerHTML = '<strong>Order #' + o.productionOrderId + '</strong> ' + escapeHtml(o.productName || '') + ': ' + o.orderQty + ' ordered, ' + o.producedQty + ' produced, <strong>' + o.invoiced + ' invoiced</strong>, ' + (unsold > 0 ? unsold + ' unsold' : 'fully invoiced') + ', invoiced total ' + fmt(o.invoicedAmount) + '. <a onclick="clearFilters()">Show all</a>';
+    box.hidden = false;
+}
+function viewOrder(id){ ViewPopup.open('Production Order #' + id, '/Production/Print/' + id + '?popup=1', '/Production/Print/' + id); }
+
+function viewSale(id){ ViewPopup.open('Sale Invoice #' + id, '/Sale/Print/' + id + '?popup=1', '/Sale/Print/' + id); }
 
 async function deleteSale(id){
-    if(!(await confirmDialog(`Cancel Sale Invoice #${id}? This will restore stock and reverse its ledger entries.`, { danger: true }))) return;
+    if(!(await confirmDialog(`Delete Sale Invoice #${id}? This cancels the document and will restore stock and reverse its ledger entries.`, { danger: true }))) return;
     try{
         const res = await fetch('/Sale/Delete?id=' + id, { method:'POST' });
         const data = await res.json();
-        if(data.success){ await alertDialog('✅ ' + data.message); loadSales(); }
+        if(data.success){ await alertDialog('✅ ' + data.message); await loadOrders(); loadSales(); }
         else await alertDialog('❌ ' + (data.message || 'Delete failed.'));
     }catch(e){ await alertDialog('Error deleting invoice.', { type: 'error' }); }
 }
 
-document.addEventListener('DOMContentLoaded', loadSales);
+document.addEventListener('DOMContentLoaded', () => { loadFilterOptions(); loadOrders().then(loadSales); });
 </script>

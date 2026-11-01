@@ -1,0 +1,56 @@
+@model InventorySystem.Core.Models.GatePass
+@{Layout=null;var inward=Model.Direction=="Inward";}
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>@Model.PassNumber — @Model.Direction Gate Pass</title>
+<link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
+<style>
+/* Compact layout: a pass with a few items fits in the top half of an A4 sheet; more items simply continue down the same sheet. */
+/* Zero page margin keeps the browser's own header and footer (address, date, page number) off the sheet; the 10mm space is body padding in print. */
+@@page{size:A4 portrait;margin:0}
+*{box-sizing:border-box}
+body{font:11.5px/1.3 "Segoe UI",Arial,sans-serif;color:#172b3a;max-width:780px;margin:16px auto}
+h2{margin:2px 0 4px;text-align:center;font-size:15px}
+.gp-print-actions{text-align:right;margin-bottom:12px}
+button{padding:7px 16px;background:#285870;color:white;border:0;border-radius:5px;cursor:pointer}
+.company-print-header{padding-bottom:4px;margin-bottom:4px;gap:.6rem}
+.company-print-name{font-size:16px}
+.meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 12px;margin:6px 0}
+.field{border-bottom:1px solid #aab5bd;min-height:30px;padding:2px 3px;overflow-wrap:anywhere}
+.field.wide{grid-column:span 2}
+.label{display:block;color:#526575;font-size:9.5px;margin-bottom:1px}
+table{border-collapse:collapse;width:100%;margin-top:6px;table-layout:fixed}
+th,td{border:1px solid #9cabb5;padding:3px 4px;text-align:left;overflow-wrap:anywhere;font-size:11px}
+th{background:#edf3f6}
+th:first-child{width:24px}
+th:nth-child(2){width:27%}
+.qty{font-weight:700;font-variant-numeric:tabular-nums}
+.signatures{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:6px 0}
+.signature{min-height:42px;border-top:1px solid #526575;padding-top:4px;margin-top:14px;overflow-wrap:anywhere}
+.cancelled{text-align:center;color:#b91c1c;font-weight:bold;border:2px solid #b91c1c;padding:5px;margin:6px}
+.remarks{margin:6px 0 0}
+.foot{margin-top:6px;font-size:9px;color:#526575}
+@@media print{.gp-print-actions{display:none}body{margin:0;max-width:none;padding:10mm}tr,.signatures{break-inside:avoid}thead{display:table-header-group}}
+</style></head><body>
+<div class="gp-print-actions"><a href="/GatePass/@Model.Direction" style="margin-right:16px;color:#285870">Back to list</a><button onclick="window.print()">Print / Save PDF</button> <button onclick="window.close()">Close</button></div>
+<partial name="_CompanyPrintHeader" /><h2>@Model.Direction Gate Pass</h2>
+@if(Model.IsCancelled){<div class="cancelled">CANCELLED — @Model.CancellationReason</div>}
+<div class="meta">
+<div class="field"><span class="label">Serial No.</span>@Model.PassNumber</div><div class="field"><span class="label">Date</span>@Model.PassDate.ToString("dd-MMM-yyyy")</div><div class="field"><span class="label">Party Name</span>@Model.PartyName</div><div class="field"><span class="label">Party Phone</span>@Model.PartyPhone</div>
+<div class="field wide"><span class="label">Party Address</span>@Model.PartyAddress</div><div class="field"><span class="label">Bilty No.</span>@Model.BiltyNumber</div><div class="field"><span class="label">Transport / Adda Name</span>@Model.TransportCompany</div>
+<div class="field"><span class="label">Vehicle Name</span>@Model.VehicleName</div><div class="field"><span class="label">Vehicle Number</span>@Model.VehicleNumber</div><div class="field"><span class="label">Driver Name</span>@Model.DriverName</div><div class="field"><span class="label">Driver Mobile</span>@Model.DriverPhone</div>
+<div class="field"><span class="label">Driver Signatory</span>@Model.DriverSignature</div><div class="field"><span class="label">Vehicle Arrival</span>@Model.ArrivalAt?.ToString("dd-MMM-yyyy HH:mm")</div><div class="field"><span class="label">Vehicle Departure</span>@Model.DepartureAt?.ToString("dd-MMM-yyyy HH:mm")</div><div class="field"><span class="label">Receiver Reference</span>@Model.ReceiverReference</div>
+<div class="field"><span class="label">Gross Weight (KG)</span>@Model.GrossWeightKg?.ToString("0.###")</div><div class="field"><span class="label">Tare Weight (KG)</span>@Model.TareWeightKg?.ToString("0.###")</div><div class="field"><span class="label">Net Weight (KG)</span><strong>@Model.NetWeightKg?.ToString("0.###")</strong></div>
+</div>
+<table><thead><tr><th>#</th><th>Item Description</th><th>Unit</th>
+@if(inward){<th>Net Weight / Quantity</th><th>Purchase Price / Unit</th><th>Total</th>}
+else{<th>Packing Type</th><th>Packing Qty</th><th>Bundle Qty</th><th>Open Ctn</th><th>Total Qty</th>}
+</tr></thead><tbody>
+@foreach(var line in Model.Lines.OrderBy(l=>l.SerialNo)){
+<tr><td>@line.SerialNo</td><td>@line.Description</td><td>@line.Unit.ToUpperInvariant()</td>
+@if(inward){<td class="qty">@line.TotalQuantity.ToString("0.###")</td><td>@(line.UnitPrice?.ToString("0.####")??"—")</td><td>@(line.UnitPrice.HasValue?decimal.Round(line.TotalQuantity*line.UnitPrice.Value,2,MidpointRounding.AwayFromZero).ToString("0.00"):"—")</td>}
+else{<td>@line.PackingType</td><td class="qty">@line.PackingQuantity.ToString("0.###")</td><td class="qty">@line.BundleQuantity.ToString("0.###")</td><td class="qty">@line.OpenCartonQuantity.ToString("0.###")</td><td class="qty">@line.TotalQuantity.ToString("0.###")</td>}
+</tr>}
+</tbody></table>
+@if(!string.IsNullOrWhiteSpace(Model.Remarks)){<p class="remarks"><strong>Remarks:</strong> @Model.Remarks</p>}
+<div class="signatures"><div class="signature">@(inward?"Issued By":"Loading By")<br />@Model.IssuedBy</div><div class="signature">Gate Keeper<br />@Model.GateKeeper</div><div class="signature">@(inward?"Received By":"Issued By")<br />@Model.ReceivedBy</div></div>
+<div class="foot">@Model.PassNumber · @Model.Direction Gate Pass · Branch @Model.BranchId</div>
+</body></html>

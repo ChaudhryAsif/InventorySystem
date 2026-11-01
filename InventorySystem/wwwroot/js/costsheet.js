@@ -18,6 +18,7 @@ let settings = {};
 let settingsLoaded = false;
 let legacyAdhesiveReview = false;
 let materialOptions = [];
+let automaticApplications=true,restoringSheet=false;
 
 // ════════════════════════════════════════════════════════════════════════════
 // INIT
@@ -41,6 +42,7 @@ window.addEventListener('DOMContentLoaded', async function () {
     }
 
     document.getElementById('addPlyBtn').addEventListener('click', () => addPlyRow());
+    document.getElementById('hasLamination').addEventListener('change',()=>{automaticApplications=true;syncApplications();recalcAll();});
     document.getElementById('addMatBtn').addEventListener('click', () => addMatRow());
 });
 
@@ -59,18 +61,49 @@ async function loadSettings() {
 }
 
 async function loadMaterialOptions() {
-    const res = await fetch('/CostSheet/GetMaterialOptions');
-    if (!res.ok) throw new Error('Material options unavailable');
-    const data = await res.json();
-    materialOptions = data.items.filter(i => i.type === 'RawMaterial');
-    for (const id of ['finishedItemId','glueItemId','silicateItemId']) {
-        const select = document.getElementById(id);
-        const type = id === 'finishedItemId' ? 'FinishedGoods' : 'RawMaterial';
-        for (const item of data.items.filter(i => i.type === type)) {
-            const option = document.createElement('option'); option.value = item.id;
-            option.textContent = item.name + ' (' + item.unit + ')'; select.appendChild(option);
-        }
+    const res=await fetch('/CostSheet/GetMaterialOptions');if(!res.ok)throw new Error('Material options unavailable');
+    const data=await res.json();if(!data.success)throw new Error('Material options unavailable');
+    installMaterialOptions(data.items);
+}
+function installMaterialOptions(items){
+    materialOptions=items.filter(i=>i.type==='RawMaterial');
+    const finished=document.getElementById('finishedItemId'),value=finished.value;
+    finished.replaceChildren(new Option('Not linked',''));for(const item of items.filter(i=>i.type==='FinishedGoods'&&i.unit==='pcs'))finished.add(new Option(item.name+' ('+item.unit+')',item.id));finished.value=value;
+    fillRoleOptions('glueItemId','Glue');fillRoleOptions('silicateItemId','Silicate');
+    fillRoleOptions('client_glueLaminationItemId','LaminationGlue');fillRoleOptions('client_laminationChemicalItemId','LaminationChemical');
+}
+function fillRoleOptions(id,role,saved){
+    const select=document.getElementById(id),value=String(saved??select.value??'');
+    const options=materialOptions.filter(i=>i.unit==='kg'&&i.materialRole===role);
+    select.replaceChildren(new Option('Select '+role.replace(/([a-z])([A-Z])/g,'$1 $2')+' stock item',''));
+    for(const item of options)select.add(new Option(item.name+' (KG)',String(item.id)));
+    if(value&&!options.some(i=>String(i.id)===value)){
+        const old=materialOptions.find(i=>String(i.id)===value);
+        select.add(new Option((old?.name||'Item #'+value)+' (saved — review material use)',value));
     }
+    select.value=value|| (options.length===1?String(options[0].id):'');
+}
+function syncApplications(){
+    if(!isClientCosting()||!automaticApplications)return;
+    const count=document.getElementById('plyBody').rows.length;
+    setVal('client_glueApplications',Math.max(0,Math.floor((count-1)/2)));setVal('client_silicateApplications',getVal('client_glueApplications'));
+    const lam=getVal('hasLamination')==='true'?1:0;setVal('client_glueLaminationApplications',lam);setVal('client_laminationChemicalApplications',lam);
+}
+async function refreshLatestRates(){
+    const button=document.getElementById('refreshRatesBtn'),notice=document.getElementById('refreshRatesStatus');button.disabled=true;notice.textContent='Fetching latest rates…';
+    try{
+        const responses=await Promise.all([fetch('/CostSheet/GetSettings'),fetch('/CostSheet/GetMaterialOptions')]);
+        if(responses.some(r=>!r.ok))throw new Error('Latest rates could not be fetched. Your sheet has been kept.');
+        const [latest,data]=await Promise.all(responses.map(r=>r.json()));if(!data.success||!Array.isArray(data.items))throw new Error('Latest material rates unavailable. Your sheet has been kept.');
+        settings=latest;settingsLoaded=true;installMaterialOptions(data.items);applySettingsToForm();
+        const byItem=new Map(data.items.map(i=>[String(i.id),i]));let changed=0,missing=0;
+        function price(id,set){if(!id)return;const item=byItem.get(String(id));if(item?.lastPurchasePrice!=null){set(item.lastPurchasePrice);changed++;}else missing++;}
+        for(const row of document.querySelectorAll('#plyBody tr'))price(row.cells[1].querySelector('input').value,v=>row.cells[5].querySelector('input').value=v);
+        for(const row of document.querySelectorAll('#matBody tr'))price(row.querySelector('.mat-item').value,v=>row.querySelector('.mat-rate').value=v);
+        for(const [item,rate] of [['glueItemId','glueRate'],['silicateItemId','silicateRate'],['client_glueLaminationItemId','client_glueLaminationRate'],['client_laminationChemicalItemId','client_laminationChemicalRate']])price(getVal(item),v=>setVal(rate,v));
+        automaticApplications=true;syncApplications();recalcAll();
+        notice.textContent='Latest costing settings and '+changed+' material rates applied. Dimensions, quantities and specifications were kept. Save the sheet to retain these changes.'+(missing?' '+missing+' linked items have no current purchase price; their entered rates were kept.':'');
+    }catch(e){notice.textContent=e.message;}finally{button.disabled=false;}
 }
 
 function applySettingsToForm() {
@@ -100,7 +133,8 @@ function loadNextSheetNumber() {
 // ════════════════════════════════════════════════════════════════════════════
 // PLY TABLE
 // ════════════════════════════════════════════════════════════════════════════
-function addPlyRow(plyName = '', spec = '', gsm = '', rate = '', kgs = '', itemId = '', fluted = null) {
+function addPlyRow(plyName = '', spec = '', gsm = '', rate = '', kgs = '', itemId = '', fluted = null, fluteFactor = null) {
+    if(!restoringSheet)automaticApplications=true;
     plyCounter++;
     const tbody = document.getElementById('plyBody');
     const tr = document.createElement('tr');
@@ -128,7 +162,7 @@ function addPlyRow(plyName = '', spec = '', gsm = '', rate = '', kgs = '', itemI
             <select class="ply-input ply-fluted" style="display:${isClientCosting() ? '' : 'none'}" aria-label="Layer type" onchange="recalcAll()">
                 <option value="false"${(fluted ?? (plyCounter % 2 === 0)) ? '' : ' selected'}>Plain</option>
                 <option value="true"${(fluted ?? (plyCounter % 2 === 0)) ? ' selected' : ''}>Fluted</option>
-            </select></td>
+            </select><input type="number" class="ply-input ply-factor" aria-label="Flute factor" title="Flute factor for this layer" min="1" max="10" step="0.01" value="${fluteFactor ?? (plyCounter === 4 ? 1.35 : Number(getVal('client_fluteFactor')) || 1.45)}" oninput="recalcAll()" style="display:${isClientCosting() && clientFormulaVersion === 2 ? '' : 'none'}"></td>
         <td><input type="number" class="ply-input" placeholder="0.00"
                    value="${rate}" step="0.01" min="0"
                    oninput="calcPlyRow(this)"
@@ -162,6 +196,7 @@ function calcPlyRow(input) {
 }
 
 async function removePlyRow(btn) {
+    automaticApplications=true;
     if (document.getElementById('plyBody').rows.length <= 1) {
         await alertDialog('At least one ply layer is required!', { type: 'warning' });
         return;
@@ -266,7 +301,7 @@ function rebuildMatNumbers() {
 }
 
 function recalcAll() {
-    if (!isClientCosting()) document.querySelectorAll('#plyBody tr').forEach(r => { r.cells[6].querySelector('input').readOnly=false; r.querySelector('.ply-fluted').style.display='none'; });
+    if (!isClientCosting()) document.querySelectorAll('#plyBody tr').forEach(r => { r.cells[6].querySelector('input').readOnly=false; r.querySelector('.ply-fluted').style.display='none'; r.querySelector('.ply-factor').style.display='none'; });
     if (isClientCosting()) { recalcClientCosting(); return; }
     if (getVal('hasLamination') !== 'true') setVal('laminationCost', 0);
 
@@ -404,14 +439,11 @@ async function doSave(status) {
         await alertDialog('Please enter an Item / Product Name.', { type: 'warning' }); return;
     }
 
-    // Validate at least one ply has an item selected
-    let hasValidPly = false;
-    document.querySelectorAll('#plyBody tr').forEach(row => {
-        if (row.cells[1].querySelector('input').value.trim() !== '') hasValidPly = true;
-    });
-    if (!hasValidPly) {
-        await alertDialog('Please select at least one item in the Ply/Paper Layers section using the 🔍 button.', { type: 'warning' });
-        return;
+    // Costing may be saved before inventory records are linked.
+    const hasPly = [...document.querySelectorAll('#plyBody tr')].some(row =>
+        Number(row.cells[4].querySelector('input').value) > 0 || Number(row.cells[6].querySelector('input').value) > 0);
+    if (!hasPly && status === 'Final') {
+        await alertDialog('Enter at least one paper layer before saving as Final.', { type: 'warning' }); return;
     }
 
     // Build plies array
@@ -545,6 +577,7 @@ async function doSave(status) {
 // LOAD EXISTING SHEET (Edit mode)
 // ════════════════════════════════════════════════════════════════════════════
 async function loadExistingSheet(id) {
+    restoringSheet=true;
     try {
         const res = await fetch(`/CostSheet/GetById/${id}`);
         const json = await res.json();
@@ -583,7 +616,7 @@ async function loadExistingSheet(id) {
 
         setSelect('hasLamination', d.hasLamination ? 'true' : 'false');
         setVal('laminationCost', d.laminationCost ?? 0);
-        setSelect('finishedItemId', d.finishedItemId); setSelect('glueItemId', d.glueItemId); setSelect('silicateItemId', d.silicateItemId);
+        setSelect('finishedItemId', d.finishedItemId);fillRoleOptions('glueItemId','Glue',d.glueItemId||'');fillRoleOptions('silicateItemId','Silicate',d.silicateItemId||'');
         setVal('glueKgPerBox', d.glueKgPerBox ?? 0); setVal('silicateKgPerBox', d.silicateKgPerBox ?? 0);
         legacyAdhesiveReview = d.glueSilicateKg > 0 && d.glueKgPerBox == null && d.silicateKgPerBox == null;
         if (legacyAdhesiveReview) await alertDialog('Review this older sheet: separate its combined adhesive weight into glue and silicate KG per box before saving.');
@@ -616,8 +649,8 @@ async function loadExistingSheet(id) {
         setVal('remarks', d.remarks || '');
 
         setSelect('costingMethod', d.clientCosting ? 'Client' : 'Manual');
-        applyCostingMethod(false);
         if (d.clientCosting) restoreClientOptions(d.clientCosting);
+        applyCostingMethod(false);
         // Plies — restore from saved data including itemId
         if (d.plies && d.plies.length > 0) {
             d.plies.forEach((p, i) =>
@@ -628,7 +661,8 @@ async function loadExistingSheet(id) {
                     p.rate ?? '',
                     p.kGs ?? '',
                     p.itemId ?? '',
-                    d.clientCosting?.flutedLayers?.[i] ?? null
+                    d.clientCosting?.flutedLayers?.[i] ?? null,
+                    d.clientCosting?.layerFluteFactors?.[i] ?? d.clientCosting?.fluteFactor ?? null
                 )
             );
         } else {
@@ -643,7 +677,7 @@ async function loadExistingSheet(id) {
     } catch (err) {
         console.error(err);
         await alertDialog('❌ Error loading cost sheet data.');
-    }
+    }finally{restoringSheet=false;}
 }
 
 
@@ -652,6 +686,7 @@ async function loadExistingSheet(id) {
 // ════════════════════════════════════════════════════════════════════════════
 async function resetForm() {
     if (!(await confirmDialog('Reset form? All unsaved changes will be lost.'))) return;
+    if (typeof clearCostSheetExcel === 'function') clearCostSheetExcel();
 
     setVal('sheetDate', new Date().toISOString().split('T')[0]);
     setSelect('status', 'Draft');
@@ -820,10 +855,12 @@ async function confirmPlyItem() {
     // Fill ItemId, Item Name, Rate from selected purchase item
     currentPlyRow.cells[1].querySelector('input').value = selectedPlyItem.itemId;
     currentPlyRow.cells[2].querySelector('input').value = selectedPlyItem.itemName;
-    currentPlyRow.cells[5].querySelector('input').value =
+    // Inventory mapping must not replace a quotation's imported Excel rate.
+    const keepExcelRate = currentPlyRow.dataset.excelRate === 'true';
+    if (!keepExcelRate) currentPlyRow.cells[5].querySelector('input').value =
         parseFloat(selectedPlyItem.lastPurPrice || 0).toFixed(2);
 
-    if (!selectedPlyItem.lastPurPrice || selectedPlyItem.lastPurPrice === 0) {
+    if (!keepExcelRate && (!selectedPlyItem.lastPurPrice || selectedPlyItem.lastPurPrice === 0)) {
         await alertDialog(`⚠️ "${escapeHtml(selectedPlyItem.itemName)}" has no purchase history.\nRate set to 0 — please enter manually.`);
     }
     if ((selectedPlyItem.currentStock || 0) <= 0) {
@@ -835,6 +872,7 @@ async function confirmPlyItem() {
     setTimeout(() => { if (kgInput.isConnected) kgInput.focus(); }, 100);
 
     calcPlyRow(currentPlyRow.cells[5].querySelector('input'));
+    if (typeof updateExcelImportGuidance === 'function') updateExcelImportGuidance();
     closePlyItemModal();
 }
 
@@ -895,38 +933,43 @@ function capitalize(s) {
 }
 // Client workbook adapter. Existing recipes stay on their saved calculation method.
 function isClientCosting() { return document.getElementById('costingMethod')?.value === 'Client'; }
+let clientFormulaVersion = 2;
 function getClientOptions() {
-    const c = {version:1};
+    syncApplications();
+    const c = {version:clientFormulaVersion,automaticApplications};
     document.querySelectorAll('[data-client-option]').forEach(e => c[e.dataset.clientOption] = Number(e.value) || 0);
     document.querySelectorAll('[data-client-stock]').forEach(e => c[e.dataset.clientStock] = Number(e.value) || null);
     c.flutedLayers = [...document.querySelectorAll('#plyBody .ply-fluted')].map(e => e.value === 'true');
+    c.layerFluteFactors = clientFormulaVersion === 2 ? [...document.querySelectorAll('#plyBody .ply-factor')].map(e => Number(e.value) || 0) : [];
     return c;
 }
 function restoreClientOptions(c) {
+    automaticApplications=c.automaticApplications??c.AutomaticApplications??false;
+    clientFormulaVersion = c.version ?? c.Version ?? 2;
     document.querySelectorAll('[data-client-option]').forEach(e => e.value = c[e.dataset.clientOption] ?? e.defaultValue);
-    document.querySelectorAll('[data-client-stock]').forEach(e => e.value = c[e.dataset.clientStock] ?? '');
+    fillRoleOptions('client_glueLaminationItemId','LaminationGlue',c.glueLaminationItemId||'');fillRoleOptions('client_laminationChemicalItemId','LaminationChemical',c.laminationChemicalItemId||'');
 }
 function applyCostingMethod(defaults) {
     const client = isClientCosting();
     document.getElementById('clientCostingPanel').hidden = !client;
-    document.querySelectorAll('select.client-stock').forEach(e => {
-        const value = e.value;
-        e.replaceChildren(new Option('Select stock item', ''));
-        materialOptions.filter(i => i.type === 'RawMaterial' && i.unit === 'kg').forEach(i => e.add(new Option(i.name, String(i.id))));
-        e.value = value;
-    });
     document.querySelectorAll('[data-client-weight-label]').forEach(e => e.textContent = e.dataset.clientWeightLabel + (client ? ' Rate / paper KG' : ' Rate'));
     document.querySelectorAll('[data-client-rate-label]').forEach(e => e.textContent = e.dataset.clientRateLabel + (client ? ' / paper KG' : ' %'));
     ['commPersonAPct','commPersonBPct','taxPct'].forEach(id => document.getElementById(id).readOnly = false);
     document.getElementById('additionalTaxLabel').textContent = client ? 'Additional Tax % (on base cost)' : 'Tax % (on Final)';
+    document.getElementById('clientFormulaNote').textContent = clientFormulaVersion === 2 ? 'Uses the latest client workbook formulas. GST is shown separately and is excluded from the final rate.' : 'Uses the earlier saved client formulas, including GST on cost plus profit.';
+    document.getElementById('clientFormulaDetails').textContent = clientFormulaVersion === 2 ? 'Final rate follows the workbook: freight is included twice, additional tax before MOQ, and withholding after MOQ. Commission A uses operating cost × input; Commission B is zero and neither commission is added to the final rate.' : 'Commissions, profit and additional tax use base cost percentages. GST uses cost plus profit.';
+    document.getElementById('clientGstLabel').textContent = clientFormulaVersion === 2 ? 'GST amount (shown separately)' : 'GST amount (cost + profit)';
+    document.getElementById('finalRateLabel').textContent = clientFormulaVersion === 2 && client ? 'Final Rate' : 'Final Rate (W/ GST)';
+    if(clientFormulaVersion === 2 && client) document.querySelector('[data-client-weight-label="Freight"]').textContent = 'Freight';
     ['glueKgPerBox','silicateKgPerBox','printingCost','laminationCost','sheetWidthIn','sheetLengthIn','withFlap','adjWidthIn','adjLength1In','adjLength2In','adjWidthMm','adjLengthMm','totalSheetSqIn'].forEach(id => document.getElementById(id).readOnly = client);
     if (defaults && client) {
         const rates = {labourRate:10,energyRate:5,freightRate:0,wastePct:5.25,adminExpPct:2.5,sellingDistPct:2.5,repairMaintPct:2.25,storeSparesPct:2.25,mfgCostPct:2.75,
-            glueRate:50,silicateRate:45,profitPct:5,gstPct:18,moq:1};
+            glueRate:50,silicateRate:45,profitPct:4.75,gstPct:0,moq:1,bindingPins:0};
         Object.entries(rates).forEach(([id,v]) => setVal(id,v));
     }
     [...document.getElementById('boxStyle').options].forEach(o => o.disabled = client && o.value !== 'Regular Slotted Carton (RSC)');
     if (client && getVal('boxStyle') !== 'Regular Slotted Carton (RSC)') setSelect('boxStyle','Regular Slotted Carton (RSC)');
+    const tax=document.getElementById('taxPct').closest('.cs-fg');document.getElementById(client?'clientRatesInputs':'manualTaxLocation').append(tax);
     recalcAll();
 }
 function recalcClientCosting() {
@@ -946,6 +989,7 @@ function recalcClientCosting() {
         r.cells[6].querySelector('input').value = out.plies[i].kg.toFixed(6);
         r.cells[7].querySelector('input').value = out.plies[i].cost.toFixed(2);
         r.querySelector('.ply-fluted').style.display = '';
+        r.querySelector('.ply-factor').style.display = clientFormulaVersion === 2 && c.flutedLayers[i] ? '' : 'none';
     });
     Object.entries(out).forEach(([key,value]) => {
         if (typeof value !== 'number') return;

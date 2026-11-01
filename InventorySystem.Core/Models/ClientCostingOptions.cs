@@ -3,6 +3,7 @@ namespace InventorySystem.Core.Models;
 // Stored with the recipe, so later default changes cannot alter a saved quotation.
 public class ClientCostingOptions
 {
+    public bool AutomaticApplications { get; set; }
     public int Version { get; set; } = 1;
     public decimal WidthAllowanceIn { get; set; } = .63m;
     public decimal LengthAllowanceIn { get; set; } = .55m;
@@ -22,6 +23,7 @@ public class ClientCostingOptions
     public long? GlueLaminationItemId { get; set; }
     public long? LaminationChemicalItemId { get; set; }
     public List<bool> FlutedLayers { get; set; } = [];
+    public List<decimal> LayerFluteFactors { get; set; } = [];
     public ClientCostingTotals? Totals { get; set; }
 }
 

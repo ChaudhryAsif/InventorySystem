@@ -32,6 +32,7 @@ namespace InventorySystem.Core.Models
         public string? ImagePath { get; set; }
         [MaxLength(100)] public string? Barcode { get; set; }
         [MaxLength(20)] public string ItemType { get; set; } = "RawMaterial";
+        [MaxLength(30)] public string? MaterialRole { get; set; }
         [MaxLength(10)] public string StockUnit { get; set; } = "pcs";
         public decimal ReorderLevel { get; set; } = 50;
 

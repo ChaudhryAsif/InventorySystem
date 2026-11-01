@@ -1,0 +1,88 @@
+@using InventorySystem.Services.Services
+@model List<PurchaseNeedRow>
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Materials to Purchase";
+    string Qty(decimal value, string unit) => unit == "pcs" ? value.ToString("N0") : value.ToString("N3");
+    var toBuy = Model.Count(r => r.ToBuy > 0);
+    var orderCount = Model.SelectMany(r => r.Orders).Select(o => o.OrderId).Distinct().Count();
+}
+
+<style>
+    .pn-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; margin-bottom:1.2rem; }
+    .pn-card { background:#fff; border-radius:10px; padding:1rem 1.2rem; box-shadow:0 2px 8px rgba(0,0,0,.07); }
+    .pn-card .val { font-size:1.6rem; font-weight:700; color:#1e3a5f; }
+    .pn-card .lbl { font-size:.78rem; color:#6b7280; margin-top:.2rem; }
+    .pn-wrap { background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.07); overflow-x:auto; }
+    .pn-table { width:100%; border-collapse:collapse; font-size:.88rem; min-width:760px; table-layout:fixed; }
+    .pn-table th { background:#1e3a5f; color:#fff; padding:.7rem .9rem; text-align:left; font-weight:600; white-space:nowrap; }
+    .pn-table td { padding:.65rem .9rem; border-bottom:1px solid #f0f0f0; vertical-align:top; }
+    .pn-table th.pn-num, .pn-table td.pn-num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .pn-short { color:#dc2626; font-weight:700; }
+    .pn-ok { color:#16a34a; font-weight:600; }
+    .pn-fit { white-space:nowrap; }
+    .pn-orders { display:flex; flex-wrap:wrap; gap:.25rem; white-space:normal; }
+    .pn-chip { display:inline-block; background:#eff6ff; color:#1e40af; border-radius:12px; padding:.1rem .6rem; margin:.1rem .25rem .1rem 0; font-size:.76rem; }
+    .pn-actions { display:flex; gap:.6rem; flex-wrap:wrap; align-items:center; }
+    .pn-btn { display:inline-flex; align-items:center; gap:.4rem; box-sizing:border-box; height:2.5rem; background:#1e3a5f; color:#fff; border:1px solid #1e3a5f; padding:0 1.1rem; border-radius:8px; text-decoration:none; font-family:inherit; font-weight:600; font-size:.88rem; line-height:1; cursor:pointer; }
+    .pn-btn.alt { background:#fff; color:#1e3a5f; border:1px solid #cbd5e1; }
+    .pn-hide-ok tr.pn-enough { display:none; }
+    @@media print { .no-print { display:none !important; } }
+    @@media screen and (max-width:600px) { .pn-cards { grid-template-columns:minmax(0,1fr); } }
+</style>
+
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;margin-bottom:1.2rem;">
+    <div>
+        <h2 style="font-size:1.6rem;font-weight:700;color:#1e3a5f;margin:0;">🛒 Materials to Purchase</h2>
+        <p style="color:#6b7280;margin:.2rem 0 0;font-size:.9rem;">Total materials still needed by Pending and In Production orders, against current stock. Estimated from the saved cost sheets.</p>
+    </div>
+    <div class="pn-actions no-print">
+        <button type="button" class="pn-btn alt" onclick="PrintTab.open()">🖨️ Print</button>
+        <a class="pn-btn" href="/Purchase/Index">🛒 Go to Purchase Invoice</a>
+        <a class="pn-btn alt" href="/Production/Index">← Production Orders</a>
+    </div>
+</div>
+
+<div class="pn-cards">
+    <div class="pn-card"><div class="val">@orderCount</div><div class="lbl">📋 Open orders counted</div></div>
+    <div class="pn-card"><div class="val">@Model.Count</div><div class="lbl">🧪 Materials needed</div></div>
+    <div class="pn-card"><div class="val" style="color:@(toBuy > 0 ? "#dc2626" : "#16a34a")">@toBuy</div><div class="lbl">🔴 Materials to buy</div></div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="pn-card">No open production orders need materials right now.</div>
+}
+else
+{
+    @if (toBuy == 0)
+    {
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:1rem;margin-bottom:1rem;">✅ <strong>Nothing to buy.</strong> Stock covers every open order.</div>
+    }
+    <label class="no-print" style="display:inline-flex;gap:.4rem;align-items:center;margin-bottom:.6rem;font-size:.88rem;">
+        <input type="checkbox" id="showEnough" onchange="document.getElementById('pnBody').classList.toggle('pn-hide-ok', !this.checked)" /> Also show materials with enough stock
+    </label>
+    <div class="pn-wrap">
+        <table class="pn-table">
+            <colgroup><col style="width:4%" /><col style="width:23%" /><col style="width:8%" /><col style="width:15%" /><col style="width:15%" /><col style="width:14%" /><col style="width:21%" /></colgroup>
+            <thead>
+                <tr><th class="pn-fit">#</th><th>Material</th><th class="pn-fit">Unit</th><th class="pn-num pn-fit">Needed</th><th class="pn-num pn-fit">In stock</th><th class="pn-num pn-fit">To buy</th><th class="pn-fit">Needed by orders</th></tr>
+            </thead>
+            <tbody id="pnBody" class="pn-hide-ok">
+                @{ var n = 1; }
+                @foreach (var r in Model)
+                {
+                    <tr class="@(r.ToBuy > 0 ? "" : "pn-enough")">
+                        <td class="pn-fit">@(n++)</td>
+                        <td><strong>@r.ItemName</strong></td>
+                        <td class="pn-fit">@r.Unit</td>
+                        <td class="pn-num pn-fit">@Qty(r.Required, r.Unit)</td>
+                        <td class="pn-num pn-fit">@Qty(r.Available, r.Unit)</td>
+                        <td class="pn-num @(r.ToBuy > 0 ? "pn-short" : "pn-ok")">@(r.ToBuy > 0 ? Qty(r.ToBuy, r.Unit) : "Enough")</td>
+                        <td class="pn-fit"><div class="pn-orders">@foreach (var o in r.Orders) { <span class="pn-chip">#@o.OrderId · @o.Boxes boxes · @Qty(o.Quantity, r.Unit)</span> }</div></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

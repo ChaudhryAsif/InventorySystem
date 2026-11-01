@@ -138,11 +138,36 @@ public class SqlServerSafetyTests : IAsyncLifetime
             Assert.All(await db.AppUsers.ToListAsync(), u => Assert.Equal("1", u.BranchIds));
             Assert.Empty(await db.SaleInvoice.ToListAsync());
             Assert.Empty(await db.Items.Select(i => i.Barcode).ToListAsync());
+            Assert.Empty(await db.GatePasses.Include(g => g.Lines).ToListAsync());
         }
         finally
         {
             if (migrationName.Length != 53 || !migrationName.StartsWith("InventorySystem_Test_")) throw new InvalidOperationException("Unsafe database name.");
             await db.Database.EnsureDeletedAsync();
         }
+    }
+    [SqlServerFact] public async Task GatePass_SaveEditSearchAndCancel_WorkOnSqlServer()
+    {
+        await using var db = Db();
+        var controller = new GatePassController(db) { ControllerContext = new() { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext() } };
+        var pass = new GatePass { Direction="Outward", BranchId=1, PartyName="SQL gate party", GrossWeightKg=1500, TareWeightKg=500,
+            Lines=[new() { Description="SQL cartons", PackingType="3-Ply", PackingQuantity=20, BundleQuantity=5, TotalQuantity=100, Unit="pcs" }] };
+        Assert.IsType<OkObjectResult>(await controller.Save(pass));
+        db.ChangeTracker.Clear();
+        var saved = await db.GatePasses.AsNoTracking().Include(g=>g.Lines).SingleAsync();
+        Assert.Equal(1000,saved.NetWeightKg);
+        saved.Lines[0].PackingType="5-Ply";saved.Lines[0].TotalQuantity=120;
+        Assert.IsType<OkObjectResult>(await controller.Save(saved));
+        db.ChangeTracker.Clear();
+        var updated=await db.GatePasses.AsNoTracking().Include(g=>g.Lines).SingleAsync();
+        Assert.Equal(2,updated.Revision);Assert.Equal(120,Assert.Single(updated.Lines).TotalQuantity);
+        Assert.Equal(1,await db.GatePassLines.CountAsync());
+        var result=Assert.IsType<JsonResult>(await controller.GetList("Outward",updated.PassNumber));
+        Assert.Contains("SQL gate party",System.Text.Json.JsonSerializer.Serialize(result.Value));
+        Assert.IsType<ViewResult>(await controller.Print(updated.Id));
+        Assert.IsType<OkObjectResult>(await controller.Cancel(new() { Id=updated.Id,Revision=updated.Revision,Reason="SQL cancellation check" }));
+        db.ChangeTracker.Clear();Assert.True((await db.GatePasses.SingleAsync()).IsCancelled);
+        Assert.Empty(await db.AccountLedger.ToListAsync());
+        Assert.Equal(10,(await db.Stock.SingleAsync()).Quantity);
     }
 }

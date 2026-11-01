@@ -46,11 +46,11 @@ public sealed class OperationFilter(ApplicationDbContext db, IPermissionService 
         var write = !HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method);
         var module = controller switch { "Home" => "Dashboard", "Category" => "ItemCategory", "ItemRateList" => "Item", _ => controller };
         var verb = !write ? "View" : action.StartsWith("Delete") || action.StartsWith("Void") ? "Delete"
-            : action.StartsWith("Update") || action.StartsWith("Edit") || action == "SaveConsumption" || action == "Record" || action == "Reverse" || action == "Complete" || action == "Cancel" ? "Edit"
+            : action.StartsWith("Update") || action.StartsWith("Edit") || action == "SaveConsumption" || action == "Record" || action == "Reverse" || action == "Complete" || action == "Cancel" || action == "MarkFinal" ? "Edit"
             : action.StartsWith("Post") || action.StartsWith("Approve") ? "Post" : "Create";
         if (controller == "WhatsApp") verb = action is "Configure" or "RegisterWebhook" or "TestMessage" or "Playground" or "PlaygroundReply" ? "Config" : write ? "Reply" : "View";
         if (controller == "CostSheet" && action.Contains("Settings") && action != "GetSettings") verb = "Settings";
-        if (write && action != "SavePayment" && action.StartsWith("Save") && context.ActionArguments.Values.Any(HasExistingId)) verb = "Edit";
+        if (write && action != "SavePayment" && action.StartsWith("Save") && !(controller == "Production" && action == "Save") && context.ActionArguments.Values.Any(HasExistingId)) verb = "Edit";
         if (controller != "Admin" && !isSuperAdmin)
         {
             var allowed = await permissions.HasPermissionAsync(userId, $"{module}.{verb}");
@@ -62,6 +62,12 @@ public sealed class OperationFilter(ApplicationDbContext db, IPermissionService 
                 foreach (var code in new[] { "CostSheet.View", "CostSheet.Create", "CostSheet.Edit" })
                     if (await permissions.HasPermissionAsync(userId, code)) { allowed = true; break; }
             if (!allowed) { context.Result = new ForbidResult(); return; }
+        }
+        // Saved inventory records are edit-locked for everyone except SuperAdmin (cost sheets excepted); delete, void and workflow actions stay open.
+        if (!isSuperAdmin && InventoryEditBlocked(controller, action, write, context.ActionArguments.Values))
+        {
+            context.Result = write ? new ObjectResult(new { success = false, message = "Only a SuperAdmin can edit saved records. Delete and re-enter, or ask a SuperAdmin." }) { StatusCode = 403 } : new ForbidResult();
+            return;
         }
         if (!context.ModelState.IsValid) { context.Result = new BadRequestObjectResult(new { success = false, message = "Invalid input.", errors = context.ModelState.Where(x => x.Value!.Errors.Count > 0).Select(x => x.Key) }); return; }
         foreach (var value in context.ActionArguments.Values)
@@ -141,7 +147,15 @@ public sealed class OperationFilter(ApplicationDbContext db, IPermissionService 
         return new UnauthorizedResult();
     }
 
-    private static bool HasExistingId(object? value) => value != null && new[] { "ItemID", "CategoryId", "PartyId", "CostSheetId", "VoucherId", "AccountHeadId" }
+    private static readonly HashSet<string> InventoryControllers = ["Item", "Category", "Sale", "SaleReturn", "Purchase", "PurchaseReturn", "CostSheet", "Production", "GatePass", "StockAdjustment"];
+    public static bool InventoryEditBlocked(string controller, string action, bool write, IEnumerable<object?> arguments)
+    {
+        if (!InventoryControllers.Contains(controller)) return false;
+        // Cost sheets are the exception: users with the CostSheet.Edit permission may edit them (needed to link inventory items).
+        if (!write) return action == "Edit" && controller is "Production";
+        return action == "Update" || action == "Save" && controller != "Production" && controller != "CostSheet" && arguments.Any(HasExistingId);
+    }
+    private static bool HasExistingId(object? value) => value is GatePass { Id: > 0 } || value != null && new[] { "ItemID", "CategoryId", "PartyId", "CostSheetId", "VoucherId", "AccountHeadId", "EmployeeId", "SalarySlipId" }
         .Any(name => value.GetType().GetProperty(name)?.GetValue(value) is object id && long.TryParse(id.ToString(), out var n) && n > 0);
     private static bool Succeeded(IActionResult? result)
     {

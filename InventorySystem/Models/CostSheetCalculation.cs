@@ -25,17 +25,22 @@ public static class CostSheetCalculation
         m.Materials ??= [];
         if (m.ClientCosting != null) ClientCartonCalculation.Prepare(m);
         if (m.HasLamination != true) m.LaminationCost = 0;
+        if(m.ClientCosting?.AutomaticApplications==true){
+            foreach(var link in new[]{(m.GlueItemId,"Glue"),(m.SilicateItemId,"Silicate"),(m.ClientCosting.GlueLaminationItemId,"LaminationGlue"),(m.ClientCosting.LaminationChemicalItemId,"LaminationChemical")}){
+                if(!link.Item1.HasValue)continue;
+                var material=await db.Items.AsNoTracking().SingleOrDefaultAsync(i=>i.ItemID==link.Item1&&i.IsActive==true&&i.Category.IsActive==true);
+                if(material==null||material.ItemType!="RawMaterial"||material.StockUnit!="kg"||MaterialRoles.Resolve(material.MaterialRole,material.ItemName)!=link.Item2)throw new InvalidOperationException("Select the relevant "+link.Item2+" item in KG. Set its costing material use in Items if necessary.");
+            }
+        }
         if (m.GlueSilicateKg > 0 && m.GlueKgPerBox == null && m.SilicateKgPerBox == null)
             throw new InvalidOperationException("Separate the old combined adhesive weight into glue and silicate kg per box, and link the stock items.");
         if (m.Status == "Final")
         {
             if (m.Plies.Count == 0 || m.Plies.Any(p => p.KGs is null or <= 0)) throw new InvalidOperationException("Enter paper kg per box for each selected layer.");
-            if (!await db.Items.AnyAsync(i => i.ItemID == m.FinishedItemId && i.IsActive == true && i.ItemType == "FinishedGoods" && i.StockUnit == "pcs"))
-                throw new InvalidOperationException("Link an active finished-box item stocked in pieces before finalizing.");
         }
         foreach (var ply in m.Plies)
         {
-            if (ply.KGs is < 0 or > 1000000 || ply.Rate is < 0 or > 100000000 || ply.GSM < 0 || ply.ItemId == null ||
+            if (ply.KGs is < 0 or > 1000000 || ply.Rate is < 0 or > 100000000 || ply.GSM < 0 || ply.ItemId.HasValue &&
                 !await db.Items.AnyAsync(i => i.ItemID == ply.ItemId && i.IsActive == true && i.ItemType == "RawMaterial" && i.StockUnit == "kg"))
                 throw new InvalidOperationException("Select active raw-material items stocked in kg for the paper layers.");
             ply.Cost = R((ply.KGs ?? 0) * (ply.Rate ?? 0));
@@ -50,7 +55,7 @@ public static class CostSheetCalculation
             var unit = other.ItemId == null ? null : await db.Items
                 .Where(i => i.ItemID == other.ItemId && i.IsActive == true && i.ItemType == "RawMaterial" && i.ItemID != m.FinishedItemId)
                 .Select(i => i.StockUnit).FirstOrDefaultAsync();
-            if (unit is not ("kg" or "pcs") || other.Quantity is null or <= 0 or > 1000000 || other.Rate is < 0 or > 100000000)
+            if (unit is not ("kg" or "pcs" or "in") || other.Quantity is null or <= 0 or > 1000000 || other.Rate is < 0 or > 100000000)
                 throw new InvalidOperationException("Select an active raw material for each other-material line and enter a quantity per box above zero.");
             if (m.ClientCosting != null && (other.ItemId == m.ClientCosting.GlueLaminationItemId || other.ItemId == m.ClientCosting.LaminationChemicalItemId) && unit != "kg")
                 throw new InvalidOperationException("Client adhesive estimates require raw-material stock items in kg.");
@@ -59,7 +64,7 @@ public static class CostSheetCalculation
         }
         async Task Adhesive(long? id, decimal? kg)
         {
-            if (kg > 0 && !await db.Items.AnyAsync(i => i.ItemID == id && i.IsActive == true && i.ItemType == "RawMaterial" && i.StockUnit == "kg"))
+            if (kg > 0 && id.HasValue && !await db.Items.AnyAsync(i => i.ItemID == id && i.IsActive == true && i.ItemType == "RawMaterial" && i.StockUnit == "kg"))
                 throw new InvalidOperationException("Link each adhesive quantity to an active raw-material item stocked in kg.");
         }
         await Adhesive(m.GlueItemId, m.GlueKgPerBox); await Adhesive(m.SilicateItemId, m.SilicateKgPerBox);

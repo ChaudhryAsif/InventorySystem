@@ -1,4 +1,4 @@
-namespace InventorySystem.Models
+﻿namespace InventorySystem.Models
 {
     public class ItemViewModel
     {
@@ -20,7 +20,9 @@ namespace InventorySystem.Models
         public string? Description { get; set; } // For UI description field
         public string? ImagePath { get; set; }
         public string? Barcode { get; set; }
+        public string? PageItemType { get; set; }
         public string ItemType { get; set; } = "RawMaterial";
+        public string? MaterialRole { get; set; }
         public string StockUnit { get; set; } = "pcs";
         public decimal ReorderLevel { get; set; } = 50;
     }

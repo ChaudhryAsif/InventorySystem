@@ -1,13 +1,12 @@
-/* Show the supplied BP mark through a viewport; the original business-card image is unchanged. */
+/* B. Packages logo: the mark is used in small spots, the full logo on the login page. */
 :root { --header-height: 56px; }
 .company-logo-crop {
     display: inline-block; position: relative; overflow: hidden; flex: 0 0 auto;
     width: 64px; height: 40px; border-radius: 6px; background: #fff;
 }
-.company-logo-crop img {
-    position: absolute; width: 500%; max-width: none; height: auto;
-    left: -40.625%; top: -62.5%;
-}
+.company-logo-crop img { width: 100%; height: 100%; object-fit: contain; padding: 3px; box-sizing: border-box; display: block; }
+.company-logo-full { display: inline-block; width: 150px; height: 150px; border-radius: 12px; background: #fff; overflow: hidden; }
+.company-logo-full img { width: 100%; height: 100%; object-fit: contain; padding: 6px; box-sizing: border-box; display: block; }
 .header-logo { min-width: 0; }
 .header-logo h1 { font-size: 1.1rem; letter-spacing: 0.01em; }
 .header-logo > .company-logo-crop { display: inline-block; width: 52px; height: 33px; }
@@ -15,7 +14,7 @@
 .main-header .header-user-name { font-size: 0.82rem; }
 .main-header .btn-logout { padding: 0.4rem 0.75rem; font-size: 0.82rem; }
 .login-brand-logo { margin-bottom: 1.25rem; }
-.login-brand-logo .company-logo-crop { width: 112px; height: 70px; border-radius: 10px; }
+.login-brand-logo .company-logo-full { width: 130px; height: 130px; }
 .login-mobile-brand { display: none; }
 .company-print-header {
     display: flex; align-items: center; gap: 1rem; color: #475569;
@@ -45,4 +44,18 @@
 @media (max-width: 360px) {
     .header-logo > .company-logo-crop { width: 36px; height: 23px; }
     .header-logo h1 { font-size: 0.85rem; }
+}
+/* Screens printed from the browser: logo and name on top, no menu or top bar. */
+.app-print-header { display: none; }
+@media print {
+    .app-print-header { display: block; margin-bottom: 12px; }
+    .main-header, .sidebar, .menu-toggle { display: none !important; }
+    .main-wrapper { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: none !important; }
+}
+/* Pages that download a PDF carry their own header inside the exported area. */
+.pdf-brand { display: none; }
+body.pdf-exporting .pdf-brand { display: block; margin-bottom: 12px; }
+@media print {
+    .pdf-brand { display: block; margin-bottom: 12px; }
+    body:has(.pdf-brand) .app-print-header { display: none !important; }
 }

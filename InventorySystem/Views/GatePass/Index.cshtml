@@ -1,0 +1,16 @@
+@{Layout="_Layout";var direction=(string)ViewBag.Direction;ViewData["Title"]=direction+" Gate Pass";}
+<link rel="stylesheet" href="~/css/gatepass.css" asp-append-version="true" />
+<div class="gp-page" id="gatePassApp" data-mode="list" data-direction="@direction" data-can-edit="@(User.IsInRole("SuperAdmin") ? "true" : "false")">
+    <div class="gp-heading"><h2>@direction Gate Pass</h2><a class="gp-button" href="@Url.Action("Create",new{direction})">+ New Gate Pass</a></div>
+    <div class="gp-card gp-filters">
+        <label class="gp-search-filter">Search<input id="gpSearch" placeholder="Party, vehicle or pass number" /></label>
+        <div class="gp-field gp-party-filter"><label for="gpParty">Party</label><input id="gpParty" placeholder="All parties" autocomplete="off" /></div>
+        <label>From<input type="date" id="gpFrom" /></label><label>To<input type="date" id="gpTo" /></label>
+        <label>Status<select id="gpStatus"><option value="active">Active</option><option value="cancelled">Cancelled</option><option value="all">All statuses</option></select></label>
+        <button class="gp-button" id="gpFilter">Filter</button><button class="gp-button gp-secondary" id="gpClear">Clear</button>
+    </div>
+    <div class="gp-card gp-table-wrap"><table class="gp-table"><thead><tr><th>Pass No.</th><th>Date</th><th>Party</th><th>Vehicle</th><th>Items</th><th>Status</th><th>Actions</th></tr></thead><tbody id="gpList"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>
+    <div class="gp-pager"><button id="gpPrevious" class="gp-button gp-secondary" disabled>Previous</button><span id="gpPage" role="status" aria-live="polite"></span><button id="gpNext" class="gp-button gp-secondary" disabled>Next</button></div>
+</div>
+<script src="~/js/gatepass.js" asp-append-version="true"></script>
+

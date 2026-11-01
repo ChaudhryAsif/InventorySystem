@@ -75,6 +75,7 @@
                                 <a asp-action="EditUser" asp-route-id="@user.Id" class="admin-btn admin-btn-primary">
                                     ✏️ Edit
                                 </a>
+                                <button type="button" class="admin-btn admin-btn-danger" onclick="deleteLogin(@user.Id,this)">🗑️ Delete</button>
                             </div>
                         </td>
                     </tr>
@@ -89,3 +90,13 @@
         </div>
     }
 </div>
+@section Scripts {
+<script>
+async function deleteLogin(id,button){
+    if(!await confirmDialog('Delete this user? Their login will be disabled and audit history retained.',{danger:true}))return;
+    button.disabled=true;
+    try{const response=await fetch('/Admin/Users/'+id+'/Delete',{method:'POST'});const result=await response.json();if(response.ok&&result.success){await alertDialog(result.message);location.reload();}else await alertDialog(result.message||'User could not be deleted.');}
+    catch{await alertDialog('Request interrupted. Reload to check whether the user was disabled.');}finally{button.disabled=false;}
+}
+</script>
+}

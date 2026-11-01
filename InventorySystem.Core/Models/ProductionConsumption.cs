@@ -30,6 +30,9 @@ namespace InventorySystem.Core.Models
 
         public DateTime ConsumedDate { get; set; } = DateTime.Now;
 
+        /// <summary>The batch this usage belongs to; null for orders posted before batch production.</summary>
+        public int? BatchId { get; set; }
+
         [ForeignKey(nameof(ProductionOrderId))]
         public ProductionOrder? ProductionOrder { get; set; }
     }

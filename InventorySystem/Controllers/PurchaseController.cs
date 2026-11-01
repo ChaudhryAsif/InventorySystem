@@ -29,6 +29,77 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public IActionResult Index() => View();
 
+        [HttpGet]
+        public async Task<IActionResult> GetSupplierGroups(bool includeInactive = false)
+        {
+            var suppliers = await _context.ItemCategory.AsNoTracking()
+                .Where(g => (includeInactive || g.IsActive == true) && g.GroupType == "RawMaterial")
+                .OrderBy(g => g.CategoryName)
+                .Select(g => new { partyId = "group:" + g.CategoryId, partyName = g.CategoryName,
+                    groupId = g.CategoryId, phone = g.ContactNumber, address = g.Address,
+                    description = g.Description }).ToListAsync();
+            return Json(new { success = true, suppliers });
+        }
+
+        private async Task<int> SupplierGroupIdAsync(string? vendor)
+        {
+            var selection=vendor;
+            if(int.TryParse(vendor,out var partyId))selection=await _context.Parties.Where(p=>p.PartyId==partyId).Select(p=>p.PartyCode).SingleOrDefaultAsync();
+            var raw=selection?.StartsWith("group:")==true?selection[6..]:selection?.StartsWith("RAW-GROUP:")==true?selection[10..]:null;
+            if(!int.TryParse(raw,out var id)||!await _context.ItemCategory.AnyAsync(g=>g.CategoryId==id&&g.GroupType=="RawMaterial"&&g.IsActive==true))
+                throw new InvalidOperationException("Select an active Raw Material supplier group.");
+            return id;
+        }
+        private async Task ValidateGroupItemsAsync(PurchaseInvoiceViewModel model)
+        {
+            var groupId=await SupplierGroupIdAsync(model.VendorID);
+            var ids=model.Items.Where(l=>l.Itemid.HasValue).Select(l=>l.Itemid!.Value).Distinct().ToList();
+            if(await _context.Items.CountAsync(i=>ids.Contains(i.ItemID)&&i.CategoryID==groupId&&i.IsActive==true)!=ids.Count)
+                throw new InvalidOperationException("Every purchase item must belong to the selected supplier group. Select its items again.");
+        }
+        [HttpGet]
+        public async Task<IActionResult> GetItemOptions(string? vendor,long? itemId=null,int page=1,int pageSize=200)
+        {
+            int groupId;try{groupId=await SupplierGroupIdAsync(vendor);}catch(InvalidOperationException ex){return BadRequest(new{success=false,message=ex.Message});}
+            page=Math.Clamp(page,1,1000000);pageSize=Math.Clamp(pageSize,1,200);
+            var query=_context.Items.AsNoTracking().Where(i=>i.CategoryID==groupId&&i.IsActive==true);
+            if(itemId.HasValue)query=query.Where(i=>i.ItemID==itemId);
+            var totalCount=await query.CountAsync();
+            var items=await query.OrderBy(i=>i.ItemID).Skip((page-1)*pageSize).Take(pageSize).Select(i=>new{itemID=i.ItemID,itemName=i.ItemName,categoryName=i.Category.CategoryName,categoryID=i.CategoryID,itemType=i.ItemType,stockUnit=i.StockUnit,barcode=i.Barcode,imageUrl=i.ImagePath,salePrice=i.SalePrice,purchasePrice=_context.PurchaseInvoiceBody.Where(b=>b.Itemid==i.ItemID&&_context.PurchaseInvoice.Any(p=>p.PurchaseId==b.PurchaseId)).OrderByDescending(b=>b.Srno).Select(b=>b.PurPrice).FirstOrDefault()??0,currentStock=_context.Stock.Where(x=>x.ItemId==i.ItemID).Sum(x=>(decimal?)x.Quantity)??0}).ToListAsync();
+            return Json(new{success=true,items,totalCount,page,pageSize});
+        }
+
+        // Group IDs are never used as accounting Party IDs. Resolve the stable account
+        // inside the invoice transaction so a failed save cannot leave an orphan account.
+        private async Task ResolveSupplierGroupAsync(PurchaseInvoiceViewModel model)
+        {
+            if (model.VendorID?.StartsWith("group:", StringComparison.Ordinal) != true) return;
+            if (!int.TryParse(model.VendorID[6..], out var groupId))
+                throw new InvalidOperationException("Select a valid Raw Material group.");
+            var group = await _context.ItemCategory.SingleOrDefaultAsync(g =>
+                g.CategoryId == groupId && g.GroupType == "RawMaterial" && g.IsActive == true);
+            if (group == null) throw new InvalidOperationException("Select an active Raw Material group.");
+            var code = "RAW-GROUP:" + groupId;
+            var party = await _context.Parties.SingleOrDefaultAsync(p => p.PartyCode == code);
+            if (party == null)
+            {
+                party = new Party { PartyCode = code, PartyType = "supplier", Status = "active",
+                    PartyName = group.CategoryName, Phone = group.ContactNumber, Address = group.Address,
+                    OpeningBalance = 0 };
+                _context.Parties.Add(party);
+            }
+            else
+            {
+                if (party.Status != "active" || party.PartyType is not ("supplier" or "both"))
+                    throw new InvalidOperationException("The supplier account for this group is inactive or unavailable.");
+                party.PartyName = group.CategoryName;
+                party.Phone = group.ContactNumber;
+                party.Address = group.Address;
+            }
+            await _context.SaveChangesAsync();
+            model.VendorID = party.PartyId.ToString();
+        }
+
         // ── Saved-invoice list page ───────────────────────────────────────────
         [HttpGet]
         public IActionResult List() => View();
@@ -39,9 +110,6 @@ namespace InventorySystem.Controllers
             if (model == null || model.Items == null || !model.Items.Any())
                 return BadRequest("Invalid invoice data.");
 
-            try { await InvoiceValidation.Validate(_context, model); }
-            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
-
             var validItems = model.Items.Where(i => i.Itemid != null && i.Quantity > 0).ToList();
             if (!validItems.Any())
                 return BadRequest("No valid items provided.");
@@ -51,6 +119,17 @@ namespace InventorySystem.Controllers
             using var transaction = _context.Database.BeginAtomicTransaction();
             try
             {
+                try
+                {
+                    await ValidateGroupItemsAsync(model);
+                    await ResolveSupplierGroupAsync(model);
+                    await InvoiceValidation.Validate(_context, model);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    transaction.Rollback();
+                    return BadRequest(new { success = false, message = ex.Message });
+                }
                 var invoice = new PurchaseInvoice
                 {
                     PurchaseDate = model.PurchaseDate,
@@ -93,9 +172,6 @@ namespace InventorySystem.Controllers
             if (model.Items == null || !model.Items.Any())
                 return BadRequest("Invalid invoice data.");
 
-            try { await InvoiceValidation.Validate(_context, model); }
-            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
-
             var validItems = model.Items.Where(i => i.Itemid != null && i.Quantity > 0).ToList();
             if (!validItems.Any())
                 return BadRequest("No valid items provided.");
@@ -112,6 +188,17 @@ namespace InventorySystem.Controllers
                 if (await _context.PurchaseReturn.AnyAsync(r => r.OriginalPurchaseId == invoice.PurchaseId))
                     return BadRequest(new { success = false, message = "Cancel linked returns before editing or cancelling this invoice." });
 
+                try
+                {
+                    await ValidateGroupItemsAsync(model);
+                    await ResolveSupplierGroupAsync(model);
+                    await InvoiceValidation.Validate(_context, model);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    transaction.Rollback();
+                    return BadRequest(new { success = false, message = ex.Message });
+                }
                 var bodies = _context.PurchaseInvoiceBody.Where(b => b.PurchaseId == invoice.PurchaseId).ToList();
 
                 // Apply only the net change: old receipts may already be consumed.
@@ -199,11 +286,20 @@ namespace InventorySystem.Controllers
 
         // ── LIST data (with optional search + date range) ─────────────────────
         [HttpGet]
-        public IActionResult GetPurchases(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50, bool includeCancelled = false)
+        public IActionResult GetPurchases(string? search, DateTime? from, DateTime? to, int page = 1, int pageSize = 50, bool includeCancelled = false, bool cancelledOnly = false, int? groupId = null)
         {
-            var query = includeCancelled
+            var query = includeCancelled || cancelledOnly
                 ? _context.PurchaseInvoice.IgnoreQueryFilters().Where(s => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(s.BranchID ?? 1))
                 : _context.PurchaseInvoice.AsQueryable();
+            if (cancelledOnly) query = query.Where(p => p.IsCancelled);
+            if (groupId.HasValue)
+            {
+                var group = _context.ItemCategory.SingleOrDefault(g => g.CategoryId == groupId && g.GroupType == "RawMaterial");
+                if (group == null) return BadRequest(new { success = false, message = "Select a valid Raw Material group." });
+                var code = "RAW-GROUP:" + group.CategoryId;
+                var vendors = _context.Parties.Where(p => p.PartyCode == code || p.PartyName == group.CategoryName).Select(p => p.PartyId.ToString());
+                query = query.Where(p => vendors.Contains(p.VendorID));
+            }
             page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 200);
             if (!string.IsNullOrWhiteSpace(search))
             {
@@ -257,7 +353,9 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public IActionResult GetPurchaseById(int id)
         {
-            var invoice = _context.PurchaseInvoice.FirstOrDefault(p => p.PurchaseId == id);
+            var invoice = _context.PurchaseInvoice.IgnoreQueryFilters()
+                .Where(p => !_context.RestrictBranches || _context.AllowedBranchIds.Contains(p.BranchID ?? 1))
+                .FirstOrDefault(p => p.PurchaseId == id);
             if (invoice == null) return NotFound();
 
             var vendorName = _context.Parties
@@ -275,6 +373,7 @@ namespace InventorySystem.Controllers
                     b.Descr,
                     b.PackageCount, b.PackageType,
                     b.Quantity,
+                    StockUnit = _context.Items.Where(i=>i.ItemID==b.Itemid).Select(i=>i.StockUnit).FirstOrDefault(),
                     b.PurPrice,
                     b.SalePrice,
                     b.DiscPer,
@@ -290,8 +389,10 @@ namespace InventorySystem.Controllers
             return Json(new
             {
                 invoice.PurchaseId,
+                invoice.IsCancelled,
                 PurchaseDate = invoice.PurchaseDate.HasValue ? invoice.PurchaseDate.Value.ToString("yyyy-MM-dd") : "",
                 invoice.VendorID,
+                SupplierGroupId = _context.Parties.Where(p=>p.PartyId.ToString()==invoice.VendorID).Select(p=>p.PartyCode).FirstOrDefault(),
                 VendorName = vendorName ?? $"#{invoice.VendorID}",
                 invoice.BillNo,
                 invoice.BranchID,
@@ -321,7 +422,10 @@ namespace InventorySystem.Controllers
                 .Where(v => v.PartyId.ToString() == invoice.VendorID)
                 .Select(v => v.PartyName)
                 .FirstOrDefault() ?? $"#{invoice.VendorID}";
+            ViewBag.PartyContact = string.Join(" · ", _context.Parties.Where(p => p.PartyId.ToString() == invoice.VendorID).Select(p => new[] { p.Phone, p.Address }).FirstOrDefault()?.Where(x => !string.IsNullOrWhiteSpace(x)) ?? Enumerable.Empty<string?>());
             ViewBag.PaymentMode = GetPaymentModeLabel(invoice.PaymentMode);
+            var itemIds=invoice.PurchaseInvoiceBodies.Where(b=>b.Itemid.HasValue).Select(b=>b.Itemid!.Value).Distinct().ToList();
+            ViewBag.ItemUnits=_context.Items.Where(i=>itemIds.Contains(i.ItemID)).ToDictionary(i=>i.ItemID,i=>i.StockUnit);
 
             return View(invoice);
         }

@@ -24,6 +24,9 @@ namespace InventorySystem.Core.Models
         public bool UsesEstimatedConsumption { get; set; }
         public DateTime? PostedUtc { get; set; }
         public DateTime? ReversedUtc { get; set; }
+        /// <summary>Set when the order is closed with less than the ordered quantity produced.</summary>
+        public DateTime? ClosedShortUtc { get; set; }
+        [StringLength(500)] public string? CloseReason { get; set; }
         [StringLength(500)] public string? ReversalReason { get; set; }
         [Timestamp] public byte[] RowVersion { get; set; } = [];
         public int OrderQty { get; set; }               // how many boxes ordered
@@ -43,5 +46,6 @@ namespace InventorySystem.Core.Models
 
         public ICollection<ProductionMaterial>? Materials { get; set; }
         public ICollection<ProductionConsumption>? Consumptions { get; set; }
+        public ICollection<ProductionBatch>? Batches { get; set; }
     }
 }

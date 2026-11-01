@@ -37,23 +37,19 @@
             </div>
         </div>
 
-        @if (!string.IsNullOrEmpty(Model.Controller))
-        {
+        @{
         <p>Page destinations and access permissions are preserved automatically.</p>
         <div class="admin-form-group">
             <label class="admin-form-label" for="ParentId">Parent Menu</label>
             <select id="ParentId" asp-for="ParentId" class="admin-form-input">
                 <option value="">— None (top-level) —</option>
+                @if (Model.ParentId.HasValue && !((List<InventorySystem.Core.Models.MenuItem>)ViewBag.ParentMenuItems).Any(p=>p.Id==Model.ParentId)) { <option value="@Model.ParentId">Current hidden parent</option> }
                 @foreach (var parent in (List<InventorySystem.Core.Models.MenuItem>)ViewBag.ParentMenuItems)
                 {
                     <option value="@parent.Id">@parent.Icon @parent.Name</option>
                 }
             </select>
         </div>
-        }
-        else
-        {
-            <p>Main menu groups always appear at the top level. Move pages into them using the Menu Builder.</p>
         }
 
         <div class="admin-form-group">

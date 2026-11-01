@@ -1,7 +1,8 @@
 ﻿@using InventorySystem.Core.Models
 @model ProductionOrder
 @{
-    Layout = "_Layout";
+    bool popup = Context.Request.Query["popup"] == "1";
+    Layout = popup ? "_PopupLayout" : "_Layout";
     ViewData["Title"] = "Material Requirements";
     string customerName = ViewBag.CustomerName ?? Model.CustomerId;
     decimal? totalValue = Model.AgreedUnitPrice.HasValue ? InventorySystem.Models.OrderPricing.Total(Model.OrderQty, Model.AgreedUnitPrice.Value, Model.AgreedGstPercent) : null;
@@ -58,14 +59,17 @@
         </p>
     </div>
     <div style="display:flex;gap:.8rem;align-items:center;">
-        @if (Model.Status == "Pending" || Model.Status == "InProduction")
+        @if (!popup && (Model.Status == "Pending" || Model.Status == "InProduction"))
         {
             <a href="/Production/Consume/@Model.ProductionOrderId"
                style="background:#16a34a;color:#fff;padding:.5rem 1.2rem;border-radius:8px;text-decoration:none;font-size:.9rem;font-weight:600;">
                 📦 Record Production
             </a>
         }
-        <a href="/Production/Index" style="color:#6b7280;font-size:.9rem;padding:.5rem 0;">← Back</a>
+        @if (!popup)
+        {
+            <a href="/Production/Index" style="color:#6b7280;font-size:.9rem;padding:.5rem 0;">← Back</a>
+        }
     </div>
 </div>
 
@@ -105,7 +109,7 @@
 {
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:1rem;margin-bottom:1rem;">
         ⚠️ <strong>@(critCount + lowCount) material(s)</strong> need purchasing before production can start.
-        <a href="/Purchase/Index" style="margin-left:1rem;background:#dc2626;color:#fff;padding:.3rem .8rem;border-radius:6px;text-decoration:none;font-size:.83rem;">
+        <a href="/Purchase/Index" target="@(popup ? "_top" : "_self")" style="margin-left:1rem;background:#dc2626;color:#fff;padding:.3rem .8rem;border-radius:6px;text-decoration:none;font-size:.83rem;">
             🛒 Go to Purchase Invoice
         </a>
     </div>

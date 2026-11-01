@@ -33,7 +33,7 @@
         <UserName>$(UserName)</UserName><Password>$(Password)</Password><AuthType>Basic</AuthType><IncludeAcls>False</IncludeAcls>
       </_MaintenanceDestination>
     </ItemGroup>
-    <Message Importance="high" Text="Showing the Bright Packages maintenance page during deployment." />
+    <Message Importance="high" Text="Showing the B. Packages maintenance page during deployment." />
     <MSDeploy Verb="sync" Source="@(_MaintenanceSource)" Destination="@(_MaintenanceDestination)"
               EnableRule="DoNotDeleteRule" DisableRule="BackupRule" AllowUntrusted="$(AllowUntrustedCertificate)" ExePath="$(MSDeployPath)" />
     <PropertyGroup><_BrightPackagesMaintenanceStarted>true</_BrightPackagesMaintenanceStarted></PropertyGroup>

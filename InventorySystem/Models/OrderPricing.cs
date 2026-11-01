@@ -35,8 +35,8 @@ public static class OrderPricing
             throw new InvalidOperationException("An order-linked invoice must keep its original production order. Cancel it and create a corrected invoice instead.");
         if (!model.ProductionOrderId.HasValue) return;
         var order = await db.ProductionOrder.SingleOrDefaultAsync(o => o.ProductionOrderId == model.ProductionOrderId);
-        if (order == null || order.Status != "Completed" || !order.UsesEstimatedConsumption || order.ProducedQty <= 0 || order.AgreedUnitPrice is null or <= 0)
-            throw new InvalidOperationException("Select a completed production order with a confirmed agreed price.");
+        if (order == null || order.Status is not ("Completed" or "InProduction") || !order.UsesEstimatedConsumption || order.ProducedQty <= 0 || order.AgreedUnitPrice is null or <= 0)
+            throw new InvalidOperationException("Select a production order with produced boxes and a confirmed agreed price.");
         if (order.CustomerId != model.CustomerID || order.BranchId != model.BranchID)
             throw new InvalidOperationException("The invoice customer and branch must match the production order.");
         if (model.Items.Count != 1 || model.Items[0].ItemId != order.FinishedItemId || model.Items[0].SalePrice != order.AgreedUnitPrice ||
@@ -44,6 +44,6 @@ public static class OrderPricing
             throw new InvalidOperationException("Keep the order's finished item, agreed price and GST. Discounts and extra charges are not allowed on an order-linked invoice.");
         var billed = await InvoicedQuantity(db, order.ProductionOrderId, model.SaleId);
         if (model.Items[0].Quantity > order.ProducedQty - billed)
-            throw new InvalidOperationException("Invoice quantity exceeds the completed boxes remaining to invoice for this order. Refresh the order selection.");
+            throw new InvalidOperationException("Invoice quantity exceeds the produced boxes remaining to invoice for this order. Refresh the order selection.");
     }
 }

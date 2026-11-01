@@ -1,4 +1,4 @@
-﻿@model InventorySystem.Core.Models.CostSheet
+@model InventorySystem.Core.Models.CostSheet
 @{
     Layout = "_Layout";
     bool isEdit = Model != null && Model.CostSheetId > 0;
@@ -40,6 +40,7 @@
     .btn-remove-ply{ background:#ef4444; color:#fff; border:none; border-radius:5px; padding:.25rem .6rem;
                      font-size:.8rem; cursor:pointer; }
 
+    .cs-rates-summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:12px;margin-bottom:12px}.cs-rates-summary::-webkit-details-marker{display:none}.cs-rates-summary::after{content:"▾";color:#315b74}.cs-rates-summary .cs-section-title{margin:0}#clientRatesDetails[open]>.cs-rates-summary::after{transform:rotate(180deg)}
     /* Cost summary panel */
     .cost-panel       { background:#f8faff; border:1px solid #dbeafe; border-radius:10px; padding:1.2rem; }
     .cost-row         { display:flex; justify-content:space-between; align-items:center;
@@ -60,6 +61,21 @@
 
     /* Action bar */
     .cs-action-bar { display:flex; gap:.75rem; justify-content:flex-end; margin-top:1.2rem; }
+
+    /* Keep the native file picker visible and easy to use. */
+    #costSheetExcelFile { max-width:100%; width:340px; height:38px; box-sizing:border-box;
+                         border:1px solid #d1d5db; border-radius:6px; background:#fff;
+                         color:#4b5563; font-size:.87rem; cursor:pointer; }
+    #costSheetExcelFile::file-selector-button { height:36px; margin-right:.75rem; padding:0 .85rem;
+                         border:0; border-right:1px solid #d1d5db; background:#f3f4f6; color:#374151;
+                         font:inherit; font-weight:500; cursor:pointer; }
+    #costSheetExcelFile:hover::file-selector-button { background:#e5e7eb; }
+    #costSheetExcelFile:focus-visible { outline:2px solid #3b82f6; outline-offset:2px; }
+    #importExcelBtn, .cs-template-link { height:38px; padding:0 1rem; border-radius:6px; font-size:.87rem; font-weight:500; }
+    .cs-template-link { display:inline-flex; align-items:center; box-sizing:border-box; border:1px solid #d1d5db;
+                        color:#374151; background:#fff; text-decoration:none; }
+    .cs-template-link:hover { background:#f3f4f6; color:#1e3a5f; }
+    .cs-template-link:focus-visible { outline:2px solid #3b82f6; outline-offset:2px; }
 
     /* Item lookup modal styles */
     .item-modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.6); z-index:1000; }
@@ -121,6 +137,19 @@
         </div>
     </div>
 
+    <div class="cs-card" aria-labelledby="excelImportTitle">
+        <h2 id="excelImportTitle" style="font-size:1.1rem;margin-top:0">Upload Excel</h2>
+        <p>.xlsx file, maximum 5 MB.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:center">
+            <label for="costSheetExcelFile">Excel cost sheet</label>
+            <input id="costSheetExcelFile" type="file" accept=".xlsx">
+            <button id="importExcelBtn" type="button" class="btn btn-primary" onclick="importCostSheetExcel()">Fill from Excel</button>
+            <a class="cs-template-link" href="@Url.Action("DownloadExcelTemplate", "CostSheet")" download="B_Packages_Cost_Sheet_Template.xlsx">Download Excel Template</a>
+        </div>
+        <p id="excelImportStatus" role="status" aria-live="polite"></p>
+        <p id="excelImportNotes" hidden></p>
+    </div>
+
     <!-- ── Row 1: Header ───────────────────────────────────────────────────── -->
     <div class="cs-card">
         <div class="cs-grid-4">
@@ -158,9 +187,9 @@
         <div class="cs-grid-2" style="margin-top:.75rem;">
             <p class="cs-fg">Reusable box recipe: use this cost sheet for different customers. Choose the customer, quantity and agreed selling price when creating each production order.</p>
             <div class="cs-fg">
-                <label>Finished Box Item (pieces)</label>
-                <select class="cs-input" id="finishedItemId"><option value="">Select a finished-box item...</option></select>
-                <small>Create the finished item under Items first. Material weights below are kg per ONE box.</small>
+                <label>Finished Box Item (optional for costing)</label>
+                <select class="cs-input" id="finishedItemId"><option value="">Not linked</option></select>
+                <small>Link inventory items before production. Material weights below are kg per ONE box.</small>
                 <label>Item / Product Name</label>
                 <input class="cs-input" id="itemName" placeholder="e.g. Rice Dresser Set">
             </div>
@@ -172,25 +201,30 @@
             <select class="cs-input" id="costingMethod" onchange="applyCostingMethod(true)"><option value="Client">Client carton cost sheet</option><option value="Manual">Manual weights / existing method</option></select>
         </div>
         <div id="clientCostingPanel" style="margin-top:1rem">
-            <span class="cs-section-title">Client costing rates & allowances</span>
-            <p>Paper KG is calculated from sheet area, GSM and layer type. Operating charges = paper KG × rate per KG. GST uses base cost plus profit. Lamination No excludes the sheet, glue-lamination and lamination-chemical costs and stock quantities.</p>
-            <div class="cs-grid-4"><div class="cs-fg"><label for="client_widthAllowanceIn">Width allowance (in)</label><input id="client_widthAllowanceIn" data-client-option="widthAllowanceIn" type="number" min="0" step="0.000001" value="0.63" class="cs-input" oninput="recalcAll()"></div>
+            <details id="clientRatesDetails"><summary class="cs-rates-summary"><span class="cs-section-title">Client costing rates &amp; allowances</span></summary>
+            <p id="clientFormulaNote">Uses the latest client workbook formulas. GST is shown separately and is excluded from the final rate.</p>
+            <div class="cs-grid-4" id="clientRatesInputs">                <div class="cs-fg">
+                    <label id="additionalTaxLabel">Tax % (on Final)</label>
+                    <input type="number" class="cs-input" id="taxPct" value="0" step="0.01" oninput="recalcAll()">
+                </div>
+<div class="cs-fg"><label for="client_widthAllowanceIn">Width allowance (in)</label><input id="client_widthAllowanceIn" data-client-option="widthAllowanceIn" type="number" min="0" step="0.000001" value="0.63" class="cs-input" oninput="recalcAll()"></div>
 <div class="cs-fg"><label for="client_lengthAllowanceIn">Length allowance (in)</label><input id="client_lengthAllowanceIn" data-client-option="lengthAllowanceIn" type="number" min="0" step="0.000001" value="0.55" class="cs-input" oninput="recalcAll()"></div>
-<div class="cs-fg"><label for="client_fluteFactor">Flute factor</label><input id="client_fluteFactor" data-client-option="fluteFactor" type="number" min="0" step="0.000001" value="1.55" class="cs-input" oninput="recalcAll()"></div>
-<div class="cs-fg"><label for="client_deckelUp">Deckel up</label><input id="client_deckelUp" data-client-option="deckelUp" type="number" min="0" step="0.000001" value="2" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_fluteFactor">Default flute factor</label><input id="client_fluteFactor" data-client-option="fluteFactor" type="number" min="0" step="0.000001" value="1.45" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_deckelUp">Deckel up</label><input id="client_deckelUp" data-client-option="deckelUp" type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
 <div class="cs-fg"><label for="client_printingRate">Printing rate / 1,000 sq.in / colour</label><input id="client_printingRate" data-client-option="printingRate" type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
 <div class="cs-fg"><label for="client_laminationRate">Lamination sheet rate / sq.ft</label><input id="client_laminationRate" data-client-option="laminationRate" type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
 <div class="cs-fg"><label for="client_pinRate">Rate per pin</label><input id="client_pinRate" data-client-option="pinRate" type="number" min="0" step="0.000001" value="1.25" class="cs-input" oninput="recalcAll()"></div>
-<div class="cs-fg"><label for="client_woodRate">Wood rate / paper KG</label><input id="client_woodRate" data-client-option="woodRate" type="number" min="0" step="0.000001" value="4" class="cs-input" oninput="recalcAll()"></div>
-<div class="cs-fg"><label for="client_starchRate">Starch & chemicals rate / paper KG</label><input id="client_starchRate" data-client-option="starchRate" type="number" min="0" step="0.000001" value="4.5" class="cs-input" oninput="recalcAll()"></div>
-<div class="cs-fg"><label for="client_glueApplications">Glue applications</label><input id="client_glueApplications" data-client-option="glueApplications" type="number" min="0" step="0.000001" value="2" class="cs-input" oninput="recalcAll()"></div>
-<div class="cs-fg"><label for="client_silicateApplications">Silicate applications</label><input id="client_silicateApplications" data-client-option="silicateApplications" type="number" min="0" step="0.000001" value="2" class="cs-input" oninput="recalcAll()"></div>
-<div class="cs-fg"><label for="client_glueLaminationApplications">Glue lamination applications</label><input id="client_glueLaminationApplications" data-client-option="glueLaminationApplications" type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
-<div class="cs-fg"><label for="client_laminationChemicalApplications">Lamination chemical applications</label><input id="client_laminationChemicalApplications" data-client-option="laminationChemicalApplications" type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_woodRate">Wood rate / paper KG</label><input id="client_woodRate" data-client-option="woodRate" type="number" min="0" step="0.000001" value="4.5" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_starchRate">Starch & chemicals rate / paper KG</label><input id="client_starchRate" data-client-option="starchRate" type="number" min="0" step="0.000001" value="5.25" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_glueApplications">Glue applications</label><input id="client_glueApplications" data-client-option="glueApplications" readonly type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_silicateApplications">Silicate applications</label><input id="client_silicateApplications" data-client-option="silicateApplications" readonly type="number" min="0" step="0.000001" value="1" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_glueLaminationApplications">Glue lamination applications</label><input id="client_glueLaminationApplications" data-client-option="glueLaminationApplications" readonly type="number" min="0" step="0.000001" value="0" class="cs-input" oninput="recalcAll()"></div>
+<div class="cs-fg"><label for="client_laminationChemicalApplications">Lamination chemical applications</label><input id="client_laminationChemicalApplications" data-client-option="laminationChemicalApplications" readonly type="number" min="0" step="0.000001" value="0" class="cs-input" oninput="recalcAll()"></div>
 <div class="cs-fg"><label for="client_glueLaminationRate">Glue lamination rate / KG</label><input id="client_glueLaminationRate" data-client-option="glueLaminationRate" type="number" min="0" step="0.000001" value="640" class="cs-input" oninput="recalcAll()"></div>
 <div class="cs-fg"><label for="client_laminationChemicalRate">Lamination chemical rate / KG</label><input id="client_laminationChemicalRate" data-client-option="laminationChemicalRate" type="number" min="0" step="0.000001" value="200" class="cs-input" oninput="recalcAll()"></div>
-<div class="cs-fg"><label for="client_glueLaminationItemId">Glue Lamination Stock Item (kg)</label><select id="client_glueLaminationItemId" class="cs-input client-stock" data-client-stock="glueLaminationItemId" onchange="recalcAll()"><option value="">Select stock item</option></select></div><div class="cs-fg"><label for="client_laminationChemicalItemId">Lamination Chemicals Stock Item (kg)</label><select id="client_laminationChemicalItemId" class="cs-input client-stock" data-client-stock="laminationChemicalItemId" onchange="recalcAll()"><option value="">Select stock item</option></select></div></div><p>For Lamination Yes, select the lamination adhesive stock items before Final, or set unused applications to 0. Lamination No requires neither item and consumes neither material. Do not repeat these materials under Other Materials.</p>
-            <div class="cs-grid-4"><div class="cs-fg"><label>Paper weight / box (KG)</label><input id="client_paperWeightKg" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Deckel (in)</label><input id="client_deckelIn" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Wood cost</label><input id="client_woodCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Starch & chemical cost</label><input id="client_starchCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Glue lamination cost</label><input id="client_glueLaminationCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Lamination chemical cost</label><input id="client_laminationChemicalCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Operating costs incl. adhesives</label><input id="client_operatingCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>GST amount (cost + profit)</label><input id="client_gstAmount" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Additional tax amount</label><input id="client_additionalTaxAmount" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>W/H amount</label><input id="client_withholdingAmount" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Price after MOQ divisor</label><input id="client_pricePerUnit" class="cs-input calc" readonly value="0"></div></div><p>Commission A, commission B, profit and additional tax each use base cost × percentage ÷ 100. GST uses base cost plus profit. MOQ divides base cost + commissions + profit; GST, additional tax and withholding are added after division.</p>
+<div class="cs-fg"><label for="client_glueLaminationItemId">Glue Lamination Stock Item (kg)</label><select id="client_glueLaminationItemId" class="cs-input client-stock" data-client-stock="glueLaminationItemId" onchange="recalcAll()"><option value="">Select stock item</option></select></div><div class="cs-fg"><label for="client_laminationChemicalItemId">Lamination Chemicals Stock Item (kg)</label><select id="client_laminationChemicalItemId" class="cs-input client-stock" data-client-stock="laminationChemicalItemId" onchange="recalcAll()"><option value="">Select stock item</option></select></div></div><p>For production with lamination, link the adhesive stock items. Keep unused applications at 0.</p>
+            </details>
+            <div class="cs-grid-4"><div class="cs-fg"><label>Paper weight / box (KG)</label><input id="client_paperWeightKg" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Deckel (in)</label><input id="client_deckelIn" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Wood cost</label><input id="client_woodCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Starch & chemical cost</label><input id="client_starchCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Glue lamination cost</label><input id="client_glueLaminationCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Lamination chemical cost</label><input id="client_laminationChemicalCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Operating costs incl. adhesives</label><input id="client_operatingCost" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label id="clientGstLabel">GST amount (shown separately)</label><input id="client_gstAmount" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Additional tax amount</label><input id="client_additionalTaxAmount" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>W/H amount</label><input id="client_withholdingAmount" class="cs-input calc" readonly value="0"></div><div class="cs-fg"><label>Price after MOQ divisor</label><input id="client_pricePerUnit" class="cs-input calc" readonly value="0"></div></div><details><summary>Calculation details</summary><p id="clientFormulaDetails"></p></details>
         </div>
     </div>
 
@@ -371,13 +405,13 @@
                        oninput="recalcAll()">
             </div>
             <div class="cs-fg">
-                <label>Glue Stock Item</label><select class="cs-input" id="glueItemId"><option value="">No glue</option></select>
+                <label>Glue Stock Item</label><select class="cs-input" id="glueItemId"><option value="">Not linked</option></select>
                 <label>Glue KG / Box</label><input type="number" class="cs-input" id="glueKgPerBox" min="0" step="0.000001" value="0" oninput="recalcAll()">
                 <label>Glue Rate / KG</label>
                 <input type="number" class="cs-input" id="glueRate" value="0" step="0.01" oninput="recalcAll()">
             </div>
             <div class="cs-fg">
-                <label>Silicate Stock Item</label><select class="cs-input" id="silicateItemId"><option value="">No silicate</option></select>
+                <label>Silicate Stock Item</label><select class="cs-input" id="silicateItemId"><option value="">Not linked</option></select>
                 <label>Silicate KG / Box</label><input type="number" class="cs-input" id="silicateKgPerBox" min="0" step="0.000001" value="0" oninput="recalcAll()">
                 <label>Silicate Rate / KG</label>
                 <input type="number" class="cs-input" id="silicateRate" value="0" step="0.01" oninput="recalcAll()">
@@ -569,14 +603,12 @@
                     <label>Based on MOQ</label>
                     <input type="number" class="cs-input" id="moq" value="1" min="1" oninput="recalcAll()">
                 </div>
-                <div class="cs-fg">
-                    <label id="additionalTaxLabel">Tax % (on Final)</label>
-                    <input type="number" class="cs-input" id="taxPct" value="0" step="0.01" oninput="recalcAll()">
-                </div>
+
             </div>
 
+            <div id="manualTaxLocation"></div>
             <div class="final-box" style="margin-top:.75rem; background:#065f46;">
-                <div class="label">Final Rate (W/ GST)</div>
+                <div class="label" id="finalRateLabel">Final Rate</div>
                 <div class="amount" id="finalRateDisplay">0.00</div>
                 <input type="hidden" id="finalRateWithGST" value="0">
             </div>
@@ -589,7 +621,9 @@
     </div>
 
     <!-- ── Action buttons ─────────────────────────────────────────────────── -->
+    <p id="refreshRatesStatus" role="status"></p>
     <div class="cs-action-bar">
+        <button type="button" id="refreshRatesBtn" class="btn btn-outline-secondary" onclick="refreshLatestRates()">Refresh latest rates</button>
         <button type="button" class="btn btn-outline-secondary" onclick="resetForm()">🔄 Reset</button>
         <button type="button" class="btn btn-primary" onclick="saveDraft()">💾 Save as Draft</button>
         <button type="button" class="btn btn-success" onclick="saveFinal()">✅ Save as Final</button>
@@ -646,3 +680,5 @@
 <input type="hidden" id="editCostSheetId" value="@(isEdit ? Model!.CostSheetId.ToString() : "0")">
 <script src="~/js/client-costing.js" asp-append-version="true"></script>
 <script src="~/js/costsheet.js" asp-append-version="true"></script>
+<script src="~/js/costsheet-import.js" asp-append-version="true"></script>
+

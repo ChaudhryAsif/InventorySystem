@@ -1,4 +1,4 @@
-@{
+﻿@{
     Layout = "_Layout";
     var presetType = ViewBag.ItemType as string ?? "";
     var reportTitle = presetType == "RawMaterial" ? "Raw Material Stock" : presetType == "FinishedGoods" ? "Finished Goods Stock" : "Stock Report";
@@ -7,9 +7,10 @@
     var colCount = (BranchSettings.Value.MultiBranchEnabled ? 8 : 7) + (showType ? 1 : 0);
 }
 
-<link href="~/css/report.css" rel="stylesheet" />
+<link href="~/css/report.css" rel="stylesheet" asp-append-version="true" />
 
 <div id="reportPage">
+    <div class="pdf-brand"><partial name="_CompanyPrintHeader" /></div>
 
     <div class="rpt-page-header">
         <div>
@@ -17,7 +18,8 @@
             <p class="rpt-subtitle">@(BranchSettings.Value.MultiBranchEnabled ? "Real-time inventory levels across all branches" : "Material balances use estimated consumption; reconcile against physical stock regularly.")</p>
         </div>
         <div class="rpt-header-actions" id="actionButtons">
-            <button class="rpt-btn rpt-btn-outline" onclick="window.print()">🖨️ Print</button>
+            @if ((string?)ViewBag.ItemType == "RawMaterial") { <a class="rpt-btn rpt-btn-outline" style="text-decoration:none;" href="/Production/PurchaseNeeds">🛒 Materials to Purchase</a> }
+            <button class="rpt-btn rpt-btn-outline" onclick="PrintTab.open()">🖨️ Print</button>
             <button class="rpt-btn rpt-btn-primary" id="downloadBtn" onclick="downloadPDF()">⬇️ Download PDF</button>
         </div>
     </div>
@@ -57,9 +59,9 @@
                 <input type="hidden" id="typeFilter" value="@presetType" />
             }
             <div class="rpt-filter-group">
-                <label class="rpt-filter-label">Category</label>
+                <label class="rpt-filter-label">Group Name</label>
                 <select class="rpt-filter-input" id="categoryFilter">
-                    <option value="">All Categories</option>
+                    <option value="">All Groups</option>
                 </select>
             </div>
             <div class="rpt-filter-group">
@@ -198,7 +200,7 @@
     });
 
     function loadCategories() {
-        return fetch('/Report/GetCategoryList')
+        return fetch('/Report/GetCategoryList?itemType=' + encodeURIComponent(document.getElementById('typeFilter').value || ''))
             .then(r => r.json())
             .then(cats => {
                 const sel = document.getElementById('categoryFilter');
@@ -256,7 +258,7 @@
                         <td>${escapeHtml(r.categoryName)}</td>
                         ${@(showType ? "true" : "false") ? '<td>' + typeLabel(r.itemType) + '</td>' : ''}
                         ${@(BranchSettings.Value.MultiBranchEnabled ? "true" : "false") ? '<td>' + escapeHtml(r.branchName) + '</td>' : ''}
-                        <td><strong>${r.quantity}</strong></td>
+                        <td><strong>${r.quantity} ${escapeHtml((r.stockUnit||'').toUpperCase())}</strong></td>
                         <td><span class="rpt-badge ${badgeClass(r.stockStatus)}">${r.stockStatus}</span></td>
                         <td>${r.lastUpdated}</td>
                     </tr>`).join('');
@@ -285,6 +287,8 @@
         return t === 'FinishedGoods' ? 'Finished Goods' : 'Raw Material';
     }
 
+    window.addEventListener('beforeprint', () => document.getElementById('generatedDate').textContent = new Date().toLocaleString());
+
     function downloadPDF() {
         const btn          = document.getElementById('downloadBtn');
         const filterPanel  = document.getElementById('filterPanel');
@@ -298,6 +302,7 @@
         btn.disabled = true;
         btn.textContent = '⏳ Generating...';
 
+        document.body.classList.add('pdf-exporting');
         html2pdf().set({
             margin:      [10, 8, 10, 8],
             filename:    `@(reportTitle.Replace(" ", ""))_${new Date().toISOString().split('T')[0]}.pdf`,
@@ -305,6 +310,7 @@
             html2canvas: { scale: 2, useCORS: true, logging: false },
             jsPDF:       { unit: 'mm', format: 'a4', orientation: 'landscape' }
         }).from(document.getElementById('reportPage')).save().then(() => {
+            document.body.classList.remove('pdf-exporting');
             filterPanel.style.display = '';
             actionBtns.style.display  = '';
             printHeader.style.display = 'none';

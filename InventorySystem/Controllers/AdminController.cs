@@ -12,7 +12,7 @@ namespace InventorySystem.Controllers
 {
     [Authorize(Roles = "SuperAdmin")]
     [Route("Admin")]
-    public class AdminController : Controller
+    public partial class AdminController : Controller
     {
         private readonly ApplicationDbContext _context;
         private readonly IPermissionService _permissionService;
@@ -370,7 +370,7 @@ namespace InventorySystem.Controllers
 
             ViewBag.MenuVersion = MenuVersion(await _context.MenuItems.AsNoTracking().ToListAsync());
             ViewBag.ParentMenuItems = await _context.MenuItems
-                .Where(m => m.IsActive && m.ParentId == null && m.Id != id && (m.Controller == null || m.Controller == ""))
+                .Where(m => m.IsActive && m.Id != id && (m.Controller == null || m.Controller == ""))
                 .ToListAsync();
 
             return View(menuItem);
@@ -380,6 +380,7 @@ namespace InventorySystem.Controllers
         {
             public int Id { get; set; }
             public List<int>? Children { get; set; }
+            public List<MenuNodeDto>? Branches { get; set; }
         }
 
         public class MenuOrderInput
@@ -427,23 +428,22 @@ namespace InventorySystem.Controllers
             var byId = all.ToDictionary(m => m.Id);
             var seen = new HashSet<int>();
 
-            foreach (var node in tree)
+            string? Visit(MenuNodeDto node, int depth)
             {
-                if (node == null) return "Invalid menu entry. Reload the page and try again.";
-                if (!byId.TryGetValue(node.Id, out var top)) return "A menu item no longer exists. Reload the page and try again.";
-                if (!seen.Add(node.Id)) return $"'{top.Name}' appears more than once.";
-
-                var children = node.Children ?? new List<int>();
-                if (children.Count > 0 && !IsMenuGroup(top))
-                    return $"'{top.Name}' is a page and cannot contain other pages.";
-
-                foreach (var childId in children)
+                if (node == null || depth > 8) return "Invalid menu nesting (maximum eight levels).";
+                if (!byId.TryGetValue(node.Id, out var item)) return "A menu item no longer exists. Reload the page and try again.";
+                if (!seen.Add(node.Id)) return $"'{item.Name}' appears more than once.";
+                if ((node.Children?.Count > 0 || node.Branches?.Count > 0) && !IsMenuGroup(item)) return "Pages cannot contain children.";
+                if (node.Children?.Count > 0 && node.Branches?.Count > 0) return "Use one child representation per menu.";
+                foreach (var id in node.Children ?? new())
                 {
-                    if (!byId.TryGetValue(childId, out var child)) return "A menu item no longer exists. Reload the page and try again.";
-                    if (!seen.Add(childId)) return $"'{child.Name}' appears more than once.";
-                    if (IsMenuGroup(child)) return $"Group '{child.Name}' cannot be placed inside another group.";
+                    if (byId.TryGetValue(id, out var child) && IsMenuGroup(child)) return "Nested groups require the full tree representation. Reload the menu builder.";
+                    var error = Visit(new MenuNodeDto { Id=id }, depth+1); if (error != null) return error;
                 }
+                foreach (var child in node.Branches ?? new()) { var error=Visit(child,depth+1); if(error!=null)return error; }
+                return null;
             }
+            foreach (var node in tree) { var error=Visit(node,1); if(error!=null)return error; }
 
             if (seen.Count != all.Count) return "The menu changed since this page loaded. Reload the page and try again.";
             return null;
@@ -464,20 +464,15 @@ namespace InventorySystem.Controllers
             if (error != null) return Json(new { success = false, message = error });
 
             var byId = all.ToDictionary(m => m.Id);
-            for (var i = 0; i < tree!.Count; i++)
+            void Arrange(List<MenuNodeDto> nodes, int? parent)
             {
-                var top = byId[tree[i].Id];
-                top.ParentId = null;
-                top.SortOrder = i + 1;
-
-                var children = tree[i].Children ?? new List<int>();
-                for (var j = 0; j < children.Count; j++)
+                for (var i=0;i<nodes.Count;i++)
                 {
-                    var child = byId[children[j]];
-                    child.ParentId = top.Id;
-                    child.SortOrder = j + 1;
+                    var row=byId[nodes[i].Id]; row.ParentId=parent; row.SortOrder=i+1;
+                    Arrange(nodes[i].Branches ?? (nodes[i].Children ?? new()).Select(id=>new MenuNodeDto { Id=id }).ToList(),row.Id);
                 }
             }
+            Arrange(tree,null);
 
             await _context.SaveChangesAsync();
             return Json(new { success = true });
@@ -550,10 +545,20 @@ namespace InventorySystem.Controllers
             string? invalid = null;
             if (model.Version != MenuVersion(all)) invalid = "The menu changed since this page loaded. Reload before editing; your changes have not been applied.";
             else if (!ModelState.IsValid || string.IsNullOrWhiteSpace(model.Name) || model.Name.Trim().Length > 100 || model.Icon?.Length > 500) invalid = "Enter a name of 1 to 100 characters and an icon of at most 500 characters.";
-            else if (group && model.ParentId.HasValue) invalid = "Main menu groups must stay at the top level. Only pages can be moved into a group.";
             else if (model.ParentId == id) invalid = "A menu item cannot be its own parent.";
-            else if (parent != null && (parent.ParentId != null || !IsMenuGroup(parent))) invalid = "Pages can only be placed inside a top-level group.";
+            else if (parent != null && !IsMenuGroup(parent)) invalid = "Only folders can contain menus.";
             else if (model.ParentId.HasValue && parent == null) invalid = "Parent menu not found.";
+            if (invalid == null)
+            {
+                var seenParents=new HashSet<int> { id }; var ancestor=parent;
+                while(ancestor!=null)
+                {
+                    if(!seenParents.Add(ancestor.Id)) { invalid="A folder cannot be moved into itself or its descendants.";break; }
+                    ancestor=all.FirstOrDefault(m=>m.Id==ancestor.ParentId);
+                }
+                int Depth(MenuItem row, HashSet<int> seen) => !seen.Add(row.Id) ? 99 : 1 + all.Where(m=>m.ParentId==row.Id).Select(m=>Depth(m,new HashSet<int>(seen))).DefaultIfEmpty(0).Max();
+                if(invalid==null && seenParents.Count-1+Depth(menuItem,new())>8)invalid="Maximum menu depth is eight levels.";
+            }
             if (invalid == null && group && all.Any(m => m.Id != id && IsMenuGroup(m) && string.Equals(m.Name.Trim(), model.Name.Trim(), StringComparison.OrdinalIgnoreCase)))
                 invalid = "A main menu with this name already exists.";
             if (invalid != null)

@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using InventorySystem.Authorization;
 using InventorySystem.Controllers;
 using InventorySystem.Core.Models;
@@ -29,12 +29,12 @@ public class BranchModeTests
             .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options;
         var db = new ApplicationDbContext(options, Options.Create(new BranchOptions { MultiBranchEnabled = multiBranch }));
         db.Database.EnsureCreated();
-        db.ItemCategory.Add(new ItemCategory { CategoryId = 1, CategoryName = "Test category", IsActive = true });
+        db.ItemCategory.Add(new ItemCategory { CategoryId = 1, CategoryName = "Test category", GroupType="RawMaterial", IsActive = true });
         if (superAdmin) db.Roles.Add(new Role { Id = 900, Name = "SuperAdmin", IsActive = true });
         db.AppUsers.Add(new AppUser { Id = 900, Username = "branch-test", FullName = "Branch test", BranchIds = "2", PrimaryRoleId = superAdmin ? 900 : 1 });
         db.UserRoles.Add(new UserRole { UserId = 900, RoleId = superAdmin ? 900 : 1 });
         db.Items.Add(new Items { ItemID = 900, CategoryID = 1, ItemName = "Paper", IsActive = true });
-        db.Parties.Add(new Party { PartyId = 900, PartyName = "Supplier", PartyType = "both", Status = "active" });
+        db.Parties.Add(new Party { PartyId = 900, PartyCode="RAW-GROUP:1", PartyName = "Supplier", PartyType = "both", Status = "active" });
         db.Stock.AddRange(new Stock { ItemId = 900, BranchId = 1, Quantity = 10 }, new Stock { ItemId = 900, BranchId = 2, Quantity = 200 });
         db.SaveChanges();
         db.ChangeTracker.Clear();
@@ -166,3 +166,4 @@ public class BranchModeTests
         Assert.Equal("2", (await db.AppUsers.SingleAsync(u => u.Id == 900)).BranchIds);
     }
 }
+

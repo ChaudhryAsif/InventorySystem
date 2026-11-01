@@ -1,0 +1,41 @@
+@model IEnumerable<InventorySystem.Core.Models.MenuItem>
+@{
+    var controller = ViewContext.RouteData.Values["controller"]?.ToString();
+    var action = ViewContext.RouteData.Values["action"]?.ToString();
+    bool Active(InventorySystem.Core.Models.MenuItem node) => (node.Controller == controller && node.Action == action) || node.Children?.Any(Active) == true;
+}
+@foreach (var item in Model)
+{
+    var children = item.Children?.ToList() ?? new();
+    var active = Active(item);
+    var id = $"sidebar-menu-{item.Id}";
+    <li class="sidebar-item @(active && children.Count > 0 ? "open" : "")" id="@id">
+    @if (children.Count > 0)
+    {
+        <button type="button" class="sidebar-link" style="width:100%;text-align:left;border:0;background:transparent;cursor:pointer"
+            aria-expanded="@(active ? "true" : "false")" aria-controls="@(id)-children"
+            onclick="this.parentElement.classList.toggle('open');this.setAttribute('aria-expanded',this.parentElement.classList.contains('open'))">
+            @if (item.Icon is "📁" or "📂")
+            {
+                <span class="sidebar-icon sidebar-folder-icon" style="display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--primary-color,#2d5f7f)" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">
+                        <path d="M3 7V6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+                    </svg>
+                </span>
+            }
+            else
+            {
+                <span class="sidebar-icon">@item.Icon</span>
+            }
+            <span class="sidebar-text">@item.Name</span><span class="sidebar-arrow">▼</span>
+        </button>
+        <ul class="sidebar-submenu" id="@(id)-children"><partial name="_SidebarNodes" model="children" /></ul>
+    }
+    else
+    {
+        <a asp-controller="@item.Controller" asp-action="@item.Action" class="@(item.ParentId.HasValue ? "sidebar-sublink" : "sidebar-link") @(active ? "active" : "")">
+            <span class="sidebar-icon">@item.Icon</span><span class="sidebar-text">@item.Name</span>
+        </a>
+    }
+    </li>
+}

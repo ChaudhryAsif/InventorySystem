@@ -4,9 +4,10 @@
     var colCount = BranchSettings.Value.MultiBranchEnabled ? 12 : 11;
 }
 
-<link href="~/css/report.css" rel="stylesheet" />
+<link href="~/css/report.css" rel="stylesheet" asp-append-version="true" />
 
 <div id="reportPage">
+    <div class="pdf-brand"><partial name="_CompanyPrintHeader" /></div>
 
     <div class="rpt-page-header">
         <div>
@@ -15,7 +16,7 @@
         </div>
         <div class="rpt-header-actions" id="actionButtons">
             <button class="rpt-btn rpt-btn-ghost" id="expandAllBtn" onclick="expandAll()">⊞ Expand All</button>
-            <button class="rpt-btn rpt-btn-outline" onclick="window.print()">🖨️ Print</button>
+            <button class="rpt-btn rpt-btn-outline" onclick="PrintTab.open()">🖨️ Print</button>
             <button class="rpt-btn rpt-btn-primary" id="downloadBtn" onclick="downloadPDF()">⬇️ Download PDF</button>
         </div>
     </div>
@@ -92,9 +93,9 @@
                     </select>
                 </div>
                 <div class="rpt-filter-group">
-                    <label class="rpt-filter-label">Category (invoice contains)</label>
+                    <label class="rpt-filter-label">Group (invoice contains)</label>
                     <select class="rpt-filter-input" id="categoryFilter">
-                        <option value="">All Categories</option>
+                        <option value="">All Groups</option>
                     </select>
                 </div>
                 <div class="rpt-filter-group">
@@ -245,7 +246,7 @@
 
     function loadSuppliers() { return fetch('/Report/GetSupplierList').then(r => r.json()).then(l => fillSelect('supplierFilter', l)); }
     function loadItems()      { return fetch('/Report/GetItemList').then(r => r.json()).then(l => fillSelect('itemFilter', l)); }
-    function loadCategories() { return fetch('/Report/GetCategoryList').then(r => r.json()).then(l => fillSelect('categoryFilter', l)); }
+    function loadCategories() { return fetch('/Report/GetCategoryList?itemType=RawMaterial').then(r => r.json()).then(l => fillSelect('categoryFilter', l)); }
 
     function quickDate(kind) {
         RptFilters.quickDate(kind, 'fromDate', 'toDate');
@@ -413,6 +414,8 @@
             .replace(/"/g, '&quot;');
     }
 
+    window.addEventListener('beforeprint', () => document.getElementById('generatedDate').textContent = new Date().toLocaleString());
+
     function downloadPDF() {
         const btn         = document.getElementById('downloadBtn');
         const filterPanel = document.getElementById('filterPanel');
@@ -432,6 +435,7 @@
         btn.disabled    = true;
         btn.textContent = '⏳ Generating...';
 
+        document.body.classList.add('pdf-exporting');
         html2pdf().set({
             margin:      [10, 8, 10, 8],
             filename:    `PurchaseReport_${new Date().toISOString().split('T')[0]}.pdf`,
@@ -439,6 +443,7 @@
             html2canvas: { scale: 2, useCORS: true, logging: false },
             jsPDF:       { unit: 'mm', format: 'a4', orientation: 'landscape' }
         }).from(document.getElementById('reportPage')).save().then(() => {
+            document.body.classList.remove('pdf-exporting');
             filterPanel.style.display = '';
             actionBtns.style.display  = '';
             printHeader.style.display = 'none';

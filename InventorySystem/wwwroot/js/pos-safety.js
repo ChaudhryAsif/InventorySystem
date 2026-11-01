@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
     'use strict';
     window.escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const token = document.querySelector('meta[name="csrf-token"]')?.content;
@@ -44,11 +44,12 @@
     window.fetch = async (input, options = {}) => {
         const url = new URL(input instanceof Request ? input.url : input, location.href);
         if (url.origin !== location.origin) return originalFetch(input, options);
+        const clientItemLookup = url.pathname === '/Item/GetItems' && document.getElementById('itemModal')?.dataset.itemPaging === 'client';
         const method = String(options.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
         const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
         const branch = Number(document.getElementById('posBranch')?.value || 1);
         if (url.pathname === '/Item/GetItems' || url.pathname === '/Sale/GetStockByItem') url.searchParams.set('branchId', branch);
-        if (url.pathname === '/Item/GetItems' && !url.searchParams.has('search')) {
+        if (url.pathname === '/Item/GetItems' && !clientItemLookup && !url.searchParams.has('search')) {
             const search = document.getElementById('itemSearchInput')?.value;
             if (search) url.searchParams.set('search', search);
         }
@@ -66,7 +67,7 @@
                 headers.set('X-Request-ID', requestIds.get(key));
             }
         }
-        if (listApis[url.pathname]) {
+        if (listApis[url.pathname] && !clientItemLookup) {
             const filterKey = url.searchParams.toString();
             if (filters.get(url.pathname) !== filterKey) pages.set(url.pathname, 1);
             filters.set(url.pathname, filterKey);
@@ -80,7 +81,7 @@
         if (response.ok && !['GET', 'HEAD'].includes(method) && typeof body === 'string') {
             try { const data = await response.clone().json(); if (data.success !== false) requestIds.delete(method + url.pathname + body); } catch {}
         }
-        if (response.ok && listApis[url.pathname]) {
+        if (response.ok && listApis[url.pathname] && !clientItemLookup) {
             try {
                 const data = await response.clone().json();
                 const page = data.page || 1, size = data.pageSize || 50, count = data.totalCount || 0;
@@ -121,7 +122,7 @@
         window.posMarkSaved = () => { dirty = false; };
         const search = document.getElementById('itemSearchInput');
         let timer;
-        if (search) search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { if (typeof window.loadItems === 'function') window.loadItems(); }, 250); });
+        if (search && document.getElementById('itemModal')?.dataset.itemPaging !== 'client') search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { if (typeof window.loadItems === 'function') window.loadItems(); }, 250); });
         window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
         document.addEventListener('click', async e => {
             const link = e.target.closest('a[href]');

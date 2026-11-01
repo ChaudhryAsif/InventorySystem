@@ -1,4 +1,4 @@
-﻿@{ ViewData["Title"] = "Items"; }
+@{ var pageItemType = (string?)ViewBag.ItemType ?? "RawMaterial"; var pageTypeLabel = pageItemType == "FinishedGoods" ? "Finished Goods" : "Raw Material"; ViewData["Title"] = pageTypeLabel + " Items"; }
 <link href="~/css/item.css" rel="stylesheet" />
 
 @{
@@ -9,12 +9,16 @@
 <div>
     <div class="page-header">
         <div class="page-title">
-            <h2>Items</h2>
-            <p>Manage all inventory items</p>
+            <h2>@pageTypeLabel Items</h2>
+            <p>Manage @pageTypeLabel.ToLowerInvariant() items</p>
         </div>
-        <button class="btn btn-success" onclick="showModal('itemModal')">
-            ➕ Add New Item
-        </button>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;">
+            <button class="btn btn-primary" onclick="printItems(true)" title="Print the ticked rows">🖨 Print Selected</button>
+            <button class="btn btn-primary" onclick="printItems(false)" title="Print every item matching the filters">🖨 Print List</button>
+            <button class="btn btn-success" onclick="showModal('itemModal')">
+                ➕ Add New Item
+            </button>
+        </div>
     </div>
 
     <!-- Filters -->
@@ -22,11 +26,10 @@
         <div class="filter-grid">
             <input type="text" class="form-control" placeholder="🔍 Search items..." id="searchInput" oninput="renderFilteredTable()">
             <select class="form-control" id="listItemTypeDropdown" aria-label="Filter by item type" onchange="renderFilteredTable()">
-                <option value="">All Item Types</option>
-                <option value="RawMaterial">Raw Material</option>
-                <option value="FinishedGoods">Finished Goods</option>
+                <option value="@pageItemType">@pageTypeLabel</option>
             </select>
 
+            <select id="listGroupDropdown" class="form-control" aria-label="Filter by group" onchange="renderFilteredTable()"><option value="">All Groups</option></select>
             <select class="form-control" id="listStatusDropdown" aria-label="Filter by status" onchange="renderFilteredTable()">
                 <option>All Status</option>
                 <option>Active</option>
@@ -42,9 +45,11 @@
                 <thead>
                     <tr>
                         @* <th style="width: 80px;">Item ID</th> *@
+                        <th style="width: 40px;"><input type="checkbox" id="pickAll" aria-label="Select all items" onchange="toggleAllItems(this.checked)"></th>
                         <th style="width: 80px;">Image</th>
                         <th>Item Name</th>
                         <th>Group Name</th>
+                        <th>Stock Unit</th>
                       @*   <th>Barcode</th> *@
                         <th style="width: 120px;">Sale Price</th>
                         <th style="width: 100px;">Status</th>
@@ -106,11 +111,12 @@
 
                         <div class="form-group">
                             <label class="form-label">Item Type</label>
-                            <select id="itemType" class="form-control" onchange="if(this.value==='FinishedGoods')document.getElementById('stockUnit').value='pcs'">
-                                <option value="RawMaterial" selected>Raw Material (bought: paper, glue, tape)</option><option value="FinishedGoods">Finished Goods (made: boxes)</option>
+                            <select id="itemType" class="form-control">
+                                <option value="@pageItemType">@pageTypeLabel</option>
                             </select>
                             <label class="form-label">Stock Unit</label>
-                            <select id="stockUnit" class="form-control"><option value="kg" selected>Kilograms</option><option value="pcs">Pieces</option></select>
+                            <select id="stockUnit" class="form-control"><option value="kg" selected>Kilograms</option><option value="pcs">Pieces</option><option value="in">Inches</option></select>
+                            <label for="materialRole">Costing material use</label><select id="materialRole" class="form-control"><option value="">Automatic</option><option value="General">General material</option><option value="Glue">Glue</option><option value="Silicate">Silicate</option><option value="LaminationGlue">Lamination Glue</option><option value="LaminationChemical">Lamination Chemical</option></select>
                             <label class="form-label">Sale Price</label>
                             <input type="number" class="form-control" id="salePrice" value="0" step="0.01" required>
                         </div>
@@ -187,6 +193,7 @@
     // without a real photo must fall back to something that doesn't depend on the network.
     const NO_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23e2e8f0'/%3E%3Ccircle cx='38' cy='36' r='8' fill='%23ffffff'/%3E%3Cpath d='M20 78 L42 50 L58 68 L72 48 L90 78 Z' fill='%23ffffff'/%3E%3C/svg%3E";
 
+    const pageItemType = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(pageItemType));
     let isEditMode = false;
     let itemSaveInProgress = false;
     let itemLoadVersion = 0;
@@ -194,13 +201,21 @@
     let itemListLoaded = false;
     let itemGroups = [];
     let canDeleteItems = false;
+    const canEditItems = @(User.IsInRole("SuperAdmin") ? "true" : "false");
     let itemListRequestVersion = 0;
 
         document.addEventListener('DOMContentLoaded', function() {
         loadItemList();
+        loadListGroups().catch(()=>{document.getElementById("listGroupDropdown").disabled=true;});
 
     });
 
+    async function loadListGroups() {
+        const response=await fetch('/Category/GetList?groupType='+encodeURIComponent(pageItemType));
+        if(!response.ok)throw new Error('Groups unavailable');const data=await response.json();
+        const select=document.getElementById('listGroupDropdown');select.replaceChildren(new Option('All Groups',''));
+        for(const group of data.data.filter(g=>g.groupType===pageItemType))select.add(new Option(group.categoryName,group.categoryId));
+    }
     async function loadItemList() {
     const requestVersion = ++itemListRequestVersion;
     const params = new URLSearchParams();
@@ -208,6 +223,7 @@
     const search = document.getElementById('searchInput').value.trim();
     const status = document.getElementById('listStatusDropdown').value;
     if (type) params.set('itemType', type);
+    if(document.getElementById('listGroupDropdown').value)params.set('groupId',document.getElementById('listGroupDropdown').value);
     if (search) params.set('search', search);
     if (status !== 'All Status') params.set('status', status);
     try {
@@ -226,7 +242,7 @@
     } catch (err) {
         if (requestVersion !== itemListRequestVersion) return;
         itemListLoaded = false;
-        PosListState.show(document.getElementById('itemTableBody'), { columns:6, error:true, title:'Items could not be loaded', message:'Check your connection and try again.', actionText:'Try again', onAction:loadItemList });
+        PosListState.show(document.getElementById('itemTableBody'), { columns:8, error:true, title:'Items could not be loaded', message:'Check your connection and try again.', actionText:'Try again', onAction:loadItemList });
     }
 }
 
@@ -243,12 +259,12 @@
         const filtered = allItems;
 
         if (filtered.length === 0) {
-            const matching = !!search || !!type || status !== 'All Status';
-            PosListState.show(tableBody, { columns:6,
+            const matching = !!search || !!document.getElementById('listGroupDropdown').value || status !== 'All Status';
+            PosListState.show(tableBody, { columns:8,
                 title:matching ? 'No matching items found' : 'No items yet',
                 message:matching ? 'Try a different search or clear the filters.' : 'Add your first inventory item. Create a group first if needed.',
                 actionText:matching ? 'Clear filters' : '+ Add Item',
-                onAction:matching ? () => { document.getElementById('searchInput').value=''; document.getElementById('listItemTypeDropdown').selectedIndex=0; document.getElementById('listStatusDropdown').selectedIndex=0; renderFilteredTable(); } : () => showModal('itemModal') });
+                onAction:matching ? () => { document.getElementById('searchInput').value='';document.getElementById('listGroupDropdown').value=''; document.getElementById('listItemTypeDropdown').selectedIndex=0; document.getElementById('listStatusDropdown').selectedIndex=0; renderFilteredTable(); } : () => showModal('itemModal') });
             return;
         }
 
@@ -257,9 +273,11 @@
         filtered.forEach(item => {
             const row = document.createElement('tr');
             row.innerHTML = `
+                <td><input type="checkbox" class="item-pick" value="${item.itemID}" aria-label="Select item" onchange="syncPickAll()"></td>
                 <td><img src="${item.imagePath || NO_IMAGE_PLACEHOLDER}" class="item-image-thumb" alt="Item"></td>
                 <td>${escapeHtml(item.itemName)}</td>
                 <td>${escapeHtml(item.categoryName || '')}</td>
+                <td>${item.stockUnit === 'kg' ? 'KG' : item.stockUnit === 'pcs' ? 'PCS' : escapeHtml(item.stockUnit || '')}</td>
                
                 <td>${item.salePrice?.toFixed(2) ?? '0.00'}</td>
                 <td>
@@ -268,14 +286,42 @@
                     </span>
                 </td>
                 <td>
-                    <div class="action-buttons">
-                        <button class="btn btn-primary btn-sm" onclick="editItem(${item.itemID})">✏️ Edit</button>
-                        ${canDeleteItems ? `<button class="btn btn-danger btn-sm" onclick="deleteItem(${item.itemID})">🗑️ Delete</button>` : ''}
-                    </div>
+                    ${AM.wrap(`<button class="btn btn-sm btn-info" onclick="viewItem(${item.itemID})">👁️ View</button>`, [
+                        canEditItems ? `<button onclick="editItem(${item.itemID})">✏️ Edit</button>` : '',
+                        canDeleteItems ? '-' : '',
+                        canDeleteItems ? `<button class="am-danger" onclick="deleteItem(${item.itemID})">🗑️ Delete</button>` : ''])}
                 </td>
             `;
             tableBody.appendChild(row);
         });
+        document.getElementById('pickAll').checked = false;
+    }
+
+    function viewItem(id) {
+        const type = encodeURIComponent(pageItemType);
+        ViewPopup.open('Item Details', `/Item/Print?ids=${id}&itemType=${type}&detail=true&popup=true`, `/Item/Print?ids=${id}&itemType=${type}&detail=true`);
+    }
+    function toggleAllItems(checked) { document.querySelectorAll('.item-pick').forEach(c => c.checked = checked); }
+    function syncPickAll() {
+        const picks = [...document.querySelectorAll('.item-pick')];
+        document.getElementById('pickAll').checked = picks.length > 0 && picks.every(c => c.checked);
+    }
+    async function printItems(selectedOnly) {
+        const type = encodeURIComponent(pageItemType);
+        if (selectedOnly) {
+            const ids = [...document.querySelectorAll('.item-pick:checked')].map(c => c.value);
+            if (!ids.length) { await alertDialog('Tick at least one item to print.'); return; }
+            window.open(`/Item/Print?ids=${ids.join(',')}&itemType=${type}`, '_blank', 'noopener');
+            return;
+        }
+        const params = new URLSearchParams({ itemType: pageItemType });
+        const search = document.getElementById('searchInput').value.trim();
+        const group = document.getElementById('listGroupDropdown').value;
+        const status = document.getElementById('listStatusDropdown').value;
+        if (search) params.set('search', search);
+        if (group) params.set('groupId', group);
+        if (status !== 'All Status') params.set('status', status);
+        window.open('/Item/Print?' + params, '_blank', 'noopener');
     }
 
 async function saveItem(event) {
@@ -294,8 +340,10 @@ async function saveItem(event) {
         formData.append('ItemID', String(itemId));
         formData.append('ItemName', $('#itemName').val());
         formData.append('CategoryID', $('#categoryId').val());
-        formData.append('ItemType', $('#itemType').val());
+        formData.append('ItemType', pageItemType);
+        formData.append('PageItemType', pageItemType);
         formData.append('StockUnit', $('#stockUnit').val());
+        formData.append('MaterialRole',document.getElementById('materialRole').value);
         formData.append('SalePrice', $('#salePrice').val());
         formData.append('Description', $('#itemDescription').val());
         formData.append('Barcode', $('#barcodeInput').val() || '');
@@ -357,7 +405,7 @@ async function saveItem(event) {
             if (!response.ok) throw new Error('Groups could not be loaded.');
             const payload = await response.json();
             if (payload.success === false || !Array.isArray(payload.data)) throw new Error('Groups could not be loaded.');
-            const data = payload.data;
+            const data = payload.data.filter(g => g.groupType === pageItemType);
             if (dropdownId === 'categoryId') itemGroups = data;
 
             dropdown.innerHTML = '<option value="">Select Group</option>';
@@ -389,9 +437,11 @@ async function saveItem(event) {
             const group = itemGroups.find(g => String(g.categoryId) === document.getElementById('categoryId').value);
             const type = document.getElementById('itemType');
             const classified = group?.groupType === 'RawMaterial' || group?.groupType === 'FinishedGoods';
-            type.disabled = classified;
-            if (classified) type.value = group.groupType;
-            if (type.value === 'FinishedGoods') document.getElementById('stockUnit').value = 'pcs';
+            type.disabled = true;
+            type.value = pageItemType;
+              const stockUnit = document.getElementById('stockUnit');
+              stockUnit.disabled = false;
+              document.getElementById('materialRole').value='';
         }
 
         function showModal(id) {
@@ -403,7 +453,8 @@ async function saveItem(event) {
                 document.getElementById('modalTitle').textContent = 'Add New Item';
                 document.getElementById('imagePreview').src = NO_IMAGE_PLACEHOLDER;
                 isEditMode = false;
-                document.getElementById('itemType').disabled = false;
+                document.getElementById('itemType').value = pageItemType;
+                document.getElementById('itemType').disabled = true;
                 loadCategories(null, 'categoryId');
                 modal.style.display = 'flex';
                 modal.classList.add('show');
@@ -435,7 +486,7 @@ async function saveItem(event) {
         closeModal('itemModal');
         const version = ++itemLoadVersion;
         try {
-            const response = await fetch(`/Item/GetItemById?id=${encodeURIComponent(itemId)}`);
+            const response = await fetch(`/Item/GetItemById?id=${encodeURIComponent(itemId)}&itemType=${pageItemType}`);
             if (!response.ok) throw new Error(response.status === 404
                 ? 'This item no longer exists. Refresh the list and try again.'
                 : 'The item could not be loaded. Refresh the list and try again.');
@@ -452,6 +503,7 @@ async function saveItem(event) {
             document.getElementById('itemName').value = item.itemName || '';
             document.getElementById('itemType').value = item.itemType === 'FinishedGoods' ? 'FinishedGoods' : 'RawMaterial';
             document.getElementById('stockUnit').value = item.stockUnit || 'pcs';
+            document.getElementById('materialRole').value=item.materialRole||'';
             document.getElementById('salePrice').value = item.salePrice ?? 0;
             document.getElementById('itemDescription').value = item.description || '';
             document.getElementById('isActive').checked = item.isActive === true;
@@ -484,7 +536,7 @@ async function saveItem(event) {
                 <td><span class="badge badge-success">Active</span></td>
                 <td>
                     <div class="action-buttons">
-                        <button class="btn btn-primary btn-sm" onclick="editItem(${newId})">✏️ Edit</button>
+                        ${canEditItems ? `<button class="btn btn-primary btn-sm" onclick="editItem(${newId})">✏️ Edit</button>` : ''}
                         <button class="btn btn-danger btn-sm" onclick="deleteItem(${newId})">🗑️ Delete</button>
                     </div>
                 </td>

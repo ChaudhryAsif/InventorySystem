@@ -63,6 +63,24 @@ public class DefaultMenuTests
         Assert.Equal(before, Snapshot(await db.MenuItems.OrderBy(x => x.Id).ToListAsync()));
     }
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task MaterialsToPurchaseMenuRow_KeepsDefaultLayoutOnlyWhenItIsTheMigrationRow(bool customized, bool layoutApplied)
+    {
+        await using var db = Database();
+        await db.Database.EnsureCreatedAsync();
+        db.MenuItems.Add(new MenuItem { Name = "Materials to Purchase", Icon = "🛒", Controller = "Production", Action = "PurchaseNeeds", ParentId = 16, SortOrder = 3,
+            RequiredPermission = customized ? "Report.View" : "Production.View", IsActive = true, CreatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+        Assert.Equal(layoutApplied, await DefaultMenuSeeder.ApplyAsync(db));
+        var row = await db.MenuItems.SingleAsync(x => x.Action == "PurchaseNeeds");
+        Assert.Equal(16, row.ParentId); Assert.Equal(3, row.SortOrder);
+        if (layoutApplied)
+            Assert.Equal(new[] { "Production Orders", "Create Production Order", "Materials to Purchase" },
+                (await db.MenuItems.Where(x => x.ParentId == 16 && x.IsActive).OrderBy(x => x.SortOrder).ToListAsync()).Select(x => x.Name));
+    }
+
     [Fact]
     public async Task MigrationRenamedGroups_StillAllowsFreshDefaultMenuLayout()
     {

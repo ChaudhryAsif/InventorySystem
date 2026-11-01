@@ -1,4 +1,4 @@
-using InventorySystem.Data;
+﻿using InventorySystem.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -48,7 +48,7 @@ namespace InventorySystem.Controllers
                                       select new StockReportRow
                                       {
                                           itemId = item.ItemID, itemName = item.ItemName ?? "", categoryName = category.CategoryName,
-                                          itemType = item.ItemType,
+                                          itemType = item.ItemType, stockUnit=item.StockUnit,
                                           branchId = branch, quantity = stock == null ? 0 : stock.Quantity,
                                           reorderLevel = item.ReorderLevel, lastUpdated = stock == null ? null : stock.LastUpdated
                                       }).ToListAsync();
@@ -86,7 +86,7 @@ namespace InventorySystem.Controllers
                         x.itemId,
                         x.itemName,
                         x.categoryName,
-                        x.itemType,
+                        x.itemType, x.stockUnit,
                         branchName  = GetBranchName(x.branchId),
                         x.quantity,
                         stockStatus = GetStockStatus(x.quantity, x.reorderLevel),
@@ -271,7 +271,8 @@ namespace InventorySystem.Controllers
             int? branchId = null, int? paymentMode = null, string? refNo = null,
             long? itemId = null, int? categoryId = null,
             decimal? minAmount = null, decimal? maxAmount = null,
-            string? sortBy = null, string? sortDir = null)
+            string? sortBy = null, string? sortDir = null,
+            int? orderId = null, string? groupBy = null)
         {
             try
             {
@@ -290,6 +291,7 @@ namespace InventorySystem.Controllers
                     query = query.Where(s => s.SaleId == invoiceNo.Value);
 
                 if (branchId > 0) query = query.Where(s => (s.BranchID ?? 1) == branchId);
+                if (orderId > 0) query = query.Where(s => s.ProductionOrderId == orderId);
                 if (paymentMode.HasValue) query = query.Where(s => s.PaymentMode == paymentMode);
                 if (!string.IsNullOrWhiteSpace(refNo)) query = query.Where(s => s.RefNo != null && s.RefNo.Contains(refNo.Trim()));
                 if (minAmount.HasValue) query = query.Where(s => (s.TotalAmount ?? 0) >= minAmount.Value);
@@ -304,6 +306,7 @@ namespace InventorySystem.Controllers
                     .Select(s => new
                     {
                         s.SaleId,
+                        s.ProductionOrderId,
                         s.SaleDate,
                         s.CustomerID,
                         s.RefNo,
@@ -328,6 +331,11 @@ namespace InventorySystem.Controllers
                     "invoice"  => OrderBy(invoices, x => x.SaleId, descS),
                     _          => ascS ? OrderBy(invoices, x => x.SaleDate ?? DateTime.MinValue, false) : invoices
                 };
+
+                // Grouping by production order is a stable re-order, so the chosen sort still applies inside each group.
+                var grouped = !string.Equals(groupBy, "none", StringComparison.OrdinalIgnoreCase);
+                if (grouped)
+                    invoices = invoices.OrderBy(x => x.ProductionOrderId == null ? 1 : 0).ThenByDescending(x => x.ProductionOrderId ?? 0).ToList();
 
                 var totalCount = invoices.Count;
                 var pagedInvoices = invoices.Skip((page - 1) * pageSize).Take(pageSize).ToList();
@@ -356,6 +364,36 @@ namespace InventorySystem.Controllers
                     .GroupBy(b => b.SaleId)
                     .ToDictionary(g => g.Key, g => g.ToList());
 
+                // Group totals cover every matching invoice, not just the current page.
+                object? groups = null;
+                if (grouped)
+                {
+                    var allIds = invoices.Select(i => i.SaleId).ToList();
+                    var boxesBySale = await _context.SaleInvoiceBody.Where(b => allIds.Contains(b.SaleId))
+                        .GroupBy(b => b.SaleId).Select(g => new { g.Key, Boxes = g.Sum(x => x.Quantity ?? 0) }).ToDictionaryAsync(x => x.Key, x => x.Boxes);
+                    var orderIds = invoices.Where(i => i.ProductionOrderId != null).Select(i => i.ProductionOrderId!.Value).Distinct().ToList();
+                    var orderInfo = await _context.ProductionOrder.Where(o => orderIds.Contains(o.ProductionOrderId))
+                        .Select(o => new { o.ProductionOrderId, o.ProductName, o.OrderQty, o.ProducedQty,
+                            CustomerName = _context.Parties.Where(p => p.PartyId.ToString() == o.CustomerId).Select(p => p.PartyName).FirstOrDefault() })
+                        .ToDictionaryAsync(o => o.ProductionOrderId);
+                    groups = invoices.GroupBy(i => i.ProductionOrderId).Select(g =>
+                    {
+                        orderInfo.TryGetValue(g.Key ?? 0, out var info);
+                        return new
+                        {
+                            orderId = g.Key,
+                            productName = info?.ProductName,
+                            customerName = info?.CustomerName,
+                            orderQty = info?.OrderQty,
+                            producedQty = info?.ProducedQty,
+                            invoices = g.Count(),
+                            boxes = g.Sum(i => boxesBySale.TryGetValue(i.SaleId, out var b) ? b : 0),
+                            totalAmount = g.Sum(i => i.TotalAmount ?? 0),
+                            netAmount = g.Sum(i => i.NetAmount ?? 0)
+                        };
+                    }).ToList();
+                }
+
                 return Json(new
                 {
                     success = true,
@@ -365,6 +403,7 @@ namespace InventorySystem.Controllers
                     data = pagedInvoices.Select(s => new
                     {
                         invoiceNo    = s.SaleId,
+                        orderId      = s.ProductionOrderId,
                         saleDate     = s.SaleDate.HasValue
                             ? s.SaleDate.Value.ToString("yyyy-MM-dd") : "-",
                         customerName = s.CustomerName,
@@ -387,6 +426,7 @@ namespace InventorySystem.Controllers
                             })
                             : []
                     }),
+                    groups,
                     summary = new
                     {
                         totalInvoices = invoices.Count,
@@ -426,6 +466,16 @@ namespace InventorySystem.Controllers
             return Json(suppliers);
         }
 
+        // Production orders that have sales, for the Sale Report order filter.
+        [HttpGet]
+        public async Task<IActionResult> GetSaleOrderList()
+        {
+            var ids = await _context.SaleInvoice.Where(s => s.ProductionOrderId != null).Select(s => s.ProductionOrderId!.Value).Distinct().ToListAsync();
+            var orders = await _context.ProductionOrder.Where(o => ids.Contains(o.ProductionOrderId)).OrderByDescending(o => o.ProductionOrderId)
+                .Select(o => new { value = o.ProductionOrderId.ToString(), text = "#" + o.ProductionOrderId + "  " + (o.ProductName ?? "") }).ToListAsync();
+            return Json(orders);
+        }
+
         [HttpGet]
         public async Task<IActionResult> GetCustomerList()
         {
@@ -437,9 +487,11 @@ namespace InventorySystem.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetCategoryList()
+        public async Task<IActionResult> GetCategoryList(string? itemType = null)
         {
+            if (!string.IsNullOrEmpty(itemType) && itemType is not ("RawMaterial" or "FinishedGoods")) return BadRequest();
             var categories = await _context.ItemCategory
+                .Where(c => string.IsNullOrEmpty(itemType) || c.GroupType == itemType)
                 .Select(c => new { value = c.CategoryId, text = c.CategoryName })
                 .ToListAsync();
             return Json(categories);
@@ -460,6 +512,7 @@ namespace InventorySystem.Controllers
             public string itemName { get; set; } = "";
             public string categoryName { get; set; } = "";
             public string itemType { get; set; } = "";
+            public string stockUnit { get; set; } = "";
             public int branchId { get; set; }
             public decimal quantity { get; set; }
             public decimal reorderLevel { get; set; }

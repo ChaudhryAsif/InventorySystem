@@ -15,6 +15,20 @@
     .po-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; }
     .po-fg     { display:flex; flex-direction:column; gap:.3rem; }
     .po-fg label { font-size:.78rem; font-weight:600; color:#374151; }
+    .setup-box { border:1px solid #fde68a; background:#fffbeb; }
+    .setup-head { display:flex; gap:.8rem; align-items:flex-start; }
+    .setup-icon { font-size:1.3rem; line-height:1.2; }
+    .setup-head strong { display:block; font-size:1.02rem; color:#92400e; }
+    .setup-head p { margin:.2rem 0 0; color:#78350f; font-size:.88rem; }
+    .setup-list { list-style:none; margin:.9rem 0 0; padding:0; display:grid; gap:.5rem; }
+    .setup-list li { display:flex; gap:.6rem; align-items:flex-start; background:#fff; border:1px solid #fde68a; border-radius:9px; padding:.6rem .8rem; }
+    .setup-list .x { color:#dc2626; font-weight:800; line-height:1.3; }
+    .setup-list b { display:block; color:#1e293b; font-size:.9rem; }
+    .setup-list small { display:block; color:#64748b; font-size:.8rem; margin-top:.1rem; }
+    .setup-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.6rem; margin-top:1rem; }
+    .setup-btn { border:1px solid #cbd5e1; background:#fff; color:#1e3a5f; border-radius:8px; padding:.5rem 1rem; font-weight:600; font-size:.87rem; cursor:pointer; text-decoration:none; }
+    .setup-btn.primary { background:#1e3a5f; color:#fff; border-color:#1e3a5f; }
+    .setup-note { color:#78350f; font-size:.85rem; }
     .po-input  { padding:.45rem .7rem; border:1px solid #d1d5db; border-radius:7px; font-size:.87rem; width:100%; box-sizing:border-box; }
     .po-input:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.12); }
     .po-input[readonly] { background:#f3f4f6; color:#6b7280; }
@@ -101,6 +115,20 @@
     </div>
 </div>
 
+<div id="productionSetup" class="po-card setup-box" hidden>
+    <div class="setup-head">
+        <span class="setup-icon">⚠️</span>
+        <div><strong>This cost sheet is not ready for production yet</strong><p id="setupSummary"></p></div>
+    </div>
+    <ul id="productionSetupIssues" class="setup-list"></ul>
+    <div id="finishedLinkControls"><label for="finishedLinkItem">Finished product (PCS)</label><select id="finishedLinkItem" class="po-input"></select><button type="button" id="linkFinishedButton" class="btn-save" onclick="linkFinishedItem()">Link selected product</button></div>
+    <div class="setup-actions">
+        <a id="editSetupSheet" class="setup-btn primary" target="_blank" rel="noopener">Open cost sheet to link items</a>
+        <span id="setupAskAdmin" class="setup-note" hidden>Only a SuperAdmin can edit a saved cost sheet. Please ask a SuperAdmin to link these items.</span>
+        <button type="button" class="setup-btn" onclick="loadCostSheetInfo()">↻ Refresh</button>
+    </div>
+    <p id="setupFinishedHint" class="setup-note" style="margin:.8rem 0 0" hidden>If the finished product does not exist, <a href="/Item/FinishedGoods" target="_blank" rel="noopener">add it in Finished Goods, Items</a>, then click Refresh.</p>
+</div>
 <div class="po-card">
     <span class="po-title">📦 Order Details</span>
 
@@ -176,17 +204,19 @@ async function loadOrderCustomers() {
     const select = document.getElementById('customerId');
     select.disabled = true;
     try {
-        const response = await fetch('/Parties/GetCustomers');
+        const response = await fetch('/Production/GetCustomerOptions'+(editId?'?orderId='+editId:''));
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error('Customers could not be loaded. Refresh before saving.');
         select.replaceChildren(new Option('Select an active customer...', ''));
-        for (const customer of data.customers || []) select.add(new Option(customer.partyName, customer.partyId));
+        for (const customer of data.customers || []) {const option=new Option(customer.partyName,customer.selectionId);option.dataset.partyId=customer.partyId??'';select.add(option);}
         return true;
     } catch (error) { await alertDialog(error.message, {type:'error'}); return false; }
     finally { select.disabled = false; }
 }
 
+let sheetInfoRequest=0,setupReady=false;
 function loadCostSheetInfo() {
+    const request=++sheetInfoRequest;setupReady=false;document.getElementById("saveBtn").disabled=true;document.getElementById("productionSetup").hidden=true;
     const id = document.getElementById('costSheetSelect').value;
     document.getElementById('sheetInfoBox').style.display = 'none';
 
@@ -200,8 +230,24 @@ function loadCostSheetInfo() {
     return fetch(`/Production/GetCostSheetInfo?id=${id}`)
         .then(r => r.json())
         .then(d => {
-            if (!d.success) return;
+            if(request!==sheetInfoRequest)return;
+            if (!d.success) throw new Error('Sheet unavailable');
             const s = d.data;
+            setupReady=s.issues.length===0;document.getElementById('saveBtn').disabled=!setupReady;
+            document.getElementById('productionSetup').hidden=setupReady;
+            const problems=s.problems||s.issues.map(t=>({key:'',title:t,detail:''}));
+            const issues=document.getElementById('productionSetupIssues');issues.replaceChildren();
+            for(const p of problems){const li=document.createElement('li'),mark=document.createElement('span'),box=document.createElement('div'),t=document.createElement('b');
+                mark.className='x';mark.textContent='✕';t.textContent=p.title;box.append(t);
+                if(p.detail){const d=document.createElement('small');d.textContent=p.detail;box.append(d);}
+                li.append(mark,box);issues.append(li);}
+            document.getElementById('setupSummary').textContent=problems.length===1?'1 thing needs fixing before you can create the order. Link it, then click Refresh.':problems.length+' things need fixing before you can create the order. Fix them, then click Refresh.';
+            document.getElementById('editSetupSheet').hidden=!s.canEditSheet;
+            document.getElementById('setupAskAdmin').hidden=!!s.canEditSheet;
+            document.getElementById('setupFinishedHint').hidden=!problems.some(p=>p.key==='finished');
+            document.getElementById('finishedLinkControls').hidden=s.finishedReady||Boolean(s.finishedItemId);
+            const products=document.getElementById('finishedLinkItem');products.replaceChildren(new Option('Select the matching finished product...', ''));for(const p of s.products)products.add(new Option(p.name+' — '+p.group,p.id));
+            document.getElementById('editSetupSheet').href='/CostSheet/Edit/'+s.costSheetId;
             currentRate = parseFloat(s.finalRateWithGST || 0);
 
             document.getElementById('infoProduct').textContent  = s.itemName     || '–';
@@ -225,7 +271,13 @@ function calcTotal() {
     document.getElementById('totalValue').value = total > 0 ? total.toFixed(2) : '';
 }
 
+async function linkFinishedItem(){
+    const item=Number(document.getElementById('finishedLinkItem').value);if(!item){await alertDialog('Select the matching finished product.');return;}
+    const button=document.getElementById('linkFinishedButton');button.disabled=true;
+    try{const response=await fetch('/CostSheet/UpdateFinishedItemLink',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({costSheetId:Number(document.getElementById('costSheetSelect').value),finishedItemId:item})});if(response.status===403)throw new Error('Cost Sheet edit permission is required to complete this product link. Ask your administrator for access.');if(response.status===401)throw new Error('Your session expired. Sign in again.');const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Product link could not be saved. Please refresh and retry.');await loadCostSheetInfo();}catch(e){await alertDialog(e.message,{type:'error'});}finally{button.disabled=false;}
+}
 async function saveOrder() {
+    if(!setupReady){await alertDialog('Complete the cost-sheet setup above, then refresh it before creating production.');return;}
     const costSheetId  = parseInt(document.getElementById('costSheetSelect').value);
     const orderQty     = Number(document.getElementById('orderQty').value);
     const orderDate    = document.getElementById('orderDate').value;
@@ -277,7 +329,7 @@ async function saveOrder() {
     .then(async d => {
         if (d.success) {
             await alertDialog(`✅ ${d.message}`);
-            window.location.href = `/Production/Consume/${d.id || editId}`;
+            window.location.href = `/Production/Index?record=${d.id || editId}`;
         } else {
             await alertDialog('❌ ' + (d.message || 'Unknown error'));
             btn.disabled    = false;
@@ -302,10 +354,11 @@ function loadOrderForEdit(id) {
             return loadCostSheetInfo().then(() => {
                 document.getElementById('productName').value  = o.productName || '';
                 const customerSelect = document.getElementById('customerId');
-                if (o.customerId && ![...customerSelect.options].some(option => option.value === String(o.customerId))) {
+                const selectedCustomer=[...customerSelect.options].find(option=>option.value===String(o.customerId)||option.dataset.partyId===String(o.customerId));
+                if (o.customerId && !selectedCustomer) {
                     customerSelect.add(new Option((o.customerName || o.customerId) + ' (inactive — select an active customer)', o.customerId));
                 }
-                document.getElementById('customerId').value   = o.customerId || '';
+                document.getElementById('customerId').value   = selectedCustomer?.value || o.customerId || '';
                 document.getElementById('orderQty').value      = o.orderQty;
                 document.getElementById('orderDate').value     = o.orderDate ? o.orderDate.substring(0, 10) : '';
                 document.getElementById('deliveryDate').value  = o.deliveryDate ? o.deliveryDate.substring(0, 10) : '';

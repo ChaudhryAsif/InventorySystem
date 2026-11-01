@@ -1,17 +1,18 @@
 @model InventorySystem.Core.Models.PurchaseReturn
 @{
     Layout = null;
+    var popup = Context.Request.Query["popup"] == "1";
     var bodies = Model.PurchaseReturnBodies ?? new List<InventorySystem.Core.Models.PurchaseReturnBody>();
 }
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Purchase Return #@Model.PurchaseReturnId — Bright Packages</title>
+    <title>Purchase Return #@Model.PurchaseReturnId — B. Packages</title>
     <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
     <style>
         * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:2rem; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:@(popup ? "1rem" : "2rem"); }
         .inv { max-width:800px; margin:0 auto; }
         .inv-head { display:flex; justify-content:space-between; border-bottom:3px solid #0f172a; padding-bottom:1rem; margin-bottom:1.5rem; }
         .inv-head h1 { margin:0; font-size:1.6rem; }
@@ -39,7 +40,13 @@
     </div>
 }
 
-    <div class="actions"><button onclick="window.print()">🖨 Print</button></div>
+    @if (!popup)
+
+    {
+
+        <div class="actions"><button onclick="window.print()">🖨 Print</button> <button style="background:#64748b" onclick="window.close()">Close</button></div>
+
+    }
     <div class="inv">
         <partial name="_CompanyPrintHeader" />
         <div class="inv-head">
@@ -54,7 +61,7 @@
         </div>
 
         <div class="meta">
-            <div><span>Vendor</span><strong>@ViewBag.VendorName</strong></div>
+            <div><span>Vendor</span><strong>@ViewBag.VendorName</strong>@if (!string.IsNullOrEmpty((string?)ViewBag.PartyContact)) { <small style="display:block;color:#64748b;font-weight:400">@ViewBag.PartyContact</small> }</div>
             <div><span>Payment Mode</span><strong>@ViewBag.PaymentMode</strong></div>
             <div><span>Ref No</span><strong>@(Model.RefNo ?? "-")</strong></div>
             <div><span>Ref. Purchase Invoice</span><strong>@(Model.OriginalPurchaseId > 0 ? "#" + Model.OriginalPurchaseId : "-")</strong></div>

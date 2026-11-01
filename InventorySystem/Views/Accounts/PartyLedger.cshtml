@@ -5,6 +5,7 @@
 <link href="~/css/accounts.css" rel="stylesheet" />
 
 <div class="ac-page" id="ledgerPage">
+    <div class="pdf-brand"><partial name="_CompanyPrintHeader" /></div>
 
     <div class="ac-page-header">
         <div>
@@ -14,7 +15,7 @@
         <div class="ac-header-actions" id="actionButtons">
             <a class="ac-btn ac-btn-primary" href="/Accounts/ReceiptVoucher">Receive Money / Refund</a>
             <a class="ac-btn ac-btn-outline" href="/Accounts/PaymentVoucher">Pay Money / Refund</a>
-            <button class="ac-btn ac-btn-outline" onclick="window.print()">🖨️ Print</button>
+            <button class="ac-btn ac-btn-outline" onclick="PrintTab.open()">🖨️ Print</button>
             <button class="ac-btn ac-btn-primary" id="pdfBtn" onclick="downloadPDF()">⬇️ PDF</button>
         </div>
     </div>
@@ -180,12 +181,14 @@
         printHdr.style.display   = 'block';
         btn.disabled = true; btn.textContent = '⏳…';
 
+        document.body.classList.add('pdf-exporting');
         html2pdf().set({
             margin:      [10, 8, 10, 8],
             filename:    `Ledger_${new Date().toISOString().split('T')[0]}.pdf`,
             html2canvas: { scale: 2, useCORS: true, logging: false },
             jsPDF:       { unit: 'mm', format: 'a4', orientation: 'landscape' }
         }).from(document.getElementById('ledgerPage')).save().then(() => {
+            document.body.classList.remove('pdf-exporting');
             filterBar.style.display  = '';
             actionBtns.style.display = '';
             printHdr.style.display   = 'none';

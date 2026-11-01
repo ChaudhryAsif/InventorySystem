@@ -86,6 +86,8 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await DefaultMenuSeeder.ApplyAsync(db);
+    await ClientWorkflowMenuSeeder.ApplyAsync(db);
+    await AccountsFolderSeeder.ApplyAsync(db);
     await DbSeeder.SeedSuperAdminAsync(db, builder.Configuration["Bootstrap:SuperAdminPassword"]);
 }
 

@@ -4,7 +4,7 @@
     ViewData["Title"] = "Cost Sheet List";
 }
 
-<link href="~/css/report.css" rel="stylesheet" />
+<link href="~/css/report.css" rel="stylesheet" asp-append-version="true" />
 <style>
     .cs-index-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; }
     .cs-table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 6px rgba(0,0,0,.08); }
@@ -29,9 +29,6 @@
         <p style="color:#666; margin:0;">Reusable product recipes. Select the customer and agreed price on each production order.</p>
     </div>
     <div style="display:flex; gap:0.75rem;">
-        <a href="/CostSheet/CalculationGuide" class="btn btn-info" title="View Calculation Guide">
-            📚 How Calculations Work
-        </a>
         <a href="/CostSheet/Create" class="btn btn-primary">
             ➕ Create Cost Sheet
         </a>
@@ -46,8 +43,8 @@
             <th>Date</th>
             <th>Item / Product</th>
             <th>Box Style</th>
-            <th>Final Cost (W/O GST)</th>
-            <th>Final Rate (W/ GST)</th>
+            <th style="text-align:right">Final Cost (W/O GST)</th>
+            <th style="text-align:right">Final Rate (W/ GST)</th>
             <th>Status</th>
             <th>Actions</th>
         </tr>
@@ -72,14 +69,22 @@
                         { <span class="badge-draft">✏️ Draft</span> }
                     </td>
                     <td>
-                        <div class="cs-actions">
-                            <a href="/CostSheet/Edit/@s.CostSheetId" class="btn-sm btn-edit">✏️ Edit</a>
-                            <a href="/CostSheet/Print/@s.CostSheetId" class="btn-sm btn-print">🖨 Print</a>
-                            <button class="btn-sm btn-delete" onclick="deleteSheet(@s.CostSheetId)">🗑️ Delete</button>
-                            @if (s.Status == "Final")
+                        <div class="am">
+                            @if (s.Status != "Final")
+                            {
+                                <button class="btn-sm btn-produce" onclick="markFinal(@s.CostSheetId)">✅ Mark as Final</button>
+                            }
+                            else
                             {
                                 <a href="/Production/Create?costSheetId=@s.CostSheetId" class="btn-sm btn-produce">🏭 Produce</a>
                             }
+                            <button type="button" class="am-toggle" aria-haspopup="menu" aria-expanded="false" title="More actions">&#8943;</button>
+                            <div class="am-menu" role="menu">
+                                @if (ViewBag.CanEditSheets == true) { <a href="/CostSheet/Edit/@s.CostSheetId">✏️ Edit</a> }
+                                <a href="/CostSheet/Print/@s.CostSheetId" target="_blank" rel="noopener">🖨 Print</a>
+                                <hr>
+                                <button class="am-danger" onclick="deleteSheet(@s.CostSheetId)">🗑️ Delete</button>
+                            </div>
                         </div>
                     </td>
                 </tr>
@@ -94,6 +99,14 @@
 </table></div>
 
 <script>
+async function markFinal(id) {
+    if (!(await confirmDialog('Mark this cost sheet as Final? It can then be used in Production.'))) return;
+    fetch(`/CostSheet/MarkFinal/${id}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(async d => { if (d.success) location.reload(); else await alertDialog('❌ ' + (d.message || 'Could not mark Final.')); })
+        .catch(async () => await alertDialog('❌ Error marking cost sheet Final.'));
+}
+
 async function deleteSheet(id) {
     if (!(await confirmDialog('Delete this cost sheet? This cannot be undone.', { danger: true }))) return;
     fetch(`/CostSheet/Delete/${id}`, { method: 'POST' })

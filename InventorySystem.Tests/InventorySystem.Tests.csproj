@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <None Update="TestData\ClientCostingSample.xlsx" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="TestData\LatestClientCosting.xlsx" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\InventorySystem\wwwroot\templates\Bright_Packages_Cost_Sheet_Template.xlsx" Link="TestData\CostSheetTemplate.xlsx" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

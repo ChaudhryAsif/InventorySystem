@@ -1,4 +1,4 @@
-﻿using InventorySystem.Core.Models;
+using InventorySystem.Core.Models;
 using InventorySystem.Data;
 using InventorySystem.Models;
 using InventorySystem.Core.Services;
@@ -22,12 +22,24 @@ namespace InventorySystem.Controllers
             _permissionService = permissionService;
         }
 
+        [HttpGet]
+        [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+        public IActionResult DownloadExcelTemplate([FromServices] IWebHostEnvironment environment)
+        {
+            var path = Path.Combine(environment.WebRootPath, "templates", "Bright_Packages_Cost_Sheet_Template.xlsx");
+            if (!System.IO.File.Exists(path)) return NotFound("The Excel template is unavailable.");
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            // A download filename sets Content-Disposition: attachment. Binary MIME avoids Office preview handling.
+            return File(System.IO.File.ReadAllBytes(path), "application/octet-stream", "B_Packages_Cost_Sheet_Template.xlsx");
+        }
+
         // ── List ────────────────────────────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> Index()
         {
             var permission = await this.CheckPermissionAsync(_permissionService, "CostSheet.View");
             if (permission != null) return permission;
+            ViewBag.CanEditSheets = User.IsInRole("SuperAdmin") || await this.CheckPermissionAsync(_permissionService, "CostSheet.Edit") == null;
 
             var sheets = await _context.CostSheet
                 .OrderByDescending(c => c.SheetDate)
@@ -54,6 +66,39 @@ namespace InventorySystem.Controllers
             if (permission != null) return permission;
 
             return View();
+        }
+
+        // Parsing creates only a preview. Existing Save rules remain authoritative.
+        [HttpPost]
+        [RequestSizeLimit(CostSheetExcelImport.MaxFileBytes + 65536)]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ImportExcel(IFormFile? file, int costSheetId = 0)
+        {
+            var permission = await this.CheckPermissionAsync(_permissionService, costSheetId > 0 ? "CostSheet.Edit" : "CostSheet.Create");
+            if (permission != null) return permission;
+            if (costSheetId < 0) return BadRequest(new { success = false, message = "Invalid cost sheet." });
+            if (costSheetId > 0 && !await _context.CostSheet.AnyAsync(x => x.CostSheetId == costSheetId)) return NotFound();
+            if (file == null || file.Length == 0 || file.Length > CostSheetExcelImport.MaxFileBytes || !string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { success = false, message = "Choose an Excel .xlsx file up to 5 MB using the sample cost-sheet format." });
+            try
+            {
+                using var stream = new MemoryStream();
+                await file.CopyToAsync(stream);
+                if (stream.Length > CostSheetExcelImport.MaxFileBytes) return BadRequest(new { success = false, message = "The Excel file exceeds 5 MB." });
+                stream.Position = 0;
+                var preview = CostSheetExcelImport.Read(stream);
+                // Spreadsheet numbers must never be interpreted as inventory IDs.
+                var items = await _context.Items.Where(i => i.IsActive == true && i.Category.IsActive == true).ToListAsync();
+                foreach (var ply in preview.Data.Plies)
+                {
+                    var matches = items.Where(i => i.ItemType == "RawMaterial" && i.StockUnit == "kg" && string.Equals(i.ItemName?.Trim(), ply.Specification, StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (matches.Count == 1) { ply.ItemId = matches[0].ItemID; ply.PlyName = matches[0].ItemName; }
+                }
+                var finished = items.Where(i => i.ItemType == "FinishedGoods" && i.StockUnit == "pcs" && string.Equals(i.ItemName?.Trim(), preview.Data.ItemName, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (finished.Count == 1) preview.Data.FinishedItemId = finished[0].ItemID;
+                return Ok(new { success = true, preview });
+            }
+            catch (InvalidOperationException ex) { return BadRequest(new { success = false, message = ex.Message }); }
         }
 
         // ── Edit (GET) ──────────────────────────────────────────────────────────
@@ -180,6 +225,20 @@ namespace InventorySystem.Controllers
                 await tx.RollbackAsync();
                 return StatusCode(500, new { success = false, message = ex.Message });
             }
+        }
+
+        // ── Mark a Draft sheet Final without opening the full editor ────────────
+        [HttpPost]
+        public async Task<IActionResult> MarkFinal(int id)
+        {
+            var sheet = await _context.CostSheet.Include(c => c.Plies).FirstOrDefaultAsync(c => c.CostSheetId == id);
+            if (sheet == null) return NotFound();
+            if (sheet.Status == "Final") return Ok(new { success = true, message = "Already Final." });
+            if (sheet.Plies == null || sheet.Plies.Count == 0 || sheet.Plies.Any(p => p.KGs is null or <= 0))
+                return BadRequest(new { success = false, message = "Enter paper kg per box for each selected layer before marking Final." });
+            sheet.Status = "Final";
+            await _context.SaveChangesAsync();
+            return Ok(new { success = true, message = "Cost sheet marked Final." });
         }
 
         // ── Delete ──────────────────────────────────────────────────────────────
@@ -351,6 +410,19 @@ namespace InventorySystem.Controllers
             });
         }
 
+        public sealed class FinishedLink { public int CostSheetId{get;set;} public long FinishedItemId{get;set;} }
+        [HttpPost]
+        public async Task<IActionResult> UpdateFinishedItemLink([FromBody] FinishedLink? model)
+        {
+            if(model==null||model.CostSheetId<=0||model.FinishedItemId<=0)return BadRequest(new{success=false,message="Select a cost sheet and finished product."});
+            var sheet=await _context.CostSheet.SingleOrDefaultAsync(c=>c.CostSheetId==model.CostSheetId);
+            if(sheet==null||sheet.Status!="Final")return BadRequest(new{success=false,message="Select a Final cost sheet."});
+            if(sheet.FinishedItemId.HasValue&&sheet.FinishedItemId!=model.FinishedItemId)return Conflict(new{success=false,message="This sheet already has a product link. Reload it before continuing."});
+            if(!await _context.Items.AnyAsync(i=>i.ItemID==model.FinishedItemId&&i.IsActive==true&&i.Category.IsActive==true&&i.ItemType=="FinishedGoods"&&i.StockUnit=="pcs"))return BadRequest(new{success=false,message="Select an active Finished Goods item stocked in PCS."});
+            sheet.FinishedItemId=model.FinishedItemId;await _context.SaveChangesAsync();
+            return Ok(new{success=true,message="Finished product linked. You can continue production setup."});
+        }
+
         // ── Print ───────────────────────────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> Print(int id)
@@ -407,7 +479,7 @@ namespace InventorySystem.Controllers
         {
             try
             {
-                var items = await _context.Items.Where(i => i.IsActive == true && i.ItemType == "RawMaterial" && i.StockUnit == "kg")
+                var items = await _context.Items.Where(i => i.IsActive == true && i.ItemType == "RawMaterial" && i.StockUnit == "kg" && i.Category.IsActive == true)
                     .Select(i => new
                     {
                         itemId       = i.ItemID,
@@ -420,7 +492,7 @@ namespace InventorySystem.Controllers
 
                         // Last purchase price for this item
                         lastPurPrice = _context.PurchaseInvoiceBody
-                            .Where(b => b.Itemid == i.ItemID)
+                            .Where(b => b.Itemid == i.ItemID && _context.PurchaseInvoice.Any(p=>p.PurchaseId==b.PurchaseId))
                             .OrderByDescending(b => b.Srno)
                             .Select(b => (decimal?)b.PurPrice)
                             .FirstOrDefault() ?? 0,
@@ -467,9 +539,9 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public async Task<IActionResult> GetMaterialOptions()
         {
-            var items = await _context.Items.Where(i => i.IsActive == true && (i.ItemType == "RawMaterial" || i.ItemType == "FinishedGoods"))
-                .OrderBy(i => i.ItemName).Select(i => new { id = i.ItemID, name = i.ItemName, type = i.ItemType, unit = i.StockUnit }).ToListAsync();
-            return Json(new { success = true, items });
+            var items = await _context.Items.Where(i => i.IsActive == true && i.Category.IsActive == true && (i.ItemType == "RawMaterial" || i.ItemType == "FinishedGoods"))
+                .OrderBy(i => i.ItemName).Select(i => new { id = i.ItemID, name = i.ItemName, type = i.ItemType, unit = i.StockUnit, i.MaterialRole, lastPurchasePrice = _context.PurchaseInvoiceBody.Where(b=>b.Itemid==i.ItemID&&_context.PurchaseInvoice.Any(p=>p.PurchaseId==b.PurchaseId)).OrderByDescending(b=>b.Srno).Select(b=>b.PurPrice).FirstOrDefault() }).ToListAsync();
+            return Json(new { success = true, items=items.Select(i=>new{i.id,i.name,i.type,i.unit,materialRole=MaterialRoles.Resolve(i.MaterialRole,i.name),i.lastPurchasePrice}) });
         }
 
         // ── Helper: map ViewModel → Entity ─────────────────────────────────────

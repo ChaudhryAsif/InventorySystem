@@ -174,3 +174,8 @@ body {
     min-height: calc(100vh - var(--header-height));
     padding: 2rem;
 }
+/* Shared alignment/colour helpers used by several views */
+.text-right { text-align: right !important; font-variant-numeric: tabular-nums; }
+.text-center { text-align: center; }
+.text-danger { color: #dc2626; }
+.text-success { color: #16a34a; }

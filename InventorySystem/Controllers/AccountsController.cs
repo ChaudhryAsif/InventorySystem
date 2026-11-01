@@ -1,4 +1,4 @@
-﻿using InventorySystem.Core.Models;
+using InventorySystem.Core.Models;
 using InventorySystem.Core.Services;
 using InventorySystem.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace InventorySystem.Controllers
 {
     [Authorize]
-    public class AccountsController : Controller
+    public partial class AccountsController : Controller
     {
         private readonly ApplicationDbContext _db;
         private readonly IAccountService _accounts;

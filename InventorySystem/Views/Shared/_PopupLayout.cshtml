@@ -1,0 +1,18 @@
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="multi-branch-enabled" content="@(BranchSettings.Value.MultiBranchEnabled ? "true" : "false")" />
+    <meta name="csrf-token" content="@Antiforgery.GetAndStoreTokens(Context).RequestToken" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - B. Packages</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <script src="~/js/confirm-dialog.js" asp-append-version="true"></script>
+    <script src="~/js/pos-safety.js" asp-append-version="true"></script>
+    <style>body { margin:0; padding:1rem 1.25rem; background:#f8fafc; display:block; }</style>
+</head>
+<body>
+    @RenderBody()
+</body>
+</html>

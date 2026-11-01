@@ -1,0 +1,12 @@
+@{ ViewData["Title"]="Monthly Payroll"; Layout="_Layout"; }
+<link rel="stylesheet" href="~/css/payroll.css" asp-append-version="true" />
+<div class="pr-page" id="mpPage">
+<header class="pr-header"><div><h1>Monthly Payroll</h1><p>Labour salary sheet: enter attendance, overtime and advance. Posting pays the total in cash.</p></div><div class="pr-actions"><a class="pr-link pr-secondary" href="/Accounts/Employees">Employee data</a><a class="pr-link pr-secondary" href="/Accounts/SalarySlips">Salary slips</a></div></header>
+<p id="mpMessage" class="pr-message" role="status" hidden></p>
+<section class="pr-card"><div class="pr-grid"><label>Salary month<input id="mpPeriod" type="month" required /></label><div class="mp-status"><span>Status</span><strong id="mpStatus">-</strong><small id="mpVoucher"></small></div></div>
+<p class="pr-note">8-hour shift. Per day = salary / 30, per hour = per day / 8, salary = per day x attendance, overtime pay = per hour x overtime hours (editable), total = salary + overtime, payable = total - advance.</p></section>
+<section class="pr-card"><div class="pr-scroll"><table class="mp-table"><thead><tr><th>#</th><th>Name</th><th>Designation</th><th>Salary</th><th>Per day</th><th>Per hour</th><th>Attendance</th><th>Overtime hrs</th><th>Salary</th><th>Overtime pay</th><th>Total</th><th>Advance</th><th>Payable</th></tr></thead><tbody id="mpRows"></tbody><tfoot id="mpFoot"></tfoot></table></div>
+<div class="pr-actions"><button type="button" id="mpSave">Save draft</button><button type="button" id="mpPost">Post cash payment</button><button type="button" id="mpSlips" hidden>Create salary slips</button><a id="mpSlipsLink" class="pr-link pr-secondary" href="/Accounts/SalarySlips" hidden>View salary slips</a><button type="button" id="mpVoid" class="pr-secondary" hidden>Void posting</button><button type="button" id="mpPrint" class="pr-secondary">Print</button></div>
+<p class="pr-note">Salary amounts come from Employee Data. Posting creates one cash payment voucher: Salaries &amp; Wages debit, Cash in Hand credit, for the total payable. After posting, create each worker's salary slip from the same figures (basic = salary earned, allowances = overtime, deductions = advance). Voiding the posting removes those slips.</p></section>
+</div>
+@section Scripts { <script src="~/js/monthly-payroll.js" asp-append-version="true"></script> }

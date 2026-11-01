@@ -24,9 +24,9 @@ public class PurchaseEditStockTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning)).Options);
         db.Database.EnsureCreated();
-        db.ItemCategory.Add(new ItemCategory { CategoryId = 1, CategoryName = "QA", IsActive = true });
+        db.ItemCategory.Add(new ItemCategory { CategoryId = 1, CategoryName = "QA", GroupType="RawMaterial", IsActive = true });
         db.Items.Add(new Items { ItemID = 900, CategoryID = 1, ItemName = "Paper", IsActive = true, StockUnit = "kg" });
-        db.Parties.Add(new Party { PartyId = 900, PartyName = "QA Supplier", PartyType = "supplier", Status = "active" });
+        db.Parties.Add(new Party { PartyId = 900, PartyCode="RAW-GROUP:1", PartyName = "QA Supplier", PartyType = "supplier", Status = "active" });
         db.PurchaseInvoice.Add(new PurchaseInvoice { PurchaseId = 900, VendorID = "900", BranchID = 1, PaymentMode = 0, PurchaseDate = DateTime.Today });
         db.PurchaseInvoiceBody.AddRange(
             new PurchaseInvoiceBody { PurchaseId = 900, Itemid = 900, Quantity = 50, PurPrice = 100 },

@@ -15,8 +15,6 @@
         <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
             <a href="/Accounts/PaymentVoucher"  class="btn btn-danger btn-sm">💳 New PV</a>
             <a href="/Accounts/ReceiptVoucher"  class="btn btn-success btn-sm">🧾 New RV</a>
-            <a href="/Accounts/JournalVoucher"  class="btn btn-primary btn-sm">📓 New JV</a>
-            <a href="/Accounts/ContraVoucher"   class="btn btn-sm" style="background:#6f42c1;color:white">🏦 New CV</a>
         </div>
     </div>
 
@@ -31,6 +29,8 @@
                     <option value="RV">RV — Receipt</option>
                     <option value="JV">JV — Journal</option>
                     <option value="CV">CV — Contra</option>
+                    <option value="DN">DN — Debit Note</option>
+                    <option value="CN">CN — Credit Note</option>
                 </select>
             </div>
             <div class="form-group">
@@ -91,6 +91,8 @@ const vtypeMeta = {
     PV: { label:'Payment',  badge:'badge-danger',  icon:'💳' },
     RV: { label:'Receipt',  badge:'badge-success', icon:'🧾' },
     JV: { label:'Journal',  badge:'badge-primary', icon:'📓' },
+    DN: { label:'Debit Note', badge:'badge-primary', icon:'📉' },
+    CN: { label:'Credit Note', badge:'badge-success', icon:'📈' },
     CV: { label:'Contra',   badge:'badge-purple',  icon:'🏦' },
 };
 
@@ -149,12 +151,14 @@ async function loadVouchers() {
             <td style="text-align:right;font-weight:600">${fmt(v.totalAmount)}</td>
             <td><span class="badge ${statusBadge(v.status)}">${v.status}</span></td>
             <td>
-                <div class="action-buttons">
-                    ${v.status === 'Draft'    ? `<button class="btn btn-success btn-sm" onclick="approveVoucher(${v.voucherId}, '${v.voucherNo}')">✅ Approve</button>` : ''}
-                    ${v.status === 'Approved' ? `<button class="btn btn-success btn-sm" onclick="postVoucher(${v.voucherId}, '${v.voucherNo}')">📮 Post</button>` : ''}
-                    <button class="btn btn-primary btn-sm" onclick="printVoucher(${v.voucherId})">🖨️ Print</button>
-                    ${v.status !== 'Void' ? `<button class="btn btn-danger btn-sm" onclick="voidVoucher(${v.voucherId}, '${v.voucherNo}')">🚫 Void</button>` : ''}
-                </div>
+                ${(() => {
+                    const approve = v.status === 'Draft' ? `<button class="btn btn-success btn-sm" onclick="approveVoucher(${v.voucherId}, '${v.voucherNo}')">✅ Approve</button>` : '';
+                    const post = v.status === 'Approved' ? `<button class="btn btn-success btn-sm" onclick="postVoucher(${v.voucherId}, '${v.voucherNo}')">📮 Post</button>` : '';
+                    const print = `<button class="btn btn-primary btn-sm" onclick="printVoucher(${v.voucherId})">🖨️ Print</button>`;
+                    const voidBtn = v.status !== 'Void' ? `<button class="am-danger" onclick="voidVoucher(${v.voucherId}, '${v.voucherNo}')">🚫 Void</button>` : '';
+                    const main = approve || post || print;
+                    return AM.wrap(main, [main === print ? '' : print, '-', voidBtn]);
+                })()}
             </td>
         </tr>`;
     }).join('');

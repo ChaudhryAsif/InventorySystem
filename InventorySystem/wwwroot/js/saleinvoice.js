@@ -17,6 +17,7 @@ const NO_IMAGE_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org
 
 let rowCounter    = 0;
 let selectedCustomer = null;
+let customerGroupId=null,itemLookupVersion=0;
 let allCustomers  = [];
 let selectedItem  = null;
 let allItems      = [];
@@ -59,6 +60,7 @@ async function loadInvoiceForEdit(id) {
         document.getElementById('paymentMode').value  = (inv.paymentMode ?? 0).toString();
 
         document.getElementById('hftxtCustomerId').value = inv.customerID || '';
+        customerGroupId=inv.customerGroupId??null;
         document.getElementById('customerAccount').value = inv.customerName || '';
         document.getElementById('customerDetails').value = '';
         document.getElementById('remarks').value         = inv.remarks || '';
@@ -85,6 +87,7 @@ async function loadInvoiceForEdit(id) {
             qtyInput.max   = avail;
             row.cells[5].querySelector('input').value = parseFloat(it.salePrice || 0).toFixed(2);
             row.cells[6].querySelector('input').value = it.discPer || 0;
+            setSaleUnit(row,it.stockUnit);
             calculateRowTotal(row);
         });
         if ((inv.items || []).length === 0) addNewRow();
@@ -125,6 +128,7 @@ function addNewRow() {
     `;
 
     tbody.appendChild(newRow);
+    const unit=document.createElement("small");unit.className="sale-unit";newRow.cells[4].append(unit);
 
     newRow.querySelectorAll('input[data-field]').forEach(input => {
         input.addEventListener('input', function () {
@@ -190,10 +194,10 @@ function calculateRowTotal(row) {
 
 function calculateTotals() {
     const rows = document.querySelectorAll('#itemsBody tr');
-    let totalQty = 0, invoiceTotal = 0;
+    let totalQty = 0, invoiceTotal = 0;const quantities={};
 
     rows.forEach(row => {
-        totalQty     += parseFloat(row.cells[4].querySelector('input').value) || 0;
+        const q=Number(row.cells[4].querySelector('input').value)||0;totalQty+=q;if(row.dataset.unit)quantities[row.dataset.unit]=(quantities[row.dataset.unit]||0)+q;
         invoiceTotal += parseFloat(row.cells[8].querySelector('input').value) || 0;
     });
 
@@ -206,7 +210,7 @@ function calculateTotals() {
     const discAmt  = (invoiceTotal * discPct) / 100;
     const netAmt   = invoiceTotal + gstAmt + freight + otherExp - discAmt;
 
-    document.getElementById('totalQty').value        = totalQty.toFixed(0);
+    document.getElementById('totalQty').value        = Object.entries(quantities).map(([u,q])=>parseFloat(q.toFixed(3))+' '+u.toUpperCase()).join(' + ')||String(totalQty);
     document.getElementById('invoiceTotal').value    = invoiceTotal.toFixed(2);
     document.getElementById('gstAmount').value       = gstAmt.toFixed(2);
     document.getElementById('discAmount').value      = discAmt.toFixed(2);
@@ -247,7 +251,7 @@ function resetForm() {
     document.getElementById('remarks').value         = '';
     document.getElementById('paymentMode').selectedIndex = 0;
 
-    selectedCustomer = null;
+    selectedCustomer = null;customerGroupId=null;itemLookupVersion++;
 
     document.getElementById('itemsBody').innerHTML = '';
     rowCounter = 0;
@@ -257,7 +261,9 @@ function resetForm() {
     document.getElementById('freight').value     = '0';
     document.getElementById('otherExp').value    = '0';
     document.getElementById('discPercent').value = '0';
+    document.getElementById('cashReceived').value = '';
     calculateTotals();
+    updateCashChange();
     loadNextInvoiceNumber();
     loadProductionOrders();
 }
@@ -315,7 +321,7 @@ async function selectProductionOrder(preserveLines = false) {
         document.getElementById('productionOrderInfo').textContent = 'Normal sale. Select an order to load agreed pricing.';
         if (!preserveLines) {
             document.getElementById('itemsBody').replaceChildren(); rowCounter = 0; addNewRow();
-            document.getElementById('hftxtCustomerId').value = '';
+            document.getElementById('hftxtCustomerId').value = '';customerGroupId=null;itemLookupVersion++;
             document.getElementById('customerAccount').value = '';
             document.getElementById('customerDetails').value = '';
             for (const id of ['gstPercent','freight','otherExp','discPercent']) document.getElementById(id).value = 0;
@@ -324,6 +330,7 @@ async function selectProductionOrder(preserveLines = false) {
         return;
     }
     document.getElementById('hftxtCustomerId').value = order.customerId;
+    const groupResponse=await fetch('/Sale/GetCustomerGroup?customer='+encodeURIComponent(order.customerId));const groupResult=await groupResponse.json();customerGroupId=groupResult.groupId??null;
     document.getElementById('customerAccount').value = order.customerName || '';
     document.getElementById('customerDetails').value = order.customerReference ? 'Customer reference: ' + order.customerReference : '';
     if (document.getElementById('posBranch')) document.getElementById('posBranch').value = order.branchId;
@@ -331,7 +338,7 @@ async function selectProductionOrder(preserveLines = false) {
     for (const id of ['freight','otherExp','discPercent']) document.getElementById(id).value = 0;
     if (!preserveLines) {
         document.getElementById('itemsBody').replaceChildren(); rowCounter = 0; addNewRow();
-        const row = document.querySelector('#itemsBody tr');
+        const row = document.querySelector('#itemsBody tr');setSaleUnit(row,"pcs");
         row.cells[1].querySelector('input').value = order.finishedItemId;
         row.cells[2].querySelector('input').value = order.itemName;
         row.cells[3].querySelector('input').value = order.availableStock;
@@ -476,12 +483,13 @@ function loadCustomers() {
     const tbody = document.getElementById('customerTableBody');
     tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">Loading customers...</td></tr>';
 
-    fetch('/Parties/GetCustomers')
+    fetch('/Sale/GetCustomerGroups')
         .then(response => response.json())
         .then(data => {
             if (data.success && data.customers && data.customers.length > 0) {
                 allCustomers = data.customers;
-                displayCustomers(allCustomers);
+                const groups=document.getElementById('customerGroupFilter'),value=groups.value;groups.replaceChildren(new Option('All Groups — Finished Goods',''));
+                for(const c of allCustomers)groups.add(new Option(c.partyName,c.groupId));groups.value=value;searchCustomers();
             } else {
                 showCustomerEmptyState();
             }
@@ -542,6 +550,9 @@ function selectCustomerRow(row, customer) {
 function selectCustomer() {
     if (!selectedCustomer) return;
 
+    const old=document.getElementById('hftxtCustomerId').value;
+    if(customerGroupId!==selectedCustomer.groupId&&old){document.getElementById('itemsBody').replaceChildren();rowCounter=0;addNewRow();allItems=[];itemLookupVersion++;}
+    customerGroupId=selectedCustomer.groupId;
     document.getElementById('hftxtCustomerId').value    = selectedCustomer.partyId;
     document.getElementById('customerAccount').value   = selectedCustomer.partyName;
 
@@ -557,9 +568,11 @@ function selectCustomer() {
 
 function searchCustomers() {
     const q = document.getElementById('customerSearchInput').value.toLowerCase();
-    if (!q) { displayCustomers(allCustomers); return; }
+    const group=document.getElementById("customerGroupFilter").value;
+    const customers=allCustomers.filter(c=>!group||String(c.groupId)===group);
+    if (!q) { displayCustomers(customers); return; }
 
-    const filtered = allCustomers.filter(c =>
+    const filtered = customers.filter(c =>
         c.partyName.toLowerCase().includes(q) ||
         (c.phone         && c.phone.includes(q)) ||
         (c.email         && c.email.toLowerCase().includes(q)) ||
@@ -581,38 +594,35 @@ function openItemLookup(button) {
 
 function closeItemModal() {
     document.getElementById('itemModal').classList.remove('show');
-    selectedItem = null;
+    itemLookupVersion++;selectedItem = null;
     currentRow   = null;
     document.getElementById('selectItemBtn').disabled = true;
     document.querySelectorAll('#itemTableBody tr').forEach(r => r.classList.remove('selected'));
 }
 
-function loadItems() {
-    const tbody = document.getElementById('itemTableBody');
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">Loading items...</td></tr>';
-
-    fetch('/Item/GetItems')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && data.items && data.items.length > 0) {
-                allItems = data.items;
-                displayItems(allItems);
-                loadCategories(allItems);
-            } else {
-                showItemEmptyState();
-            }
-        })
-        .catch(error => {
-            console.error('Error loading items:', error);
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #dc3545;">Error loading items. Please try again.</td></tr>';
-        });
+async function loadItems() {
+    allItems=[];document.getElementById('categoryFilter').replaceChildren(new Option('All Groups — Finished Goods',''));
+    const version=++itemLookupVersion,customer=document.getElementById('hftxtCustomerId').value,tbody=document.getElementById('itemTableBody');
+    tbody.innerHTML='<tr><td colspan="7">Loading selected group items…</td></tr>';selectedItem=null;document.getElementById('selectItemBtn').disabled=true;
+    try{
+        if(!customer)throw new Error('Select a Finished Goods customer group first.');
+        let page=1,items=[],data;do{const url='/Sale/GetItemOptions?customer='+encodeURIComponent(customer)+'&branchId='+encodeURIComponent(document.getElementById('posBranch')?.value||1)+'&page='+page++;
+            const response=await fetch(url);data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Items unavailable');items.push(...data.items);
+        }while(data.items.length&&items.length<data.totalCount);
+        if(version!==itemLookupVersion||customer!==document.getElementById('hftxtCustomerId').value||!document.getElementById('itemModal').classList.contains('show'))return;
+        allItems=items;loadCategories(items);filterItems();
+    }catch(e){if(version===itemLookupVersion)tbody.innerHTML='<tr><td colspan="7">'+escapeHtml(e.message)+'</td></tr>';}
+}
+function setSaleUnit(row,unit){
+    row.dataset.unit=['kg','pcs','in'].includes(unit)?unit:'';const input=row.cells[4].querySelector('input');input.step=unit==='pcs'?'1':'0.001';
+    if(row.querySelector('.sale-unit'))row.querySelector('.sale-unit').textContent=row.dataset.unit.toUpperCase();
 }
 
 function loadCategories(items) {
     const categoryFilter = document.getElementById('categoryFilter');
     const categories = [...new Set(items.map(i => i.categoryName).filter(Boolean))].sort();
 
-    categoryFilter.innerHTML = '<option value="">All Categories</option>';
+    categoryFilter.innerHTML = '<option value="">All Groups — Finished Goods</option>';
     categories.forEach(cat => {
         const option = document.createElement('option');
         option.value = option.textContent = cat;
@@ -621,6 +631,7 @@ function loadCategories(items) {
 }
 
 function displayItems(items) {
+    selectedItem=null;document.getElementById('selectItemBtn').disabled=true;
     const tbody      = document.getElementById('itemTableBody');
     const emptyState = document.getElementById('itemEmptyState');
 
@@ -667,6 +678,7 @@ function selectItemRow(row, item) {
 
 async function selectItem() {
     if (!selectedItem || !currentRow) return;
+    if(selectedItem.itemType!=='FinishedGoods'||customerGroupId&&selectedItem.categoryID!==customerGroupId){await alertDialog('Choose an item from the selected Finished Goods group.');return;}
 
     // ── Prevent duplicate item rows ───────────────────────────────────────
     const allRows = document.querySelectorAll('#itemsBody tr');
@@ -682,6 +694,7 @@ async function selectItem() {
     }
 
     // ── Populate the row ──────────────────────────────────────────────────
+    setSaleUnit(currentRow,selectedItem.stockUnit);
     const avail = selectedItem.currentStock ?? 0;
     const qtyInput = currentRow.cells[4].querySelector('input');
 
@@ -744,7 +757,7 @@ document.addEventListener('keydown', function (e) {
 document.getElementById('scanInput')?.addEventListener('keydown', async e => {
     if (e.key !== 'Enter') return; e.preventDefault();
     const code = e.target.value.trim(); if (!code) return;
-    const result = await fetch('/Item/GetItems?search=' + encodeURIComponent(code));
+    const result = await fetch('/Sale/GetItemOptions?customer='+encodeURIComponent(document.getElementById('hftxtCustomerId').value)+'&branchId='+encodeURIComponent(document.getElementById('posBranch')?.value||1)+'&search=' + encodeURIComponent(code));
     if (!result.ok) return;
     const data = await result.json(); const item = data.items?.find(i => i.barcode === code);
     if (!item) { await alertDialog('Barcode not found.', {type:'warning'}); return; }

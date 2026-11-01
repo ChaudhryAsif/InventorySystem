@@ -1,17 +1,18 @@
 @model InventorySystem.Core.Models.ProductionOrder
 @{
     Layout = null;
+    var popup = Context.Request.Query["popup"] == "1";
     var mats = Model.Materials?.ToList() ?? new List<InventorySystem.Core.Models.ProductionMaterial>();
 }
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Production Order #@Model.ProductionOrderId — Bright Packages</title>
+    <title>Production Order #@Model.ProductionOrderId — B. Packages</title>
     <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
     <style>
         * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:2rem; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color:#1e293b; margin:0; padding:@(popup ? "1rem" : "2rem"); }
         .inv { max-width:900px; margin:0 auto; }
         .inv-head { display:flex; justify-content:space-between; border-bottom:3px solid #1e3a5f; padding-bottom:1rem; margin-bottom:1.5rem; }
         .inv-head h1 { margin:0; font-size:1.6rem; color:#1e3a5f; }
@@ -28,7 +29,10 @@
     </style>
 </head>
 <body>
-    <div class="actions"><button onclick="window.print()">🖨 Print</button></div>
+    @if (!popup)
+    {
+        <div class="actions"><button onclick="window.print()">🖨 Print</button> <button style="background:#64748b" onclick="window.close()">Close</button></div>
+    }
     <div class="inv">
         <partial name="_CompanyPrintHeader" />
         <div class="inv-head">
@@ -52,10 +56,40 @@
             <div><span>Agreed GST</span><strong>@Model.AgreedGstPercent.ToString("0.##")%</strong></div>
             <div><span>Agreed Order Value (including GST)</span><strong>@(Model.AgreedUnitPrice.HasValue ? InventorySystem.Models.OrderPricing.Total(Model.OrderQty, Model.AgreedUnitPrice.Value, Model.AgreedGstPercent).ToString("N2") : "Not recorded")</strong></div>
             <div><span>Customer Reference / PO Number</span><strong>@(Model.CustomerReference ?? "-")</strong></div>
-            <p>Materials are estimated from the saved cost sheet, not measured consumption.</p>
             <div><span>Remarks</span><strong>@(Model.Remarks ?? "-")</strong></div>
         </div>
 
+        @if (ViewBag.Batches is List<InventorySystem.Core.Models.ProductionBatch> printBatches && printBatches.Count > 0)
+        {
+            <table>
+                <thead><tr><th>Batch</th><th>Date</th><th class="num">Boxes</th><th>Status</th></tr></thead>
+                <tbody>
+                @foreach (var b in printBatches)
+                {
+                    <tr><td>#@b.BatchNo</td><td>@b.ProducedUtc.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td><td class="num">@b.Quantity</td><td>@(b.ReversedUtc == null ? "Active" : "Reversed")</td></tr>
+                }
+                </tbody>
+            </table>
+            <p>Remaining to produce: @(Math.Max(0, Model.OrderQty - Model.ProducedQty)) boxes@(Model.ClosedShortUtc != null ? " (order closed short)" : "")</p>
+        }
+
+        @if (ViewBag.Sales is List<InventorySystem.Controllers.OrderSaleRow> orderSales && orderSales.Count > 0)
+        {
+            var activeSales = orderSales.Where(x => !x.IsCancelled).ToList();
+            <h3 style="margin:1.5rem 0 0;font-size:1rem;color:#1e3a5f;">Sales against this order</h3>
+            <table>
+                <thead><tr><th>Invoice</th><th>Date</th><th class="num">Boxes</th><th class="num">Net Amount</th><th>Status</th></tr></thead>
+                <tbody>
+                @foreach (var x in orderSales)
+                {
+                    <tr><td>#@x.SaleId</td><td>@(x.SaleDate?.ToString("dd MMM yyyy") ?? "-")</td><td class="num">@x.Boxes.ToString("0.##")</td><td class="num">@x.NetAmount.ToString("N2")</td><td>@(x.IsCancelled ? "Cancelled" : "Active")</td></tr>
+                }
+                </tbody>
+            </table>
+            <p>Invoiced: <strong>@activeSales.Sum(x => x.Boxes).ToString("0.##") of @Model.ProducedQty produced boxes</strong>, @((Model.ProducedQty - activeSales.Sum(x => x.Boxes)).ToString("0.##")) unsold. Total invoiced <strong>@activeSales.Sum(x => x.NetAmount).ToString("N2")</strong>.</p>
+        }
+
+        <p class="muted">Materials are estimated from the saved cost sheet, not measured consumption.</p>
         <table>
             <thead>
                 <tr>

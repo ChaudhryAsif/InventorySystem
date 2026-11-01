@@ -1,0 +1,18 @@
+@{ ViewData["Title"]="Expenses"; Layout="_Layout"; }
+<link rel="stylesheet" href="~/css/payroll.css" asp-append-version="true" />
+<div class="pr-page" id="exPage">
+<header class="pr-header"><div><h1>Expenses</h1><p>Record daily cash expenses. Each expense posts to the books: category debit, Cash in Hand credit.</p></div><div class="pr-actions"><button type="button" id="exNew">+ Add Expense</button></div></header>
+<p id="exMessage" class="pr-message" role="status" hidden></p>
+<dialog id="exModal" class="pr-modal" aria-labelledby="exHeading"><header class="pr-modal-header"><h2 id="exHeading">Add expense</h2><button type="button" class="pr-secondary" data-close aria-label="Close expense form">×</button></header><p id="exModalMessage" class="pr-message" role="alert" hidden></p>
+<form id="exForm"><div class="pr-grid">
+<label>Date<input id="exDate" type="date" required /></label>
+<label>Category<select id="exCategory" required><option value="">Select category</option></select></label>
+<label>Amount<input id="exAmount" type="number" min="0.01" max="100000000" step="0.01" placeholder="0.00" required /></label>
+<label class="pr-full">Description<input id="exDescription" maxlength="200" placeholder="For example: petrol, water bottles, electrician" required /></label>
+</div><p class="pr-note">Cash only. Purchases, salaries (Monthly Payroll) and fixed assets are not recorded here.</p>
+<div class="pr-actions"><button type="submit" id="exSave">Save expense</button><button type="button" id="exSaveNew" class="pr-secondary">Save and add another</button><button type="button" class="pr-secondary" data-close>Cancel</button></div></form></dialog>
+<section class="pr-card pr-list"><div class="pr-grid pr-filters"><label>Month<input id="exMonth" type="month" /></label><label>Category<select id="exFilterCategory"><option value="">All categories</option></select></label><label>Search<input id="exSearch" placeholder="Description or voucher no" /></label>
+<label class="mp-check"><span><input id="exVoid" type="checkbox" /> Show voided</span></label></div>
+<div class="pr-scroll"><table><thead><tr><th>Date</th><th>Voucher</th><th>Category</th><th>Description</th><th class="num">Amount</th><th>Status</th><th>Action</th></tr></thead><tbody id="exRows"></tbody><tfoot id="exFoot"></tfoot></table></div></section>
+</div>
+@section Scripts { <script src="~/js/expenses.js" asp-append-version="true"></script> }

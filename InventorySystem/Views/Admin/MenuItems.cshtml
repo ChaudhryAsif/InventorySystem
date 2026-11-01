@@ -1,4 +1,4 @@
-﻿@model IEnumerable<InventorySystem.Core.Models.MenuItem>
+@model IEnumerable<InventorySystem.Core.Models.MenuItem>
 
 @{
     ViewData["Title"] = "Menu Builder";
@@ -19,16 +19,17 @@
             @if (group) { <span class="mb-badge mb-badge-group">Group</span> }
             @if (!m.IsActive) { <span class="mb-badge mb-badge-off">Hidden</span> }
             <span class="mb-actions">
-                @if (!group)
-                {
-                    <select class="mb-move" title="Move to" aria-label="Move to"></select>
-                }
+                <select class="mb-move" title="Move to" aria-label="Move to"></select>
                 <button type="button" class="admin-btn admin-btn-secondary mb-up" title="Move up" aria-label="Move up">▲</button>
                 <button type="button" class="admin-btn admin-btn-secondary mb-down" title="Move down" aria-label="Move down">▼</button>
                 <a href="@Url.Action("EditMenuItem", "Admin", new { id = m.Id })" class="admin-btn admin-btn-primary mb-edit" title="Edit">✏️</a>
                 @if (group)
                 {
                     <button type="button" class="admin-btn admin-btn-danger mb-del" title="Delete empty group" aria-label="Delete group">🗑️</button>
+                }
+                else
+                {
+                    <button type="button" class="admin-btn admin-btn-danger mb-del-page" title="Delete menu link (hide page)" aria-label="Delete page">🗑️</button>
                 }
             </span>
         </div>
@@ -72,7 +73,7 @@
     <span class="admin-page-icon">📋</span>
     <div>
         <h1 class="admin-page-title">Menu Builder</h1>
-        <p class="admin-page-subtitle">Create main menus, then drag pages into them or use the arrows. Permissions never change when a page is moved.</p>
+        <p class="admin-page-subtitle">Create folders, then move folders or pages into them using dropdowns, drag handles or arrows. Permissions never change when a page is moved.</p>
     </div>
 </div>
 
@@ -88,24 +89,16 @@
     </div>
 
     <ul class="mb-list" id="topList" data-version="@ViewBag.MenuVersion">
-        @foreach (var top in tops)
-        {
-            var group = IsGroup(top);
-            <li class="mb-node @(group ? "is-group" : "")" data-id="@top.Id" data-group="@(group ? "1" : "0")">
-                @{ Row(top); }
-                @if (group)
-                {
-                    <ul class="mb-list mb-children">
-                        @foreach (var child in kids[top.Id].OrderBy(c => c.SortOrder).ThenBy(c => c.Id))
-                        {
-                            <li class="mb-node" data-id="@child.Id" data-group="0">
-                                @{ Row(child); }
-                            </li>
-                        }
-                    </ul>
-                }
+        @{ void Node(InventorySystem.Core.Models.MenuItem node, HashSet<int> ancestors) {
+            if(!ancestors.Add(node.Id))return;
+            var group=IsGroup(node);
+            <li class="mb-node @(group ? "is-group" : "")" data-id="@node.Id" data-group="@(group ? "1" : "0")">
+                @{ Row(node); }
+                @if(group) { <ul class="mb-list mb-children">@foreach(var child in kids[node.Id].OrderBy(c=>c.SortOrder).ThenBy(c=>c.Id)) { Node(child,new HashSet<int>(ancestors)); }</ul> }
             </li>
         }
+        foreach(var top in tops) { Node(top,new()); } }
+
     </ul>
 
     <div class="mb-save-bar">
@@ -132,7 +125,7 @@
             function setDirty(v) { dirty = v; dirtyNote.style.display = v ? 'inline' : 'none'; }
 
             function refresh() {
-                const groups = nodes(topList).filter(isGroup);
+                const groups = [...topList.querySelectorAll('.mb-node[data-group="1"]')];
                 document.querySelectorAll('.mb-node').forEach(li => {
                     const siblings = nodes(li.parentElement), i = siblings.indexOf(li);
                     const row = rowOf(li);
@@ -144,7 +137,7 @@
                     if (sel) {
                         const parent = parentLi(li);
                         sel.replaceChildren(new Option('Top level', ''));
-                        groups.forEach(g => sel.add(new Option(nameOf(g), g.dataset.id)));
+                        groups.filter(g=>g!==li && !li.contains(g)).forEach(g => sel.add(new Option(nameOf(g), g.dataset.id)));
                         sel.value = parent ? parent.dataset.id : '';
                     }
                 });
@@ -173,7 +166,7 @@
             document.addEventListener('dragover', e => {
                 if (!dragged) return;
                 const list = e.target.closest('.mb-list');
-                if (!list || (isGroup(dragged) && list !== topList) || dragged.contains(list)) return;
+                if (!list || dragged.contains(list)) return;
                 e.preventDefault();
                 document.querySelectorAll('.mb-over').forEach(x => x.classList.remove('mb-over'));
                 if (list !== topList) list.classList.add('mb-over');
@@ -181,7 +174,7 @@
             document.addEventListener('drop', e => {
                 if (!dragged) return;
                 const list = e.target.closest('.mb-list');
-                if (!list || (isGroup(dragged) && list !== topList) || dragged.contains(list)) return;
+                if (!list || dragged.contains(list)) return;
                 e.preventDefault();
                 insertAt(list, dragged, e.clientY);
                 setDirty(true); refresh();
@@ -199,6 +192,12 @@
                 } else if (btn.classList.contains('mb-down')) {
                     const next = li.nextElementSibling;
                     if (next) next.after(li);
+                } else if (btn.classList.contains('mb-del-page')) {
+                    if(dirty)return alertDialog('Save or discard your changes before deleting a menu link.',{type:'warning'});
+                    if(!await confirmDialog('Delete this menu link? The page and its data will be preserved.'))return;
+                    const result=await post('/Admin/MenuItems/'+li.dataset.id+'/DeletePage');
+                    if(result.success)location.reload();else alertDialog(result.message||'Delete failed.',{type:'warning'});
+                    return;
                 } else if (btn.classList.contains('mb-del')) {
                     if (dirty) return alertDialog('Save or discard your changes before deleting a group.', { type: 'warning' });
                     if (!await confirmDialog(`Delete the empty group "${nameOf(li)}"?`)) return;
@@ -238,10 +237,8 @@
             }
 
             document.getElementById('saveBtn').addEventListener('click', async () => {
-                const tree = nodes(topList).map(li => ({
-                    id: +li.dataset.id,
-                    children: isGroup(li) ? nodes(childList(li)).map(c => +c.dataset.id) : []
-                }));
+                const serialize = list => nodes(list).map(li=>({ id:+li.dataset.id, branches:isGroup(li)?serialize(childList(li)):[] }));
+                const tree = serialize(topList);
                 const r = await post('/Admin/MenuItems/SaveOrder', { version: topList.dataset.version, items: tree });
                 if (r.success) { setDirty(false); location.reload(); }
                 else alertDialog(r.message || 'Save failed.', { type: 'warning' });

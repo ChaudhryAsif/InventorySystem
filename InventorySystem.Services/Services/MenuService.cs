@@ -1,4 +1,4 @@
-﻿using InventorySystem.Core.Models;
+using InventorySystem.Core.Models;
 using InventorySystem.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -72,29 +72,19 @@ namespace InventorySystem.Core.Services
         private static List<MenuItem> BuildMenuHierarchy(List<MenuItem> items, HashSet<string>? permissions)
         {
             bool CanSee(MenuItem i) => permissions == null || permissions.Contains(i.RequiredPermission);
-            bool IsGroup(MenuItem i) => string.IsNullOrEmpty(i.Controller);
-
-            var hierarchy = new List<MenuItem>();
-            foreach (var mainItem in items.Where(i => i.ParentId == null).OrderBy(i => i.SortOrder))
+            var byParent = items.Where(i => i.ParentId.HasValue).ToLookup(i => i.ParentId!.Value);
+            MenuItem? Build(MenuItem item, HashSet<int> ancestors)
             {
-                var children = items
-                    .Where(i => i.ParentId == mainItem.Id && CanSee(i))
-                    .OrderBy(i => i.SortOrder)
-                    .ToList();
-
-                if (IsGroup(mainItem))
-                {
-                    if (children.Count == 0) continue;
-                }
-                else if (!CanSee(mainItem))
-                {
-                    continue;
-                }
-
-                mainItem.Children = children;
-                hierarchy.Add(mainItem);
+                if (!ancestors.Add(item.Id)) return null;
+                var children = byParent[item.Id].OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
+                    .Select(i => Build(i, new HashSet<int>(ancestors))).Where(i => i != null).Cast<MenuItem>().ToList();
+                if (string.IsNullOrEmpty(item.Controller) ? children.Count == 0 : !CanSee(item)) return null;
+                return new MenuItem { Id=item.Id, Name=item.Name, Icon=item.Icon, Controller=item.Controller,
+                    Action=item.Action, ParentId=item.ParentId, SortOrder=item.SortOrder,
+                    RequiredPermission=item.RequiredPermission, IsActive=item.IsActive, CreatedAt=item.CreatedAt, Children=children };
             }
-
+            var hierarchy = items.Where(i => i.ParentId == null).OrderBy(i => i.SortOrder).ThenBy(i => i.Id)
+                .Select(i => Build(i, new HashSet<int>())).Where(i => i != null).Cast<MenuItem>().ToList();
             return hierarchy;
         }
     }

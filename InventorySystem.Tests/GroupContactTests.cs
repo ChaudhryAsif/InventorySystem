@@ -49,7 +49,7 @@ public class GroupContactTests
         var response=await controller.Delete((await db.ItemCategory.SingleAsync()).CategoryId);
         Assert.Equal(403,response.StatusCode); Assert.False(Data(response).GetProperty("success").GetBoolean());
         Assert.Single(await db.ItemCategory.ToListAsync());
-        Assert.False(Data(Assert.IsType<JsonResult>(controller.GetList())).GetProperty("canDelete").GetBoolean());
+        Assert.False(Data(Assert.IsType<JsonResult>(await controller.GetList())).GetProperty("canDelete").GetBoolean());
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class GroupContactTests
     {
         await using var db=Database(); var controller=Controller(db,"SuperAdmin");
         Assert.True(Data(await controller.Save(Group())).GetProperty("success").GetBoolean());
-        Assert.True(Data(Assert.IsType<JsonResult>(controller.GetList())).GetProperty("canDelete").GetBoolean());
+        Assert.True(Data(Assert.IsType<JsonResult>(await controller.GetList())).GetProperty("canDelete").GetBoolean());
         Assert.True(Data(await controller.Delete((await db.ItemCategory.SingleAsync()).CategoryId)).GetProperty("success").GetBoolean());
         Assert.Empty(await db.ItemCategory.ToListAsync());
     }

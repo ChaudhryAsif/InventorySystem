@@ -50,7 +50,7 @@ public class AccountServiceTests
 
         var accounts = await svc.GetChartOfAccountsAsync();
 
-        Assert.Equal(38, accounts.Count);
+        Assert.Equal(41, accounts.Count);
         Assert.Equal(5, accounts.Count(a => a.Level == 1));
         Assert.Contains(accounts, a => a.AccountCode == "1101" && a.AccountName == "Cash in Hand");
         // Every non-root account points to an existing parent

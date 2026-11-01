@@ -1,4 +1,5 @@
-﻿using InventorySystem.Core.Models;
+using InventorySystem.Core.Services;
+using InventorySystem.Core.Models;
 using InventorySystem.Data;
 using InventorySystem.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -20,17 +21,15 @@ namespace InventorySystem.Controllers
             _context = context;
         }
 
-        public async Task<IActionResult> Index()
+        private async Task<bool> CanDeleteAsync() => User?.IsInRole("SuperAdmin") == true || User!=null && await new PermissionService(_context).HasPermissionAsync(User,"ItemCategory.Delete");
+
+        public async Task<IActionResult> Index() => await Section("RawMaterial");
+        public async Task<IActionResult> FinishedGoods() => await Section("FinishedGoods");
+        private async Task<IActionResult> Section(string type)
         {
-            try
-            {
-                var itemCategories = await _context.ItemCategory.ToListAsync();
-                return View(itemCategories);
-            }
-            catch (Exception ex)
-            {
-                throw;
-            }
+            ViewBag.GroupType=type;
+            ViewBag.CanDelete=await CanDeleteAsync();
+            return View("Index",await _context.ItemCategory.Where(g=>g.GroupType==type).ToListAsync());
         }
 
         [HttpPost]
@@ -40,6 +39,8 @@ namespace InventorySystem.Controllers
                 !categoryViewModel.IsActive.HasValue || categoryViewModel.CategoryId < 0)
                 return Json(new { success = false, message = "Enter a group name and select Active or Inactive." });
 
+            if(categoryViewModel.PageGroupType!=null && (categoryViewModel.PageGroupType is not ("RawMaterial" or "FinishedGoods") || categoryViewModel.GroupType!=categoryViewModel.PageGroupType || categoryViewModel.CategoryId>0 && !await _context.ItemCategory.AnyAsync(g=>g.CategoryId==categoryViewModel.CategoryId&&g.GroupType==categoryViewModel.PageGroupType)))
+                return Json(new{success=false,message="This group belongs to a different inventory section."});
             var address = string.IsNullOrWhiteSpace(categoryViewModel.Address) ? null : categoryViewModel.Address.Trim();
             var contactNumber = string.IsNullOrWhiteSpace(categoryViewModel.ContactNumber) ? null : categoryViewModel.ContactNumber.Trim();
             if (address?.Length > 500 || contactNumber?.Length > 32)
@@ -112,11 +113,28 @@ namespace InventorySystem.Controllers
             }
         }
 
+        // Print page for the ticked group ids (or every group of the type). detail=1 prints full cards.
         [HttpGet]
-        public async Task<IActionResult> GetById(int id)
+        public async Task<IActionResult> Print(string? ids, string? groupType, bool detail = false, bool popup = false)
+        {
+            if (groupType is not (null or "RawMaterial" or "FinishedGoods")) return BadRequest();
+            var query = _context.ItemCategory.AsNoTracking().Where(g => groupType == null || g.GroupType == groupType);
+            if (ids != null)
+            {
+                var idList = ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(x => int.TryParse(x, out var n) ? n : 0).Where(n => n > 0).Distinct().Take(2000).ToList();
+                query = query.Where(g => idList.Contains(g.CategoryId));
+            }
+            var rows = await query.OrderBy(g => g.CategoryName).Take(5000).Select(g => new GroupPrintRow(g.CategoryId, g.CategoryName, g.GroupType,
+                g.Description, g.Address, g.ContactNumber, g.IsActive ?? false, g.CreatedDate, _context.Items.Count(i => i.CategoryID == g.CategoryId))).ToListAsync();
+            return View(new PrintPage<GroupPrintRow>(rows, detail, popup));
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetById(int id,string? groupType=null)
         {
             var category = await _context.ItemCategory
-                .FirstOrDefaultAsync(c => c.CategoryId == id);
+                .FirstOrDefaultAsync(c => c.CategoryId == id && (groupType==null||c.GroupType==groupType));
 
             if (category == null)
                 return NotFound();
@@ -124,21 +142,21 @@ namespace InventorySystem.Controllers
             return Json(category);
         }
 
-        public IActionResult GetList()
+        public async Task<IActionResult> GetList(string? groupType=null)
         {
-            var categories = _context.ItemCategory.ToList();
-            return Json(new { success = true, data = categories, canDelete = User?.IsInRole("SuperAdmin") == true });
+            if(groupType is not (null or "RawMaterial" or "FinishedGoods"))return BadRequest();
+            var categories = _context.ItemCategory.Where(g=>groupType==null||g.GroupType==groupType).ToList();
+            return Json(new { success = true, data = categories, canDelete = await CanDeleteAsync() });
         }
 
         [HttpPost]
-        [Authorize(Roles = "SuperAdmin")]
-        public async Task<JsonResult> Delete(int id)
+        public async Task<JsonResult> Delete(int id,string? groupType=null)
         {
-            if (User?.IsInRole("SuperAdmin") != true)
-                return new JsonResult(new { success = false, message = "Only SuperAdmin can delete groups." }) { StatusCode = 403 };
+            if (!await CanDeleteAsync())
+                return new JsonResult(new { success = false, message = "You do not have permission to delete groups." }) { StatusCode = 403 };
             try
             {
-                var category = await _context.ItemCategory.FindAsync(id);
+                var category = await _context.ItemCategory.SingleOrDefaultAsync(g=>g.CategoryId==id&&(groupType==null||g.GroupType==groupType));
 
                 if (category == null)
                     return Json(new { success = false, message = "Group not found." });
