@@ -50,8 +50,8 @@ public class ExpenseTests
         Assert.True((await db.Vouchers.FindAsync(entry.VoucherId))!.IsVoid);
         var shown=JsonSerializer.SerializeToElement(Assert.IsType<JsonResult>(await c.GetExpenses()).Value);
         Assert.Single(shown.GetProperty("data").EnumerateArray());Assert.Equal(200m,shown.GetProperty("total").GetDecimal());
-        var all=JsonSerializer.SerializeToElement(Assert.IsType<JsonResult>(await c.GetExpenses(includeVoid:true)).Value);
-        Assert.Equal(2,all.GetProperty("data").GetArrayLength());Assert.Equal(200m,all.GetProperty("total").GetDecimal());
+        var voided=JsonSerializer.SerializeToElement(Assert.IsType<JsonResult>(await c.GetExpenses(voidedOnly:true)).Value);
+        Assert.Single(voided.GetProperty("data").EnumerateArray());Assert.Equal("Void",voided.GetProperty("data")[0].GetProperty("Status").GetString());Assert.Equal(entry.Amount,voided.GetProperty("total").GetDecimal());
     }
     [Fact] public async Task FiltersByMonthCategoryAndSearch()
     {

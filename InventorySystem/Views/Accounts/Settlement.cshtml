@@ -1,65 +1,169 @@
 @model string
 @{ Layout="_Layout"; var receipt=Model=="Receipt"; ViewData["Title"]=receipt?"Receive Money":"Pay Money"; }
 <link href="~/css/accounts.css" rel="stylesheet" />
-<div class="ac-page"><h2>@ViewData["Title"]</h2>
+<style>
+    .st { max-width:640px; }
+    .st form { display:grid; gap:1rem; }
+    .st-field > label, .st-field > .st-lbl { display:block; font-weight:600; margin-bottom:.35rem; color:#1e293b; }
+    .st-combo { position:relative; }
+    .st-combo input[type=text] { width:100%; box-sizing:border-box; }
+    .st-list { position:absolute; z-index:20; left:0; right:0; top:calc(100% + 4px); margin:0; padding:.25rem; list-style:none; background:#fff; border:1px solid #cbd5e1; border-radius:10px; box-shadow:0 8px 24px rgba(15,23,42,.14); max-height:20rem; overflow:auto; }
+    .st-list li { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.55rem .7rem; border-radius:8px; cursor:pointer; }
+    .st-list li:hover, .st-list li.active { background:#eff6ff; }
+    .st-list .nm { font-weight:600; color:#0f172a; }
+    .st-list .sub { display:block; font-size:.78rem; color:#64748b; margin-top:.1rem; }
+    .st-list .amt { font-weight:700; color:#1e3a5f; white-space:nowrap; font-variant-numeric:tabular-nums; text-align:right; }
+    .st-list .amt small { display:block; font-weight:500; color:#64748b; font-size:.72rem; }
+    .st-list li.off { opacity:.62; }
+    .st-list li.off .amt { color:#64748b; }
+    .st-list .amt a { font-size:.72rem; font-weight:600; }
+    .st-all { display:inline-flex; gap:.4rem; align-items:center; margin-top:.5rem; font-size:.86rem; color:#334155; cursor:pointer; }
+    .st-empty { padding:.8rem; color:#64748b; font-size:.9rem; }
+    .st-tag { display:inline-block; padding:.05rem .5rem; border-radius:999px; font-size:.7rem; font-weight:700; margin-left:.4rem; vertical-align:middle; }
+    .st-tag.customer { background:#dcfce7; color:#166534; } .st-tag.supplier { background:#dbeafe; color:#1e40af; } .st-tag.both { background:#fef3c7; color:#92400e; }
+    .st-card { border:1px solid #bfdbfe; background:#eff6ff; border-radius:10px; padding:.8rem 1rem; }
+    .st-card b { font-size:1.15rem; color:#1e3a5f; }
+    .st-card small { display:block; color:#475569; margin-top:.15rem; }
+    .st-after { font-size:.86rem; color:#475569; margin-top:.35rem; }
+    .st-done { border:1px solid #bbf7d0; background:#f0fdf4; border-radius:10px; padding:.8rem 1rem; display:flex; flex-wrap:wrap; gap:.6rem 1rem; align-items:center; }
+    .st-done a { font-weight:600; }
+    .st-done[hidden] { display:none; }
+</style>
+<div class="ac-page st"><h2>@ViewData["Title"]</h2>
     <p>@(receipt?"Receive a customer payment or a refund from a supplier.":"Pay a supplier or refund a customer.")</p>
-    <form id="paymentForm" style="max-width:600px;display:grid;gap:1rem">
-        <label>Customer / Supplier<select id="paymentParty" class="ac-select" required onchange="loadBalance()"><option value="">Select party...</option></select></label>
-        <p id="paymentBalance" role="status">Select a party to see the payment or refund due.</p>
-        <label>Amount<input class="ac-input" id="paymentAmount" type="number" min="0.01" step="0.01" required /></label>
-        <label>Date<input class="ac-input" id="paymentDate" type="date" required value="@DateTime.Today.ToString("yyyy-MM-dd")" /></label>
-        <label>Method<select class="ac-select" id="paymentMode"><option>Cash</option><option>Bank Transfer</option></select></label>
-        <label>Reference / Note<input class="ac-input" id="paymentReference" maxlength="100" /></label>
+    <div id="paymentDone" class="st-done" hidden role="status"></div>
+    <form id="paymentForm">
+        <div class="st-field">
+            <label for="partySearch">Customer / Supplier</label>
+            <div class="st-combo">
+                <input id="partySearch" class="ac-input" type="text" role="combobox" aria-expanded="false" aria-controls="partyList" aria-autocomplete="list" autocomplete="off" placeholder="Click to choose, or type a name or phone to search" />
+                <ul id="partyList" class="st-list" role="listbox" hidden></ul>
+            </div>
+            <input type="hidden" id="paymentParty" />
+            <label class="st-all"><input type="checkbox" id="showAll" onchange="toggleAll()" /> Show all active parties, including cleared ones</label>
+        </div>
+        <div id="paymentBalance" class="st-card" role="status">Loading @(receipt?"customers and suppliers who have to pay you":"customers and suppliers you have to pay")...</div>
+        <div class="st-field"><label for="paymentAmount">Amount</label>
+            <input class="ac-input" id="paymentAmount" type="number" min="0.01" step="0.01" required />
+            <div class="st-after" id="paymentAfter"></div></div>
+        <div class="st-field"><label for="paymentDate">Date</label><input class="ac-input" id="paymentDate" type="date" required value="@DateTime.Today.ToString("yyyy-MM-dd")" /></div>
+        <div class="st-field"><label for="paymentMode">Method</label><select class="ac-select" id="paymentMode"><option>Cash</option><option>Bank Transfer</option></select></div>
+        <div class="st-field"><label for="paymentReference">Reference / Note</label><input class="ac-input" id="paymentReference" maxlength="100" /></div>
         <button class="ac-btn ac-btn-primary" id="paymentSave" disabled>@(receipt?"Receive Money":"Pay Money")</button>
-    </form><p><a href="/Accounts/PartyLedger">Party Ledger</a> · <a href="/Accounts/VoucherList">Voucher History</a></p>
+    </form>
 </div>
 <script>
-let outstanding=0, balanceRequest=0, balanceReady=false;
+let outstanding=0, balanceRequest=0, balanceReady=false, parties=[], activeIndex=-1;
 const receiveMoney=@(receipt?"true":"false");
-const partySelect=document.getElementById('paymentParty');
+const partyId=document.getElementById('paymentParty');
+const search=document.getElementById('partySearch');
+const list=document.getElementById('partyList');
 const amountInput=document.getElementById('paymentAmount');
 const saveButton=document.getElementById('paymentSave');
 const message=document.getElementById('paymentBalance');
-async function loadParties() {
-    try {
-        const response=await fetch('/Accounts/GetParties'); if(!response.ok)throw new Error('Unable to load parties. Refresh and retry.');
-        const data=await response.json();
-        for(const p of data.data || []) {
-            const option=document.createElement('option');option.value=p.value;option.textContent=p.text+' ('+p.partyType+')';partySelect.appendChild(option);
-        }
+const after=document.getElementById('paymentAfter');
+const money=n=>'Rs. '+Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const otherScreen=receiveMoney?{name:'Pay Money',url:'/Accounts/PaymentVoucher'}:{name:'Receive Money',url:'/Accounts/ReceiptVoucher'};
+const dueText=p=>p.isRefund?(p.partyType==='supplier'?'Supplier refund due':'Customer refund due'):receiveMoney?'Has to pay you':'You have to pay';
+
+async function loadParties(){
+    try{
+        const response=await fetch('/Accounts/GetSettlementParties?direction=@Model'+(document.getElementById('showAll').checked?'&all=true':''));
+        if(!response.ok)throw new Error('Unable to load parties. Refresh and retry.');
+        parties=(await response.json()).data||[];
+        const dueCount=parties.filter(p=>p.status==='due').length;
+        message.textContent=dueCount||parties.length?'Choose a party to see the amount due.':(receiveMoney?'No customer or supplier has an amount to receive right now.':'No customer or supplier has an amount to pay right now.');
         const selected=new URLSearchParams(location.search).get('partyId');
-        if(selected && [...partySelect.options].some(o=>o.value===selected)){partySelect.value=selected;await loadBalance();}
-    } catch(error){message.textContent=error.message;}
+        if(selected){
+            const p=parties.find(x=>String(x.id)===selected);
+            if(p)choose(p);else await showOutsideList(Number(selected));
+        }
+    }catch(error){message.textContent=error.message;}
 }
-async function loadBalance() {
-    const request=++balanceRequest, id=Number(partySelect.value);
-    outstanding=0;balanceReady=false;saveButton.disabled=true;amountInput.value='';amountInput.removeAttribute('max');
-    if(!id){message.textContent='Select a party to see the payment or refund due.';return;}
+// A party opened by link that is not due in this direction: say so, as before.
+async function showOutsideList(id){
+    try{
+        const data=await (await fetch('/Accounts/GetLedger?partyId='+id)).json();
+        if(!data.success)return;
+        const s=data.summary;search.value=s.partyName||'';
+        message.textContent=s.balance===0?'Cleared: no payment or refund is due.':s.balanceDescription+': '+money(s.balance)+'. Open '+(receiveMoney?'Pay Money':'Receive Money')+' to settle this balance.';
+    }catch(e){}
+}
+function rowAmount(p){
+    if(p.status==='cleared')return 'Cleared<small>Nothing due</small>';
+    if(p.status==='other')return money(p.amount)+'<small>'+(receiveMoney?'You have to pay: ':'Has to pay you: ')+'<a href="'+otherScreen.url+'?partyId='+p.id+'">use '+otherScreen.name+'</a></small>';
+    return money(p.amount)+'<small>'+esc(dueText(p))+'</small>';
+}
+function toggleAll(){
+    try{localStorage.setItem('settleShowAll',document.getElementById('showAll').checked?'1':'0');}catch(e){}
+    partyId.value='';search.value='';resetAmount();loadParties();
+}
+function render(filter){
+    const q=(filter||'').trim().toLowerCase();
+    const rows=parties.filter(p=>!q||p.name.toLowerCase().includes(q)||(p.phone||'').toLowerCase().includes(q));
+    activeIndex=rows.length?0:-1;
+    list.innerHTML=rows.length?rows.map((p,i)=>`<li role="option" data-id="${p.id}" class="${i===0?'active':''}${p.status==='due'?'':' off'}"><span><span class="nm">${esc(p.name)}</span><span class="st-tag ${esc(p.partyType)}">${esc(p.partyType)}</span>${p.phone?`<span class="sub">${esc(p.phone)}</span>`:''}</span><span class="amt">${rowAmount(p)}</span></li>`).join('')
+        :`<li class="st-empty">${parties.length?'No match. Try another name or phone.':(receiveMoney?'Nobody has to pay you anything right now.':'You do not have to pay anybody right now.')}</li>`;
+    list.hidden=false;search.setAttribute('aria-expanded','true');
+}
+function closeList(){list.hidden=true;search.setAttribute('aria-expanded','false');}
+function choose(p){
+    partyId.value=p.id;search.value=p.name;closeList();loadBalance();
+}
+search.addEventListener('focus',()=>render(partyId.value?'':search.value));
+search.addEventListener('input',()=>{partyId.value='';resetAmount();message.textContent='Choose a party to see the amount due.';render(search.value);});
+search.addEventListener('keydown',e=>{
+    const items=[...list.querySelectorAll('li[data-id]')];
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(list.hidden)render(search.value);if(!items.length)return;
+        activeIndex=(activeIndex+(e.key==='ArrowDown'?1:-1)+items.length)%items.length;items.forEach((li,i)=>li.classList.toggle('active',i===activeIndex));items[activeIndex].scrollIntoView({block:'nearest'});}
+    else if(e.key==='Enter'&&!list.hidden&&items[activeIndex]){e.preventDefault();choose(parties.find(p=>String(p.id)===items[activeIndex].dataset.id));}
+    else if(e.key==='Escape')closeList();
+});
+list.addEventListener('mousedown',e=>{const li=e.target.closest('li[data-id]');if(li){e.preventDefault();choose(parties.find(p=>String(p.id)===li.dataset.id));}});
+document.addEventListener('click',e=>{if(!e.target.closest('.st-combo'))closeList();});
+
+function resetAmount(){outstanding=0;balanceReady=false;saveButton.disabled=true;amountInput.value='';amountInput.removeAttribute('max');after.textContent='';}
+async function loadBalance(){
+    const request=++balanceRequest, id=Number(partyId.value);
+    resetAmount();
+    if(!id){message.textContent='Choose a party to see the amount due.';return;}
     message.textContent='Loading balance...';
-    try {
+    try{
         const response=await fetch('/Accounts/GetLedger?partyId='+id);const data=await response.json();
         if(request!==balanceRequest)return;
-        if(!response.ok || !data.success)throw new Error(data.message || 'Could not load the balance.');
-        const summary=data.summary;
-        if(summary.balance===0){message.textContent='Cleared — no payment or refund is due.';return;}
-        const rightDirection=summary.balanceType===(receiveMoney?'Receivable':'Payable');
-        message.textContent=summary.balanceDescription+': Rs. '+Number(summary.balance).toFixed(2);
-        if(!rightDirection){message.textContent+=' — open '+(receiveMoney?'Pay Money':'Receive Money')+' to settle this balance.';return;}
-        outstanding=Number(summary.balance);balanceReady=true;amountInput.value=outstanding.toFixed(2);amountInput.max=outstanding.toFixed(2);saveButton.disabled=false;
-    } catch(error){if(request===balanceRequest)message.textContent=error.message;}
+        if(!response.ok||!data.success)throw new Error(data.message||'Could not load the balance.');
+        const s=data.summary;
+        if(s.balance===0){message.textContent='Cleared: no payment or refund is due.';return;}
+        const rightDirection=s.balanceType===(receiveMoney?'Receivable':'Payable');
+        message.innerHTML=`<b>${money(s.balance)}</b><small>${esc(s.balanceDescription)}</small>`;
+        if(!rightDirection){message.innerHTML+=`<small>Open <a href="${otherScreen.url}?partyId=${id}">${otherScreen.name}</a> to settle this balance.</small>`;return;}
+        outstanding=Number(s.balance);balanceReady=true;amountInput.value=outstanding.toFixed(2);amountInput.max=outstanding.toFixed(2);saveButton.disabled=false;showAfter();
+    }catch(error){if(request===balanceRequest)message.textContent=error.message;}
 }
+function showAfter(){
+    const amount=Number(amountInput.value);
+    after.textContent=balanceReady&&Number.isFinite(amount)&&amount>0?(amount>outstanding?'The amount cannot be more than '+money(outstanding)+'.':'Balance after this payment: '+money(outstanding-amount)):'';
+}
+amountInput.addEventListener('input',showAfter);
+
 document.getElementById('paymentForm').addEventListener('submit',async e=>{
     e.preventDefault();const amount=Number(amountInput.value);
-    if(!balanceReady || !Number.isFinite(amount) || amount<=0 || amount>outstanding){await alertDialog('Enter an amount up to the payment or refund due.');return;}
-    saveButton.disabled=true;partySelect.disabled=true;
-    try {
+    if(!balanceReady||!Number.isFinite(amount)||amount<=0||amount>outstanding){await alertDialog('Enter an amount up to the payment or refund due.');return;}
+    saveButton.disabled=true;search.disabled=true;
+    try{
         const response=await fetch('/Accounts/SavePayment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-            partyId:Number(partySelect.value),direction:'@Model',amount,
+            partyId:Number(partyId.value),direction:'@Model',amount,
             date:document.getElementById('paymentDate').value,mode:document.getElementById('paymentMode').value,
-            reference:document.getElementById('paymentReference').value,branchId:Number(document.getElementById('posBranch')?.value || 1)})});
-        const data=await response.json();if(!response.ok || !data.success)throw new Error(data.message || 'Payment or refund failed.');
-        await alertDialog(data.message);
-    }catch(error){await alertDialog(error.message);}finally{partySelect.disabled=false;await loadBalance();}
+            reference:document.getElementById('paymentReference').value,branchId:Number(document.getElementById('posBranch')?.value||1)})});
+        const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Payment or refund failed.');
+        const done=document.getElementById('paymentDone'),name=search.value;
+        done.innerHTML=`<span>✅ ${esc(data.message)} ${esc(name)}, ${money(amount)}.</span>${data.id?`<a href="/Accounts/PrintVoucher/${data.id}" target="_blank" rel="noopener">🖨 Print voucher #${data.id}</a>`:''}`;
+        done.hidden=false;
+        partyId.value='';search.value='';document.getElementById('paymentReference').value='';resetAmount();
+        await loadParties();
+    }catch(error){await alertDialog(error.message);saveButton.disabled=!balanceReady;}finally{search.disabled=false;}
 });
+try{document.getElementById('showAll').checked=localStorage.getItem('settleShowAll')==='1';}catch(e){}
 loadParties();
 </script>

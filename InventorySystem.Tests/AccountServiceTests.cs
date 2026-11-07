@@ -794,6 +794,21 @@ public class AccountServiceTests
     }
 
     [Fact]
+    public async Task BankRecon_BookBalanceIncludesOpeningBalance()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        await svc.SaveOpeningBalancesAsync(new List<AccountHead> { new() { AccountHeadId = Bank, OpeningBalance = 5000m, OpeningBalanceType = "Debit" } });
+        await svc.SaveVoucherAsync(BalancedVoucher("PV", 800m, Rent, Bank));
+
+        var recon = await svc.GetBankReconAsync(Bank, DateTime.Today, DateTime.Today);
+
+        Assert.Equal(4200m, recon.BookBalance);
+        Assert.Equal(5000m, recon.ClearedBalance);
+        Assert.Equal(-800m, recon.UnclearedBalance);
+    }
+
+    [Fact]
     public async Task SaveOpeningBalances_PersistsValues()
     {
         using var db = NewContext();

@@ -763,8 +763,17 @@ namespace InventorySystem.Core.Services
                 IsCleared = g.IsCleared
             }).ToList();
 
-            decimal bookBalance = rows.Sum(r => r.Debit - r.Credit);
-            decimal clearedBalance = rows.Where(r => r.IsCleared).Sum(r => r.Debit - r.Credit);
+            // Book balance starts from the account's opening balance and entries before From, so it matches the ledger.
+            var head = await _db.AccountHeads.AsNoTracking().FirstOrDefaultAsync(a => a.AccountHeadId == bankAccountHeadId);
+            decimal opening = head == null ? 0m : head.OpeningBalanceType == "Credit" ? -head.OpeningBalance : head.OpeningBalance;
+            var before = await _db.GeneralLedger
+                .Where(g => g.AccountHeadId == bankAccountHeadId && !g.IsVoid && g.VoucherDate < fromDate)
+                .Select(g => new { g.Debit, g.Credit, g.IsCleared })
+                .ToListAsync();
+
+            decimal bookBalance = opening + before.Sum(g => g.Debit - g.Credit) + rows.Sum(r => r.Debit - r.Credit);
+            decimal clearedBalance = opening + before.Where(g => g.IsCleared).Sum(g => g.Debit - g.Credit)
+                                   + rows.Where(r => r.IsCleared).Sum(r => r.Debit - r.Credit);
 
             return new BankReconResult
             {

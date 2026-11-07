@@ -186,6 +186,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="~/js/pdf-pages.js" asp-append-version="true"></script>
 <script src="~/js/report-filters.js" asp-append-version="true"></script>
 <script>
     const filterIds = ['categoryFilter', 'statusFilter', 'searchText', 'minQty', 'maxQty', 'updatedFrom', 'updatedTo', 'sortBy', 'sortDir'];
@@ -304,6 +305,7 @@
 
         document.body.classList.add('pdf-exporting');
         html2pdf().set({
+            pagebreak:   PdfPages.options,
             margin:      [10, 8, 10, 8],
             filename:    `@(reportTitle.Replace(" ", ""))_${new Date().toISOString().split('T')[0]}.pdf`,
             image:       { type: 'jpeg', quality: 0.98 },

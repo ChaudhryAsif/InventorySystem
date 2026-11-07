@@ -91,6 +91,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="~/js/pdf-pages.js" asp-append-version="true"></script>
 <script>
     window.addEventListener('DOMContentLoaded', () => {
         const today = new Date();
@@ -183,6 +184,7 @@
 
         document.body.classList.add('pdf-exporting');
         html2pdf().set({
+            pagebreak:   PdfPages.options,
             margin:      [10, 8, 10, 8],
             filename:    `Ledger_${new Date().toISOString().split('T')[0]}.pdf`,
             html2canvas: { scale: 2, useCORS: true, logging: false },

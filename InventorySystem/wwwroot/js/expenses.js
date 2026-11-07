@@ -31,7 +31,7 @@
     }
     async function load(){
         const ticket=++seq;
-        const q=new URLSearchParams({month:$('exMonth').value,categoryId:$('exFilterCategory').value,search:$('exSearch').value,includeVoid:$('exVoid').checked});
+        const q=new URLSearchParams({month:$('exMonth').value,categoryId:$('exFilterCategory').value,search:$('exSearch').value,voidedOnly:$('exVoid').checked});
         try{const result=await request('/Accounts/GetExpenses?'+q);if(ticket===seq){render(result);}}catch(e){$('exMessage').hidden=false;$('exMessage').textContent=e.message;$('exMessage').classList.add('error');}
     }
     async function voidExpense(row){

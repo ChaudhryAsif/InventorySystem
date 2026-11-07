@@ -1,0 +1,50 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  InventorySystem.Core -> D:\InventorySystem\InventorySystem\InventorySystem.Core\bin\Debug\net8.0\InventorySystem.Core.dll
+  InventorySystem.Data -> D:\InventorySystem\InventorySystem\InventorySystem.Data\bin\Debug\net8.0\InventorySystem.Data.dll
+  InventorySystem.Services -> D:\InventorySystem\InventorySystem\InventorySystem.Services\bin\Debug\net8.0\InventorySystem.Services.dll
+  InventorySystem -> D:\InventorySystem\InventorySystem\InventorySystem\bin\Debug\net8.0\InventorySystem.dll
+  InventorySystem.Tests -> D:\InventorySystem\InventorySystem\InventorySystem.Tests\bin\Debug\net8.0\InventorySystem.Tests.dll
+Test run for D:\InventorySystem\InventorySystem\InventorySystem.Tests\bin\Debug\net8.0\InventorySystem.Tests.dll (.NETCoreApp,Version=v8.0)
+A total of 1 test files matched the specified pattern.
+D:\InventorySystem\InventorySystem\InventorySystem.Tests\bin\Debug\net8.0\InventorySystem.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.3.1+6b60a9e56a (64-bit .NET 8.0.33)
+[xUnit.net 00:00:00.09]   Discovering: InventorySystem.Tests
+[xUnit.net 00:00:00.19]   Discovered:  InventorySystem.Tests
+[xUnit.net 00:00:00.20]   Starting:    InventorySystem.Tests
+[xUnit.net 00:00:01.40]     InventorySystem.Tests.RefundFlowTests.CancelledPartPaidPurchase_RefundCanBeReceivedAndVoided(gl: False) [FAIL]
+[xUnit.net 00:00:01.40]       Assert.True() Failure
+[xUnit.net 00:00:01.40]       Expected: True
+[xUnit.net 00:00:01.40]       Actual:   False
+[xUnit.net 00:00:01.40]       Stack Trace:
+[xUnit.net 00:00:01.41]         D:\InventorySystem\InventorySystem\InventorySystem.Tests\RefundFlowTests.cs(42,0): at InventorySystem.Tests.RefundFlowTests.CancelledPartPaidPurchase_RefundCanBeReceivedAndVoided(Boolean gl)
+[xUnit.net 00:00:01.41]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:01.43]     InventorySystem.Tests.RefundFlowTests.CancelledPartPaidPurchase_RefundCanBeReceivedAndVoided(gl: True) [FAIL]
+[xUnit.net 00:00:01.43]       Assert.True() Failure
+[xUnit.net 00:00:01.43]       Expected: True
+[xUnit.net 00:00:01.43]       Actual:   False
+[xUnit.net 00:00:01.43]       Stack Trace:
+[xUnit.net 00:00:01.43]         D:\InventorySystem\InventorySystem\InventorySystem.Tests\RefundFlowTests.cs(42,0): at InventorySystem.Tests.RefundFlowTests.CancelledPartPaidPurchase_RefundCanBeReceivedAndVoided(Boolean gl)
+[xUnit.net 00:00:01.43]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:01.43]   Finished:    InventorySystem.Tests
+  Failed InventorySystem.Tests.RefundFlowTests.CancelledPartPaidPurchase_RefundCanBeReceivedAndVoided(gl: False) [1 s]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at InventorySystem.Tests.RefundFlowTests.CancelledPartPaidPurchase_RefundCanBeReceivedAndVoided(Boolean gl) in D:\InventorySystem\InventorySystem\InventorySystem.Tests\RefundFlowTests.cs:line 42
+--- End of stack trace from previous location ---
+  Failed InventorySystem.Tests.RefundFlowTests.CancelledPartPaidPurchase_RefundCanBeReceivedAndVoided(gl: True) [24 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at InventorySystem.Tests.RefundFlowTests.CancelledPartPaidPurchase_RefundCanBeReceivedAndVoided(Boolean gl) in D:\InventorySystem\InventorySystem\InventorySystem.Tests\RefundFlowTests.cs:line 42
+--- End of stack trace from previous location ---
+
+Test Run Failed.
+Total tests: 2
+     Failed: 2
+ Total time: 3.9744 Seconds

@@ -207,6 +207,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="~/js/pdf-pages.js" asp-append-version="true"></script>
 <script src="~/js/report-filters.js" asp-append-version="true"></script>
 <script>
     let allExpanded = false;
@@ -436,19 +437,24 @@
         btn.textContent = '⏳ Generating...';
 
         document.body.classList.add('pdf-exporting');
+        const unpack = PdfPages.pack(document.getElementById('purchaseTableBody'));
         html2pdf().set({
+            pagebreak:   PdfPages.options,
             margin:      [10, 8, 10, 8],
             filename:    `PurchaseReport_${new Date().toISOString().split('T')[0]}.pdf`,
             image:       { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true, logging: false },
             jsPDF:       { unit: 'mm', format: 'a4', orientation: 'landscape' }
-        }).from(document.getElementById('reportPage')).save().then(() => {
+        }).from(document.getElementById('reportPage')).save().then(finish, finish);
+
+        function finish() {
+            unpack();
             document.body.classList.remove('pdf-exporting');
             filterPanel.style.display = '';
             actionBtns.style.display  = '';
             printHeader.style.display = 'none';
             btn.disabled    = false;
             btn.textContent = '⬇️ Download PDF';
-        });
+        }
     }
 </script>

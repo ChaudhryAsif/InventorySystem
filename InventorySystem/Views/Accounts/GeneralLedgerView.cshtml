@@ -10,7 +10,7 @@
     <div class="page-header">
         <div class="page-title">
             <h2>📖 General Ledger</h2>
-            <p>View all transactions posted to any account head</p>
+            <p>Every entry posted to one account, with a running balance</p>
         </div>
     </div>
 
@@ -18,9 +18,9 @@
     <div class="filter-section">
         <div class="filter-grid">
             <div class="form-group">
-                <label class="form-label">Account Head <span style="color:red">*</span></label>
+                <label class="form-label">Account <span style="color:red">*</span></label>
                 <select class="form-control" id="accountHeadId">
-                    <option value="">— Select Account —</option>
+                    <option value="">Select account</option>
                 </select>
             </div>
             <div class="form-group">
@@ -41,7 +41,11 @@
     <div class="summary-cards" id="summaryCards" style="margin-top:1.2rem;display:none"></div>
 
     <!-- Table -->
-    <div class="card no-top-radius" id="ledgerCard" style="display:none">
+    <div class="card" id="ledgerCard" style="display:none">
+        <div class="section-header">
+            <span id="ledgerTitle">Ledger</span>
+            <span id="ledgerPeriod" style="font-family:monospace;font-size:0.85rem;opacity:0.85"></span>
+        </div>
         <div class="table-container">
             <table class="data-table">
                 <thead>
@@ -57,6 +61,14 @@
                     </tr>
                 </thead>
                 <tbody id="ledgerBody"></tbody>
+                <tfoot>
+                    <tr class="report-total-row">
+                        <td colspan="5" style="text-align:right;font-weight:700">Total</td>
+                        <td style="text-align:right;font-weight:700" id="footDebit"></td>
+                        <td style="text-align:right;font-weight:700" id="footCredit"></td>
+                        <td></td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
     </div>
@@ -64,12 +76,16 @@
 
 @section Scripts {
 <script>
+// Only accounts that have entries or an opening balance are listed.
 async function loadAccounts() {
-    const res  = await fetch('/Accounts/GetPostableAccounts');
+    const res  = await fetch('/Accounts/GetLedgerAccounts');
     const json = await res.json();
     const sel  = document.getElementById('accountHeadId');
     json.data.forEach(a => {
-        sel.innerHTML += `<option value="${a.accountHeadId}">[${a.accountCode}] ${a.accountName} (${a.accountType})</option>`;
+        const opt = document.createElement('option');
+        opt.value = a.accountHeadId;
+        opt.textContent = `${a.accountCode} ${a.accountName}`;
+        sel.appendChild(opt);
     });
 }
 
@@ -78,9 +94,12 @@ const fom   = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISO
 document.getElementById('fromDate').value = fom;
 document.getElementById('toDate').value   = today;
 
+function drCr(n) { return `${fmt(Math.abs(n))} ${n >= 0 ? 'Dr' : 'Cr'}`; }
+
 async function loadLedger() {
-    const id   = document.getElementById('accountHeadId').value;
-    if (!id) { await alertDialog('Please select an account head.'); return; }
+    const sel  = document.getElementById('accountHeadId');
+    const id   = sel.value;
+    if (!id) { await alertDialog('Please select an account.'); return; }
     const from = document.getElementById('fromDate').value;
     const to   = document.getElementById('toDate').value;
 
@@ -94,8 +113,8 @@ async function loadLedger() {
     sc.style.display = '';
     sc.innerHTML = `
         <div class="summary-card blue">
-            <div class="summary-label">Total Entries</div>
-            <div class="summary-value">${data.length}</div>
+            <div class="summary-label">Opening Balance</div>
+            <div class="summary-value">${drCr(summary.opening)}</div>
         </div>
         <div class="summary-card red">
             <div class="summary-label">Total Debit</div>
@@ -105,28 +124,38 @@ async function loadLedger() {
             <div class="summary-label">Total Credit</div>
             <div class="summary-value">${fmt(summary.totalCredit)}</div>
         </div>
-        <div class="summary-card ${summary.closing >= 0 ? '' : 'red'}">
+        <div class="summary-card">
             <div class="summary-label">Closing Balance</div>
-            <div class="summary-value">${fmt(Math.abs(summary.closing))} ${summary.closing >= 0 ? 'Dr' : 'Cr'}</div>
+            <div class="summary-value">${drCr(summary.closing)}</div>
         </div>`;
 
     document.getElementById('ledgerCard').style.display = '';
+    document.getElementById('ledgerTitle').textContent = sel.options[sel.selectedIndex].textContent;
+    document.getElementById('ledgerPeriod').textContent = `${from} to ${to}`;
+    document.getElementById('footDebit').textContent  = fmt(summary.totalDebit);
+    document.getElementById('footCredit').textContent = fmt(summary.totalCredit);
+
+    const opening = `
+        <tr style="background:#f6f9fb;font-weight:600">
+            <td colspan="7">Opening balance</td>
+            <td style="text-align:right">${drCr(summary.opening)}</td>
+        </tr>`;
     const tbody = document.getElementById('ledgerBody');
     if (!data.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:var(--text-secondary)">No entries found.</td></tr>';
+        tbody.innerHTML = opening + '<tr><td colspan="8" style="padding:2rem;text-align:center;color:var(--text-secondary)">No entries in this period.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = data.map(r => `
+    tbody.innerHTML = opening + data.map(r => `
         <tr>
             <td>${r.date}</td>
             <td><span class="acc-code">${r.voucherNo}</span></td>
             <td><span class="badge badge-primary" style="font-size:0.75rem">${r.voucherType}</span></td>
-            <td>${escapeHtml(r.partyName || '—')}</td>
-            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.narration || '—')}</td>
+            <td>${escapeHtml(r.partyName || '-')}</td>
+            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.narration || '-')}</td>
             <td style="text-align:right;color:#2d5f7f;font-weight:600">${r.debit > 0 ? fmt(r.debit) : ''}</td>
             <td style="text-align:right;color:#28a745;font-weight:600">${r.credit > 0 ? fmt(r.credit) : ''}</td>
-            <td style="text-align:right" class="${r.balance >= 0 ? 'bal-positive' : 'bal-negative'}">${fmt(Math.abs(r.balance))} ${r.balance >= 0 ? 'Dr' : 'Cr'}</td>
+            <td style="text-align:right" class="${r.balance >= 0 ? 'bal-positive' : 'bal-negative'}">${drCr(r.balance)}</td>
         </tr>`).join('');
 }
 

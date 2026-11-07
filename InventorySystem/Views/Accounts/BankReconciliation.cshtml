@@ -7,7 +7,7 @@
 <div class="ac-page">
     <div class="page-header">
         <h2>🏦 Bank Reconciliation</h2>
-        <p>Match book entries with bank statement — tick cleared items</p>
+        <p>Match book entries with the bank statement and tick the cleared items</p>
     </div>
 
     <div class="filter-section">
@@ -15,7 +15,7 @@
             <div class="filter-group">
                 <label>Bank Account</label>
                 <select id="bankAccount" class="form-control">
-                    <option value="">— Select Bank Account —</option>
+                    <option value="">Select bank account</option>
                 </select>
             </div>
             <div class="filter-group">
@@ -33,46 +33,47 @@
         </div>
     </div>
 
-    <div id="summaryCards" class="summary-cards" style="display:none">
-        <div class="summary-card">
-            <div class="card">
-                <div class="card-label">Book Balance</div>
-                <div class="card-value" id="bookBal">0.00</div>
-            </div>
+    <div id="summaryCards" class="summary-cards" style="display:none;margin-top:1.2rem">
+        <div class="summary-card blue">
+            <div class="summary-label">Book Balance</div>
+            <div class="summary-value" id="bookBal">0.00</div>
         </div>
-        <div class="summary-card">
-            <div class="card">
-                <div class="card-label">Cleared Balance</div>
-                <div class="card-value text-success" id="clearedBal">0.00</div>
-            </div>
+        <div class="summary-card green">
+            <div class="summary-label">Cleared Balance</div>
+            <div class="summary-value" id="clearedBal">0.00</div>
         </div>
-        <div class="summary-card">
-            <div class="card">
-                <div class="card-label">Uncleared Balance</div>
-                <div class="card-value text-danger" id="unclearedBal">0.00</div>
-            </div>
+        <div class="summary-card red">
+            <div class="summary-label">Uncleared Balance</div>
+            <div class="summary-value" id="unclearedBal">0.00</div>
         </div>
     </div>
 
-    <div class="section-header">Ledger Entries</div>
-    <div style="overflow-x:auto">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th style="width:40px">✔</th>
-                    <th>Date</th>
-                    <th>Voucher No</th>
-                    <th>Type</th>
-                    <th>Narration</th>
-                    <th class="text-right">Debit (Rs.)</th>
-                    <th class="text-right">Credit (Rs.)</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody id="reconBody">
-                <tr><td colspan="8" style="text-align:center;color:#6c757d;padding:30px">Select a bank account and date range to begin.</td></tr>
-            </tbody>
-        </table>
+    <div class="card">
+        <div class="section-header">Ledger Entries</div>
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width:40px">Clear</th>
+                        <th>Date</th>
+                        <th>Voucher No</th>
+                        <th>Narration</th>
+                        <th class="text-right">Debit (Rs.)</th>
+                        <th class="text-right">Credit (Rs.)</th>
+                    </tr>
+                </thead>
+                <tbody id="reconBody">
+                    <tr><td colspan="6" style="text-align:center;color:#6c757d;padding:30px">Select a bank account and date range to begin.</td></tr>
+                </tbody>
+                <tfoot>
+                    <tr class="report-total-row" id="reconFoot" style="display:none">
+                        <td colspan="4" style="text-align:right;font-weight:700">Total</td>
+                        <td class="text-right" id="footDebit"></td>
+                        <td class="text-right" id="footCredit"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -84,13 +85,14 @@
         const json = await res.json();
         const sel  = document.getElementById('bankAccount');
         json.data
-            .filter(a => a.accountCode === '1101' || a.accountCode === '1102')
+            .filter(a => a.accountCode === '1102')
             .forEach(a => {
                 const opt = document.createElement('option');
                 opt.value       = a.accountHeadId;
-                opt.textContent = `${a.accountCode} — ${a.accountName}`;
+                opt.textContent = a.accountName;
                 sel.appendChild(opt);
             });
+        if (sel.options.length === 2) sel.selectedIndex = 1;
     })();
 
     const today = new Date().toISOString().split('T')[0];
@@ -116,28 +118,26 @@
 
         if (!d.rows.length) {
             document.getElementById('reconBody').innerHTML =
-                '<tr><td colspan="8" style="text-align:center;color:#6c757d;padding:30px">No entries found.</td></tr>';
+                '<tr><td colspan="6" style="text-align:center;color:#6c757d;padding:30px">No entries found.</td></tr>';
+            document.getElementById('reconFoot').style.display = 'none';
             return;
         }
 
         document.getElementById('reconBody').innerHTML = d.rows.map(r => `
-            <tr id="row-${r.glId}" class="${r.isCleared ? 'table-success' : ''}">
+            <tr id="row-${r.glId}" style="${r.isCleared ? 'background:#f0fbf4' : ''}">
                 <td style="text-align:center">
                     <input type="checkbox" ${r.isCleared ? 'checked' : ''}
                         onchange="toggleCleared(${r.glId}, this.checked)" />
                 </td>
                 <td>${formatDate(r.date)}</td>
                 <td><span class="acc-code">${r.voucherNo}</span></td>
-                <td>${r.voucherType}</td>
                 <td style="color:#6c757d;font-style:italic">${escapeHtml(r.narration || '—')}</td>
                 <td class="text-right">${r.debit  > 0 ? fmt(r.debit)  : '—'}</td>
                 <td class="text-right">${r.credit > 0 ? fmt(r.credit) : '—'}</td>
-                <td>
-                    <span class="badge ${r.isCleared ? 'badge-success' : 'badge-warning'}">
-                        ${r.isCleared ? '✅ Cleared' : '⏳ Uncleared'}
-                    </span>
-                </td>
             </tr>`).join('');
+        document.getElementById('footDebit').textContent  = fmt(d.rows.reduce((t, r) => t + r.debit, 0));
+        document.getElementById('footCredit').textContent = fmt(d.rows.reduce((t, r) => t + r.credit, 0));
+        document.getElementById('reconFoot').style.display = '';
     }
 
     async function toggleCleared(glId, cleared) {
@@ -150,7 +150,7 @@
         if (json.success) {
             loadRecon(); // refresh balances
         } else {
-            await alertDialog('❌ ' + json.message);
+            await alertDialog(json.message, { type: 'error' });
         }
     }
 

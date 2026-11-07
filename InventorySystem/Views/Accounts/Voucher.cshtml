@@ -14,6 +14,10 @@
     var (title, icon, color) = meta.GetValueOrDefault(vType, ("Voucher", "📄", "#2d5f7f"));
     ViewData["Title"] = title;
     bool isSimple = vType == "PV" || vType == "RV" || vType == "CV";
+    bool isNote = vType == "DN" || vType == "CN";
+    var noteHint = vType == "DN"
+        ? "Debit Note: a customer has to pay you more, or you have to pay a supplier less."
+        : "Credit Note: a customer has to pay you less, or you have to pay a supplier more.";
 }
 
 <link href="~/css/Accounts.css" rel="stylesheet" />
@@ -24,11 +28,53 @@
     <div class="page-header">
         <div class="page-title">
             <h2>@icon @title</h2>
-            <p>Create and post @title entries to the General Ledger</p>
+            @if (isNote) { <p>@noteHint</p> } else { <p>Create and post @title entries to the General Ledger</p> }
         </div>
-        <a href="/Accounts/VoucherList?type=@vType" class="btn btn-outline">📋 All @vType Vouchers</a>
+        <a href="/Accounts/VoucherList?type=@vType" class="btn btn-outline">📋 All @(isNote ? title + "s" : vType + " Vouchers")</a>
     </div>
 
+    @if (isNote)
+    {
+        <!-- ═══ SIMPLE NOTE (DN / CN): party, amount, reason ═══ -->
+        <div class="card" style="margin-bottom:1.2rem">
+            <div class="section-header">
+                <span>@icon @title</span>
+                <span id="voucherNoDisplay" style="font-family:monospace;font-size:1rem;background:rgba(255,255,255,0.15);padding:0.3rem 0.9rem;border-radius:6px;"></span>
+            </div>
+            <div class="modal-body" style="padding:1.5rem">
+                <input type="hidden" id="voucherType" value="@vType" />
+                <input type="hidden" id="voucherNo" />
+                <input type="hidden" id="referenceNo" />
+                <div class="form-grid-4">
+                    <div class="form-group">
+                        <label class="form-label">Date <span style="color:red">*</span></label>
+                        <input type="date" class="form-control" id="voucherDate">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Customer or Supplier <span style="color:red">*</span></label>
+                        <select class="form-control" id="partyId" onchange="noteChanged()">
+                            <option value="">Select party</option>
+                        </select>
+                        <select class="form-control" id="partyRole" onchange="noteChanged()" style="display:none;margin-top:0.4rem">
+                            <option value="customer">Treat as customer</option>
+                            <option value="supplier">Treat as supplier</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Amount <span style="color:red">*</span></label>
+                        <input type="number" class="form-control" id="noteAmount" min="0" step="0.01" placeholder="0.00" oninput="noteChanged()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Reason</label>
+                        <input type="text" class="form-control" id="narration" placeholder="For example: rate difference, discount">
+                    </div>
+                </div>
+                <div id="noteEffect" style="margin-top:1rem;padding:0.9rem 1.2rem;background:#f0f7ff;border:1px solid #d0e8f5;border-radius:6px;color:#2d5f7f;font-weight:600"></div>
+            </div>
+        </div>
+    }
+    else
+    {
     <!-- Voucher Header Card -->
     <div class="card" style="margin-bottom:1.2rem">
         <div class="section-header" style="background:linear-gradient(135deg,@color 0%,#1e4159 100%)">
@@ -80,7 +126,12 @@
         </div>
     </div>
 
-    @if (isSimple)
+    }
+
+    @if (isNote)
+    {
+    }
+    else if (isSimple)
     {
         <!-- ═══ SIMPLE ENTRY (PV / RV / CV) ═══ -->
         <div class="card" style="margin-bottom:1.2rem">
@@ -200,8 +251,8 @@
     <!-- Action Buttons -->
     <div style="display:flex;justify-content:flex-end;gap:0.8rem">
         <button class="btn btn-outline" onclick="clearForm()">🔄 Clear</button>
-        <button class="btn btn-outline btn-lg" onclick="saveVoucher('Draft')">📝 Save as Draft</button>
-        <button class="btn btn-primary btn-lg" onclick="saveVoucher('Posted')">💾 Save Voucher</button>
+        @if (!isNote) { <button class="btn btn-outline btn-lg" onclick="saveVoucher('Draft')">📝 Save as Draft</button> }
+        <button class="btn btn-primary btn-lg" onclick="saveVoucher('Posted')">💾 Save @(isNote ? title : "Voucher")</button>
     </div>
 </div>
 
@@ -209,6 +260,7 @@
 <script>
 const VTYPE = '@vType';
 const IS_SIMPLE = @(isSimple ? "true" : "false");
+const IS_NOTE = @(isNote ? "true" : "false");
 let accounts = [], parties = [], lineId = 0;
 
 // Map Payment Mode → Account Head Id
@@ -244,11 +296,41 @@ async function init() {
         const opts = getFilteredAccounts().map(a => `<option value="${a.accountHeadId}">[${a.accountCode}] ${a.accountName}</option>`).join('');
         document.getElementById('cvFrom').innerHTML = opts;
         document.getElementById('cvTo').innerHTML   = opts;
+    } else if (IS_NOTE) {
+        noteChanged();
     } else {
         addLine();
     }
 
     updateAutoPreview();
+}
+
+// ── Debit / Credit Note: party + amount only, the app builds the entry ──
+const NOTE_RULES = {
+    'DN:customer': { dr: '1301', cr: '4101' },
+    'CN:customer': { dr: '4102', cr: '1301' },
+    'DN:supplier': { dr: '2201', cr: '5102' },
+    'CN:supplier': { dr: '5101', cr: '2201' }
+};
+
+function noteParty() {
+    const id = document.getElementById('partyId').value;
+    const party = parties.find(p => p.value == id);
+    document.getElementById('partyRole').style.display = party && party.partyType === 'both' ? '' : 'none';
+    if (!party) return null;
+    return { id: +id, name: party.text, role: party.partyType === 'both' ? document.getElementById('partyRole').value : party.partyType };
+}
+
+function noteChanged() {
+    const party = noteParty();
+    const amount = +document.getElementById('noteAmount').value || 0;
+    const el = document.getElementById('noteEffect');
+    if (!party || amount <= 0) { el.textContent = 'Choose a party and enter an amount to see the effect.'; return; }
+    const rs = 'Rs. ' + amount.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    const more = VTYPE === 'DN' ? party.role === 'customer' : party.role !== 'customer';
+    el.textContent = party.role === 'customer'
+        ? party.name + ' will have to pay you ' + rs + (more ? ' more.' : ' less.')
+        : 'You will have to pay ' + party.name + ' ' + rs + (more ? ' more.' : ' less.');
 }
 
 async function loadVoucherNo() {
@@ -397,6 +479,22 @@ function recalcJV() {
 
 // ── Build final lines for API ─────────────────────────────────
 async function buildLines() {
+    if (IS_NOTE) {
+        const party = noteParty();
+        const amount = +document.getElementById('noteAmount').value || 0;
+        if (!party || amount <= 0) return null;
+        const rule = NOTE_RULES[VTYPE + ':' + party.role];
+        const dr = rule && accounts.find(a => a.accountCode === rule.dr);
+        const cr = rule && accounts.find(a => a.accountCode === rule.cr);
+        if (!dr || !cr) { await alertDialog('A required account is missing from the Chart of Accounts.'); return null; }
+        const reason = document.getElementById('narration').value || '@title';
+        const control = a => a.accountCode === '1301' || a.accountCode === '2201';
+        return [
+            { accountHeadId: dr.accountHeadId, partyId: control(dr) ? party.id : null, narration: reason, debit: amount, credit: 0 },
+            { accountHeadId: cr.accountHeadId, partyId: control(cr) ? party.id : null, narration: reason, debit: 0, credit: amount }
+        ];
+    }
+
     if (VTYPE === 'CV') {
         const fromId = +document.getElementById('cvFrom').value;
         const toId   = +document.getElementById('cvTo').value;
@@ -448,6 +546,8 @@ async function buildLines() {
 }
 
 async function saveVoucher(status) {
+    if (IS_NOTE && !document.getElementById('partyId').value) { await alertDialog('Please select a customer or supplier.'); return; }
+    if (IS_NOTE && !(+document.getElementById('noteAmount').value > 0)) { await alertDialog('Please enter an amount.'); return; }
     const lines = await buildLines();
     if (!lines) { await alertDialog('❌ Please fill in all required fields.'); return; }
     if (lines.length < 2) { await alertDialog('❌ At least 2 accounting entries are required.'); return; }
@@ -487,11 +587,14 @@ async function clearForm() {
     if (VTYPE === 'CV') {
         document.getElementById('cvAmount').value = '';
         document.getElementById('cvPreview').style.display = 'none';
+    } else if (IS_NOTE) {
+        document.getElementById('noteAmount').value = '';
     } else {
         addLine();
     }
     await loadVoucherNo();
     if (VTYPE === 'CV') recalcCV();
+    else if (IS_NOTE) noteChanged();
     else if (IS_SIMPLE) recalcSimple();
     else recalcJV();
     updateAutoPreview?.();

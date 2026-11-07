@@ -28,7 +28,7 @@ public partial class AccountsController
     [HttpGet] public async Task<IActionResult> GetExpenseCategories()
         => Json(new { success=true,data=await ExpenseCategories().AsNoTracking().OrderBy(a=>a.AccountName).Select(a=>new { a.AccountHeadId,a.AccountCode,a.AccountName }).ToListAsync() });
 
-    [HttpGet] public async Task<IActionResult> GetExpenses(string? month=null,int? categoryId=null,string? search=null,bool includeVoid=false)
+    [HttpGet] public async Task<IActionResult> GetExpenses(string? month=null,int? categoryId=null,string? search=null,bool voidedOnly=false)
     {
         var query=_db.ExpenseEntries.AsNoTracking().AsQueryable();
         if(!string.IsNullOrWhiteSpace(month))
@@ -39,10 +39,11 @@ public partial class AccountsController
         }
         if(categoryId>0)query=query.Where(e=>e.AccountHeadId==categoryId);
         if(!string.IsNullOrWhiteSpace(search)){var s=search.Trim();query=query.Where(e=>e.Description.Contains(s) || e.VoucherNo.Contains(s));}
-        if(!includeVoid)query=query.Where(e=>e.Status=="Posted");
+        var status=voidedOnly?"Void":"Posted";
+        query=query.Where(e=>e.Status==status);
         var rows=await query.OrderByDescending(e=>e.ExpenseDate).ThenByDescending(e=>e.ExpenseEntryId).Take(1000)
             .Select(e=>new { e.ExpenseEntryId,e.ExpenseDate,e.AccountHeadId,category=e.AccountHead!.AccountName,e.Description,e.Amount,e.VoucherNo,e.Status,e.CreatedBy,e.RowVersion }).ToListAsync();
-        return Json(new { success=true,data=rows,total=rows.Where(r=>r.Status=="Posted").Sum(r=>r.Amount) });
+        return Json(new { success=true,data=rows,total=rows.Sum(r=>r.Amount) });
     }
 
     [HttpPost] public async Task<IActionResult> SaveExpense([FromBody] ExpenseInput input)

@@ -164,11 +164,19 @@ namespace InventorySystem.Controllers
         [HttpGet] public IActionResult PartyLedger() => View();
 
         [HttpGet]
-        public async Task<IActionResult> GetGeneralLedger(int accountHeadId, DateTime? from, DateTime? to, int page = 1, int pageSize = 200)
+        public async Task<IActionResult> GetGeneralLedger(int accountHeadId, DateTime? from, DateTime? to)
         {
+            var account = await _db.AccountHeads.AsNoTracking().SingleOrDefaultAsync(a => a.AccountHeadId == accountHeadId);
+            if (account == null) return NotFound(new { success = false, message = "Account not found." });
+
+            // Opening = the account's saved opening balance + every entry before the From date, so the running balance carries forward.
+            var opening = account.OpeningBalanceType == "Credit" ? -account.OpeningBalance : account.OpeningBalance;
+            if (from.HasValue)
+                opening += await _db.GeneralLedger.Where(g => !g.IsVoid && g.AccountHeadId == accountHeadId && g.VoucherDate < from.Value.Date)
+                    .SumAsync(g => (decimal?)(g.Debit - g.Credit)) ?? 0;
+
             var entries = await _accounts.GetAccountLedgerAsync(accountHeadId, from, to);
-            decimal running = 0;
-            // Running balance is computed over the FULL set first (order matters), then the page is sliced off.
+            decimal running = opening;
             var rows = entries.Select(e => {
                 running += e.Debit - e.Credit;
                 return new
@@ -184,18 +192,25 @@ namespace InventorySystem.Controllers
                 };
             }).ToList();
 
-            var totalCount = rows.Count;
-            var pagedRows = rows.Skip((page - 1) * pageSize).Take(pageSize);
-
             return Json(new
             {
                 success = true,
-                totalCount,
-                page,
-                pageSize,
-                data = pagedRows,
-                summary = new { totalDebit = entries.Sum(e => e.Debit), totalCredit = entries.Sum(e => e.Credit), closing = running }
+                data = rows,
+                summary = new { opening, totalDebit = entries.Sum(e => e.Debit), totalCredit = entries.Sum(e => e.Credit), closing = running }
             });
+        }
+
+        // Accounts worth opening in the ledger: they have entries or an opening balance.
+        [HttpGet]
+        public async Task<IActionResult> GetLedgerAccounts()
+        {
+            var accounts = await _db.AccountHeads.AsNoTracking()
+                .Where(a => a.Level == 3 && a.IsActive
+                    && (a.OpeningBalance != 0 || _db.GeneralLedger.Any(g => g.AccountHeadId == a.AccountHeadId && !g.IsVoid)))
+                .OrderBy(a => a.AccountCode)
+                .Select(a => new { a.AccountHeadId, a.AccountCode, a.AccountName })
+                .ToListAsync();
+            return Json(new { success = true, data = accounts });
         }
 
         [HttpGet]
@@ -320,6 +335,34 @@ namespace InventorySystem.Controllers
                 .ToListAsync();
 
             return Json(new { success = true, data = parties });
+        }
+
+        // Parties with an amount to settle in one direction, for the Pay Money / Receive Money picker.
+        // Uses the same statement balance and rule as SavePayment, so the list always agrees with what can be saved.
+        // all=true also lists the other active parties (cleared, or due the other way) so they can be found and checked, never saved here.
+        [HttpGet]
+        public async Task<IActionResult> GetSettlementParties(string direction, bool all = false)
+        {
+            if (direction is not ("Receipt" or "Payment"))
+                return BadRequest(new { success = false, message = "Direction must be Receipt or Payment." });
+            var wanted = direction == "Receipt" ? "Receivable" : "Payable";
+            var parties = await _db.Parties
+                .Where(p => p.Status != "inactive" && (p.PartyType == "supplier" || p.PartyType == "customer" || p.PartyType == "both"))
+                .OrderBy(p => p.PartyName)
+                .Select(p => new { p.PartyId, p.PartyName, p.PartyType, p.Phone })
+                .ToListAsync();
+            var due = new List<object>(); var rest = new List<object>();
+            foreach (var party in parties)
+            {
+                var statement = await _accounts.GetPartyStatementAsync(party.PartyId, null, null);
+                var position = PartyBalanceService.Position(party.PartyType, statement.LastOrDefault()?.Balance ?? 0);
+                var status = position.Amount == 0 ? "cleared" : position.BalanceType == wanted ? "due" : "other";
+                if (status != "due" && !all) continue;
+                (status == "due" ? due : rest).Add(new { id = party.PartyId, name = party.PartyName, partyType = party.PartyType, phone = party.Phone ?? "",
+                    amount = position.Amount, isRefund = position.IsRefund, description = position.Description, status });
+            }
+            // Parties that can be settled here come first; the rest follow in name order.
+            return Json(new { success = true, data = due.Concat(rest) });
         }
 
         [HttpGet]
