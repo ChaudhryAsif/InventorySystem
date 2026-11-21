@@ -7,3 +7,20 @@
 .mp-status{display:flex;flex-direction:column;gap:4px;justify-content:center}.mp-status strong{font-size:20px;color:#116149}.mp-status small{color:#526474}.pr-page .mp-table{min-width:1100px}.pr-page .mp-table td.num{text-align:right;white-space:nowrap}.pr-page .mp-table td input{min-width:84px;padding:6px 8px;text-align:right}.pr-page .mp-table .strong{font-weight:700}.pr-page .mp-table .mp-bad{color:#b42318}.pr-page .mp-total td{font-weight:700;background:#f3f7fa}@media print{.pr-actions,.pr-header .pr-actions,.pr-note{display:none!important}.pr-page{padding:0}.pr-page .mp-table td input{border:0;padding:0}}
 .pr-page[data-payroll=slips] .pr-filters{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width:900px){.pr-page[data-payroll=slips] .pr-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:700px){.pr-page[data-payroll=slips] .pr-filters{grid-template-columns:minmax(0,1fr)}}
 .pr-page .ex-void td{color:#8a97a3;text-decoration:line-through}.pr-page td.num,.pr-page th.num{text-align:right;white-space:nowrap}.pr-page .mp-check{justify-content:flex-end}.pr-page .mp-check input{width:auto}.pr-page tfoot td{font-weight:700;background:#f3f7fa}
+/* Print: A4 for every page that uses this sheet; the monthly payroll sheet is 13 columns wide, so it goes landscape and fits the paper. */
+@page{size:A4 portrait;margin:10mm}
+@page payroll-wide{size:A4 landscape;margin:8mm}
+@media print{
+html:has(#mpPage){page:payroll-wide}
+.pr-card{border:0;border-radius:0;box-shadow:none;padding:0;margin:8px 0}
+.pr-scroll{overflow:visible}
+.pr-page table{min-width:0}
+.pr-page .mp-table{font-size:8.5pt}
+.pr-page .mp-table th,.pr-page .mp-table td{padding:3px 5px}
+.pr-page .mp-table td input{min-width:0;width:auto;border:0!important;background:transparent!important;box-shadow:none;padding:0!important;text-align:right}
+.pr-page thead{display:table-header-group}
+.pr-page tfoot{display:table-row-group}
+.pr-page tr{break-inside:avoid}
+.pr-page th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pr-page .pr-filters,.pr-page .pr-row-actions,.pr-page .pr-list th:last-child,.pr-page .pr-list td:last-child{display:none!important}
+}

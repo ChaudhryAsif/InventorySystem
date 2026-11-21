@@ -1,0 +1,24 @@
+@model InventorySystem.Core.Models.GatePass
+@{var inward=Model.Direction=="Inward";}
+<partial name="_CompanyPrintHeader" /><h2>@Model.Direction Gate Pass</h2>
+@if(Model.IsCancelled){<div class="cancelled">CANCELLED — @Model.CancellationReason</div>}
+<div class="meta">
+<div class="field"><span class="label">Serial No.</span>@Model.PassNumber</div><div class="field"><span class="label">Date</span>@Model.PassDate.ToString("dd-MMM-yyyy")</div><div class="field"><span class="label">Party Name</span>@Model.PartyName</div><div class="field"><span class="label">Party Phone</span>@Model.PartyPhone</div>
+<div class="field wide"><span class="label">Party Address</span>@Model.PartyAddress</div><div class="field"><span class="label">Bilty No.</span>@Model.BiltyNumber</div><div class="field"><span class="label">Transport / Adda Name</span>@Model.TransportCompany</div>
+<div class="field"><span class="label">Vehicle Name</span>@Model.VehicleName</div><div class="field"><span class="label">Vehicle Number</span>@Model.VehicleNumber</div><div class="field"><span class="label">Driver Name</span>@Model.DriverName</div><div class="field"><span class="label">Driver Mobile</span>@Model.DriverPhone</div>
+<div class="field"><span class="label">Driver Signatory</span>@Model.DriverSignature</div><div class="field"><span class="label">Vehicle Arrival</span>@Model.ArrivalAt?.ToString("dd-MMM-yyyy HH:mm")</div><div class="field"><span class="label">Vehicle Departure</span>@Model.DepartureAt?.ToString("dd-MMM-yyyy HH:mm")</div><div class="field"><span class="label">Receiver Reference</span>@Model.ReceiverReference</div>
+<div class="field"><span class="label">Gross Weight (KG)</span>@Model.GrossWeightKg?.ToString("0.###")</div><div class="field"><span class="label">Tare Weight (KG)</span>@Model.TareWeightKg?.ToString("0.###")</div><div class="field"><span class="label">Net Weight (KG)</span><strong>@Model.NetWeightKg?.ToString("0.###")</strong></div>
+</div>
+<table><thead><tr><th>#</th><th>Item Description</th><th>Unit</th>
+@if(inward){<th>Net Weight / Quantity</th><th>Purchase Price / Unit</th><th>Total</th>}
+else{<th>Packing Type</th><th>Packing Qty</th><th>Bundle Qty</th><th>Open Ctn</th><th>Total Qty</th>}
+</tr></thead><tbody>
+@foreach(var line in Model.Lines.OrderBy(l=>l.SerialNo)){
+<tr><td data-label="#">@line.SerialNo</td><td data-label="Item">@line.Description</td><td data-label="Unit">@line.Unit.ToUpperInvariant()</td>
+@if(inward){<td class="qty" data-label="Net Weight / Quantity">@line.TotalQuantity.ToString("0.###")</td><td data-label="Purchase Price / Unit">@(line.UnitPrice?.ToString("0.####")??"—")</td><td data-label="Total">@(line.UnitPrice.HasValue?decimal.Round(line.TotalQuantity*line.UnitPrice.Value,2,MidpointRounding.AwayFromZero).ToString("0.00"):"—")</td>}
+else{<td data-label="Packing Type">@line.PackingType</td><td class="qty" data-label="Packing Qty">@line.PackingQuantity.ToString("0.###")</td><td class="qty" data-label="Bundle Qty">@line.BundleQuantity.ToString("0.###")</td><td class="qty" data-label="Open Ctn">@line.OpenCartonQuantity.ToString("0.###")</td><td class="qty" data-label="Total Qty">@line.TotalQuantity.ToString("0.###")</td>}
+</tr>}
+</tbody></table>
+@if(!string.IsNullOrWhiteSpace(Model.Remarks)){<p class="remarks"><strong>Remarks:</strong> @Model.Remarks</p>}
+<div class="signatures"><div class="signature">@(inward?"Issued By":"Loading By")<br />@Model.IssuedBy</div><div class="signature">Gate Keeper<br />@Model.GateKeeper</div><div class="signature">@(inward?"Received By":"Issued By")<br />@Model.ReceivedBy</div></div>
+<div class="foot">@Model.PassNumber · @Model.Direction Gate Pass · Branch @Model.BranchId</div>

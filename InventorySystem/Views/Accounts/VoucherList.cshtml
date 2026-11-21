@@ -111,13 +111,13 @@ async function loadVouchers() {
     const data = json.data;
 
     // Summary cards
-    const groups = { PV:0, RV:0, JV:0, CV:0 };
+    const groups = { PV:0, RV:0, JV:0, CV:0, DN:0, CN:0 };
     data.forEach(v => { if (groups[v.voucherType] !== undefined) groups[v.voucherType] += v.totalAmount; });
 
     document.getElementById('summaryCards').innerHTML = `
         <div class="summary-card blue">
             <div class="summary-label">Total Records</div>
-            <div class="summary-value">${data.length}</div>
+            <div class="summary-value">${json.totalCount ?? data.length}</div>
         </div>
         <div class="summary-card red">
             <div class="summary-label">💳 Payments (PV)</div>
@@ -130,6 +130,18 @@ async function loadVouchers() {
         <div class="summary-card">
             <div class="summary-label">📓 Journals (JV)</div>
             <div class="summary-value">${fmt(groups.JV)}</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Contra (CV)</div>
+            <div class="summary-value">${fmt(groups.CV)}</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Debit Notes (DN)</div>
+            <div class="summary-value">${fmt(groups.DN)}</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Credit Notes (CN)</div>
+            <div class="summary-value">${fmt(groups.CN)}</div>
         </div>`;
 
     const tbody = document.getElementById('voucherBody');
@@ -155,7 +167,7 @@ async function loadVouchers() {
                     const approve = v.status === 'Draft' ? `<button class="btn btn-success btn-sm" onclick="approveVoucher(${v.voucherId}, '${v.voucherNo}')">✅ Approve</button>` : '';
                     const post = v.status === 'Approved' ? `<button class="btn btn-success btn-sm" onclick="postVoucher(${v.voucherId}, '${v.voucherNo}')">📮 Post</button>` : '';
                     const print = `<button class="btn btn-primary btn-sm" onclick="printVoucher(${v.voucherId})">🖨️ Print</button>`;
-                    const voidBtn = v.status !== 'Void' ? `<button class="am-danger" onclick="voidVoucher(${v.voucherId}, '${v.voucherNo}')">🚫 Void</button>` : '';
+                    const voidBtn = v.status !== 'Void' && !v.isSystem ?`<button class="am-danger" onclick="voidVoucher(${v.voucherId}, '${v.voucherNo}')">🚫 Void</button>` : '';
                     const main = approve || post || print;
                     return AM.wrap(main, [main === print ? '' : print, '-', voidBtn]);
                 })()}

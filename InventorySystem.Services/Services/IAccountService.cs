@@ -12,6 +12,7 @@ namespace InventorySystem.Core.Services
 
         // Vouchers
         Task<List<Voucher>> GetVouchersAsync(string? type, DateTime? from, DateTime? to);
+        Task<(List<Voucher> items, int totalCount)> GetVoucherPageAsync(string? type, DateTime? from, DateTime? to, int page, int pageSize);
         Task<Voucher?> GetVoucherAsync(int id);
         Task<(bool success, string message, int? voucherId)> SaveVoucherAsync(Voucher voucher);
         Task<(bool success, string message)> ApproveVoucherAsync(int voucherId);

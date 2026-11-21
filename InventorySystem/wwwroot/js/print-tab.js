@@ -20,6 +20,15 @@
             if (!win) { window.print(); return; }
             const copy = source.cloneNode(true);
             copy.querySelectorAll('script').forEach(s => s.remove());
+            // cloneNode keeps attributes only, so inputs would print empty; carry over the live values.
+            const live = source.querySelectorAll('input,select,textarea'), cloned = copy.querySelectorAll('input,select,textarea');
+            live.forEach((f, i) => {
+                const c = cloned[i]; if (!c) return;
+                if (f.type === 'checkbox' || f.type === 'radio') c.toggleAttribute('checked', f.checked);
+                else if (f.tagName === 'SELECT') [...c.options].forEach((o, j) => o.toggleAttribute('selected', j === f.selectedIndex));
+                else if (f.tagName === 'TEXTAREA') c.textContent = f.value;
+                else c.setAttribute('value', f.value);
+            });
             const stamp = copy.querySelector('#generatedDate');
             if (stamp) stamp.textContent = new Date().toLocaleString();
             const styles = [...document.querySelectorAll('link[rel="stylesheet"], style')]

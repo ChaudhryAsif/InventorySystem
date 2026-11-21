@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data=await json('/GatePass/GetList?'+qs);if(current!==request)return;
             const pages=Math.max(1,Math.ceil(data.totalCount/data.pageSize));
             if(page>pages){page=pages;return load();}
-            byId('gpList').innerHTML=data.data.length?data.data.map(g=>`<tr><td>${passNo(g)}</td><td>${g.passDate.split('T')[0]}</td><td>${esc(g.partyName)}</td><td>${esc(g.vehicleNumber||'—')}</td><td>${number(g.itemCount)}</td><td><span class="gp-status ${g.isCancelled?'cancelled':''}">${g.isCancelled?'Cancelled':'Active'}</span></td><td><div class="gp-actions"><a class="gp-button gp-secondary" target="_blank" rel="noopener" href="/GatePass/Print/${g.id}">View / Print</a>${g.isCancelled?'':`${byId('gatePassApp').dataset.canEdit==='true'?`<a class="gp-button gp-secondary" href="/GatePass/Create?direction=${direction}&id=${g.id}">Edit</a>`:''}<button class="gp-button gp-danger" data-cancel="${g.id}" data-revision="${g.revision}" title="Delete by cancelling this pass; its history is retained">Delete</button>`}</div></td></tr>`).join(''):'<tr><td colspan="7">No matching gate passes. Change the filters or create a new pass.</td></tr>';
+            byId('gpList').innerHTML=data.data.length?data.data.map(g=>`<tr><td>${passNo(g)}</td><td>${g.passDate.split('T')[0]}</td><td>${esc(g.partyName)}</td><td>${esc(g.vehicleNumber||'—')}</td><td>${number(g.itemCount)}</td><td><span class="gp-status ${g.isCancelled?'cancelled':''}">${g.isCancelled?'Cancelled':'Active'}</span></td><td><div class="gp-actions"><a class="gp-button gp-secondary" target="_blank" rel="noopener" href="/GatePass/Print/${g.id}">View / Print</a>${g.isCancelled?'':`<button class="gp-button gp-secondary" data-share="${g.id}">Share</button>${byId('gatePassApp').dataset.canEdit==='true'?`<a class="gp-button gp-secondary" href="/GatePass/Create?direction=${direction}&id=${g.id}">Edit</a>`:''}<button class="gp-button gp-danger" data-cancel="${g.id}" data-revision="${g.revision}" title="Delete by cancelling this pass; its history is retained">Delete</button>`}</div></td></tr>`).join(''):'<tr><td colspan="7">No matching gate passes. Change the filters or create a new pass.</td></tr>';
             byId('gpPage').textContent=`Page ${page} of ${pages} · ${data.totalCount} records`;
             byId('gpPrevious').disabled=page<=1;byId('gpNext').disabled=page>=pages;
         }catch(e){if(current===request){byId('gpPage').textContent='Unable to load gate passes';byId('gpList').innerHTML=`<tr><td colspan="7"><div class="gp-notice gp-error" role="alert">${esc(e.message)} <button type="button" class="gp-button gp-secondary" id="gpRetry">Retry</button></div></td></tr>`;byId('gpRetry').onclick=load;}}
@@ -187,12 +187,12 @@ document.addEventListener('DOMContentLoaded', () => {
         byId('gpForm').addEventListener('invalid',event=>event.target.setAttribute('aria-invalid','true'),true);
         byId('gpForm').addEventListener('input',event=>{if(event.target.validity?.valid)event.target.removeAttribute('aria-invalid');});
         window.addEventListener('beforeunload',event=>{if(dirty&&!busy){event.preventDefault();event.returnValue='';}});
-        byId('gpSave').disabled=byId('gpSavePrint').disabled=true;
+        byId('gpSave').disabled=byId('gpSaveShare').disabled=byId('gpSavePrint').disabled=true;
         byId('gpGroupType').addEventListener('change',()=>{if(selectedGroupId&&groupOptions.get(selectedGroupId)?.type!==byId('gpGroupType').value&&byId('gpGroupType').value)chooseGroup(null);filterGroupOptions();});
         byId('gpGroupId').addEventListener('change',()=>chooseGroup(byId('gpGroupId').value,true));
         try{await loadGroups();}catch(e){byId('gpFormError').textContent=e.message;byId('gpFormError').hidden=false;return;}
-        if(!id){addLine();suggestions();byId('gpSave').disabled=byId('gpSavePrint').disabled=false;return;}
-        byId('gpSave').disabled=byId('gpSavePrint').disabled=true;
+        if(!id){addLine();suggestions();byId('gpSave').disabled=byId('gpSaveShare').disabled=byId('gpSavePrint').disabled=false;return;}
+        byId('gpSave').disabled=byId('gpSaveShare').disabled=byId('gpSavePrint').disabled=true;
         try{
             const g=await json('/GatePass/GetById?id='+id);if(g.direction!==direction||g.isCancelled)throw new Error('This gate pass cannot be edited. Return to the list.');
             revision=g.revision;branchId=g.branchId;byId('gpNumber').value=g.passNumber;byId('PassDate').value=g.passDate.split('T')[0];
@@ -202,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedGroupId=g.groupId?String(g.groupId):null;
             byId('gpGroupId').required=Boolean(g.groupId);byId('gpGroupType').value=groupOptions.get(selectedGroupId)?.type||'';filterGroupOptions();byId('gpGroupId').value=selectedGroupId||'';
             byId('gpGroupHelp').textContent=g.groupId?'Only items from this saved group are available.':'This older pass has no saved group. Select a group before choosing additional items.';
-            g.lines.forEach(addLine);netWeight();byId('gpSave').disabled=byId('gpSavePrint').disabled=false;dirty=false;suggestions();
+            g.lines.forEach(addLine);netWeight();byId('gpSave').disabled=byId('gpSaveShare').disabled=byId('gpSavePrint').disabled=false;dirty=false;suggestions();
         }catch(e){byId('gpFormError').textContent=e.message;byId('gpFormError').hidden=false;byId('gpForm').querySelectorAll('input,select,textarea,button').forEach(el=>el.disabled=true);}
     }
     async function save(event){
@@ -212,17 +212,18 @@ document.addEventListener('DOMContentLoaded', () => {
         model.lines=[...byId('gpLines').children].map(row=>({id:Number(row.dataset.lineId||0),itemId:row.dataset.itemId?Number(row.dataset.itemId):null,unitPrice:row.querySelector('.gp-price').value===''?null:Number(row.querySelector('.gp-price').value),description:row.querySelector('.gp-description').value.trim(),packingType:row.querySelector('.gp-packing').value||null,packingQuantity:Number(row.querySelector('.gp-packing-qty').value),bundleQuantity:Number(row.querySelector('.gp-bundles').value),openCartonQuantity:Number(row.querySelector('.gp-open').value),calculateFromBundles:direction==='Outward'&&row.querySelector('.gp-unit').value==='pcs'&&row.dataset.calculate==='true',totalQuantity:Number(row.querySelector('.gp-total').value),unit:row.querySelector('.gp-unit').value}));
         if(!model.partyName||model.lines.some(line=>!line.description)){const input=!model.partyName?byId('PartyName'):[...byId('gpLines').querySelectorAll('.gp-description')].find(el=>!el.value.trim());input.setCustomValidity('Enter a name or select a match.');input.reportValidity();input.addEventListener('input',()=>input.setCustomValidity(''),{once:true});return;}
         if(model.groupId&&model.lines.some(line=>!line.itemId)){const notice=byId('gpFormError');notice.textContent='Choose every item from the selected group using its item dropdown.';notice.hidden=false;return;}
-        busy=true;byId('gpSave').disabled=byId('gpSavePrint').disabled=true;byId('gpFormError').hidden=true;
+        busy=true;byId('gpSave').disabled=byId('gpSaveShare').disabled=byId('gpSavePrint').disabled=true;byId('gpFormError').hidden=true;
         // The print tab is opened now, while the click still counts, then pointed at the pass after the save.
-        const print=event.submitter?.id==='gpSavePrint',printWin=print?window.open('','_blank'):null,button=print?byId('gpSavePrint'):byId('gpSave'),label=button.textContent;button.textContent='Saving…';
+        const print=event.submitter?.id==='gpSavePrint',share=event.submitter?.id==='gpSaveShare',printWin=print||share?window.open('','_blank'):null,button=byId(print?'gpSavePrint':share?'gpSaveShare':'gpSave'),label=button.textContent;button.textContent='Saving…';
         let saved=false;
         try{
             const result=await json('/GatePass/Save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});
             dirty=false;saved=true;
-            if(printWin){printWin.location.href='/GatePass/Print/'+result.id;location.href='/GatePass/'+direction;}
+            if(share){try{await GatePassShare.open(result.id,printWin);}catch(e){alert('The gate pass was saved, but it could not be shared: '+e.message+' You can use Share from the list.');}location.href='/GatePass/'+direction;}
+            else if(printWin){printWin.location.href='/GatePass/Print/'+result.id;location.href='/GatePass/'+direction;}
             else location.href=print?'/GatePass/Print/'+result.id:'/GatePass/'+direction;
         }catch(e){if(printWin)printWin.close();const notice=byId('gpFormError');notice.textContent=e.message;notice.hidden=false;notice.scrollIntoView({behavior:'smooth',block:'center'});}
-        finally{if(!saved){busy=false;byId('gpSave').disabled=byId('gpSavePrint').disabled=false;button.textContent=label;}}
+        finally{if(!saved){busy=false;byId('gpSave').disabled=byId('gpSaveShare').disabled=byId('gpSavePrint').disabled=false;button.textContent=label;}}
     }
     if(app.dataset.mode==='list'){
         picker(byId('gpParty'),'/GatePass/GetPassPartyOptions?direction='+direction,[['all','Parties on saved passes']],()=>{page=1;load();});
@@ -230,6 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
         byId('gpTo').oninput=()=>byId('gpTo').setCustomValidity('');
         byId('gpStatus').onchange=()=>{page=1;load();};byId('gpClear').onclick=()=>{['gpSearch','gpParty','gpFrom','gpTo'].forEach(k=>byId(k).value='');byId('gpStatus').value='active';page=1;load();};
         byId('gpPrevious').onclick=()=>{if(!byId('gpPrevious').disabled){page--;load();}};byId('gpNext').onclick=()=>{if(!byId('gpNext').disabled){page++;load();}};
+        byId('gpList').addEventListener('click',async event=>{const button=event.target.closest('[data-share]');if(!button||button.disabled)return;const win=window.open('','_blank');button.disabled=true;try{await GatePassShare.open(Number(button.dataset.share),win);}catch(e){alert(e.message);}finally{button.disabled=false;}});
         byId('gpList').addEventListener('click',async event=>{const button=event.target.closest('[data-cancel]');if(!button||button.disabled)return;
             const reason=await window.requestOperationReason('Delete gate pass — cancellation reason','Delete gate pass');if(!reason)return;button.disabled=true;
             try{await json('/GatePass/Delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:Number(button.dataset.cancel),revision:Number(button.dataset.revision),reason})});await load();}

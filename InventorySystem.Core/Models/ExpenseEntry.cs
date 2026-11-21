@@ -15,6 +15,8 @@ public class ExpenseEntry
     [MaxLength(20)] public string VoucherNo { get; set; } = "";
     // Posted | Void
     [Required, MaxLength(10)] public string Status { get; set; } = "Posted";
+    // Raw Material | Other: a label for filtering, no accounting effect.
+    [Required, MaxLength(20)] public string RelatedTo { get; set; } = "Other";
     [MaxLength(100)] public string CreatedBy { get; set; } = "";
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     [Timestamp] public byte[] RowVersion { get; set; } = Array.Empty<byte>();

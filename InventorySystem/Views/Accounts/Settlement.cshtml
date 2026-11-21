@@ -134,22 +134,27 @@ async function loadBalance(){
         if(request!==balanceRequest)return;
         if(!response.ok||!data.success)throw new Error(data.message||'Could not load the balance.');
         const s=data.summary;
-        if(s.balance===0){message.textContent='Cleared: no payment or refund is due.';return;}
+        if(s.balance===0){message.innerHTML=`<b>${money(0)}</b><small>Cleared. Anything you enter is kept as an advance.</small>`;outstanding=0;balanceReady=true;saveButton.disabled=false;return;}
         const rightDirection=s.balanceType===(receiveMoney?'Receivable':'Payable');
         message.innerHTML=`<b>${money(s.balance)}</b><small>${esc(s.balanceDescription)}</small>`;
         if(!rightDirection){message.innerHTML+=`<small>Open <a href="${otherScreen.url}?partyId=${id}">${otherScreen.name}</a> to settle this balance.</small>`;return;}
-        outstanding=Number(s.balance);balanceReady=true;amountInput.value=outstanding.toFixed(2);amountInput.max=outstanding.toFixed(2);saveButton.disabled=false;showAfter();
+        outstanding=Number(s.balance);balanceReady=true;amountInput.value=outstanding.toFixed(2);saveButton.disabled=false;showAfter();
     }catch(error){if(request===balanceRequest)message.textContent=error.message;}
 }
 function showAfter(){
     const amount=Number(amountInput.value);
-    after.textContent=balanceReady&&Number.isFinite(amount)&&amount>0?(amount>outstanding?'The amount cannot be more than '+money(outstanding)+'.':'Balance after this payment: '+money(outstanding-amount)):'';
+    if(!balanceReady||!Number.isFinite(amount)||amount<=0){after.textContent='';return;}
+    after.textContent=amount>outstanding?(outstanding===0?'Nothing is '+(receiveMoney?'due':'payable')+'. All of this is kept as an advance.':money(amount-outstanding)+' more than '+(receiveMoney?'due':'payable')+'. The extra is kept as an advance.'):'Balance after this payment: '+money(outstanding-amount);
 }
 amountInput.addEventListener('input',showAfter);
 
 document.getElementById('paymentForm').addEventListener('submit',async e=>{
     e.preventDefault();const amount=Number(amountInput.value);
-    if(!balanceReady||!Number.isFinite(amount)||amount<=0||amount>outstanding){await alertDialog('Enter an amount up to the payment or refund due.');return;}
+    if(!balanceReady||!Number.isFinite(amount)||amount<=0){await alertDialog('Enter an amount above zero.');return;}
+    const extra=amount-outstanding;
+    const warn=outstanding===0?'Nothing is '+(receiveMoney?'due':'payable')+' for this party. The full '+money(extra)+' will be kept as an advance. Continue?'
+        :'You are '+(receiveMoney?'receiving ':'paying ')+money(extra)+' more than '+(receiveMoney?'is due':'is payable')+' ('+money(outstanding)+'). The extra '+money(extra)+' is kept as an advance. Continue?';
+    if(extra>0&&!(await confirmDialog(warn)))return;
     saveButton.disabled=true;search.disabled=true;
     try{
         const response=await fetch('/Accounts/SavePayment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({

@@ -54,7 +54,6 @@ public class RefundFlowTests
         Assert.True((await accounts.VoidVoucherAsync(id)).success);Assert.Equal(-3000,await Balance(db));
         Assert.IsType<OkObjectResult>(await Accounts(db).SavePayment(Payment("Receipt",3000)));Assert.Equal(0,await Balance(db));
         Assert.Empty(await accounts.GetOutstandingReportAsync("all"));Assert.Empty((await accounts.GetAgingReportAsync("supplier",DateTime.Today)).Rows);
-        Assert.IsType<BadRequestObjectResult>(await Accounts(db).SavePayment(Payment("Receipt",1)));
     }
 
     [Theory] [InlineData(true)] [InlineData(false)]
@@ -86,7 +85,6 @@ public class RefundFlowTests
         using var db=Db(type,opening);var accounts=new AccountService(db);
         Assert.Equal(balanceType,(await accounts.GetOutstandingReportAsync(type=="both"?"all":type)).Single().BalanceType);
         Assert.IsType<BadRequestObjectResult>(await Accounts(db).SavePayment(Payment(direction=="Receipt"?"Payment":"Receipt",100)));
-        Assert.IsType<BadRequestObjectResult>(await Accounts(db).SavePayment(Payment(direction,2000.01m)));
         Assert.IsType<BadRequestObjectResult>(await Accounts(db).SavePayment(Payment(direction,0.001m)));
         var id=Data(await Accounts(db).SavePayment(Payment(direction,2000))).GetProperty("id").GetInt32();
         var control=(await db.AccountHeads.SingleAsync(a=>a.AccountCode==code)).AccountHeadId;

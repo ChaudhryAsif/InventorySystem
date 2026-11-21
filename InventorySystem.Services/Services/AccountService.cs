@@ -43,6 +43,7 @@ namespace InventorySystem.Core.Services
 
                 if (model.AccountHeadId == 0)
                 {
+                    model.IsSystem = false;
                     model.CreatedDate = DateTime.Now;
                     _db.AccountHeads.Add(model);
                 }
@@ -92,7 +93,7 @@ namespace InventorySystem.Core.Services
 
         // ── VOUCHERS ──────────────────────────────────────────────────────────
 
-        public async Task<List<Voucher>> GetVouchersAsync(string? type, DateTime? from, DateTime? to)
+        private IQueryable<Voucher> VoucherQuery(string? type, DateTime? from, DateTime? to)
         {
             var query = _db.Vouchers
                 .Include(v => v.Party)
@@ -106,7 +107,21 @@ namespace InventorySystem.Core.Services
             if (to.HasValue)
                 query = query.Where(v => v.VoucherDate <= to.Value.Date.AddDays(1).AddTicks(-1));
 
-            return await query.OrderByDescending(v => v.VoucherDate).ToListAsync();
+            return query;
+        }
+
+        public async Task<List<Voucher>> GetVouchersAsync(string? type, DateTime? from, DateTime? to)
+            => await VoucherQuery(type, from, to).OrderByDescending(v => v.VoucherDate).ToListAsync();
+
+        public async Task<(List<Voucher> items, int totalCount)> GetVoucherPageAsync(string? type, DateTime? from, DateTime? to, int page, int pageSize)
+        {
+            page = Math.Max(page, 1);
+            pageSize = Math.Clamp(pageSize, 1, 1000);
+            var query = VoucherQuery(type, from, to);
+            var total = await query.CountAsync();
+            var items = await query.OrderByDescending(v => v.VoucherDate).ThenByDescending(v => v.VoucherId)
+                .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return (items, total);
         }
 
         public async Task<Voucher?> GetVoucherAsync(int id)
@@ -158,6 +173,7 @@ namespace InventorySystem.Core.Services
                     bool skipGLPosting;
                     if (isNew)
                     {
+                        voucher.IsVoid      = false;
                         voucher.VoucherNo   = await GenerateVoucherNoAsync(voucher.VoucherType, voucher.VoucherDate);
                         voucher.CreatedDate = DateTime.Now;
                         voucher.TotalAmount = totalDebit;
@@ -178,8 +194,8 @@ namespace InventorySystem.Core.Services
                         if (existing == null) return (false, "Voucher not found.", null);
                         if (existing.IsVoid)  return (false, "Cannot edit a void voucher.", null);
 
-                        // A still-draft voucher has no GL entries yet — nothing to void.
-                        skipGLPosting = existing.Status == "Draft";
+                        // Draft and Approved vouchers have no GL entries yet; only Post writes them.
+                        skipGLPosting = existing.Status is "Draft" or "Approved";
                         if (!skipGLPosting)
                         {
                             // Void old GL entries, re-post below
@@ -422,7 +438,8 @@ namespace InventorySystem.Core.Services
                 {
                     AccountCode = g.AccountCode,
                     AccountName = g.AccountName,
-                    Amount      = g.NormalBalance == "Credit" ? g.Credit - g.Debit : g.Debit - g.Credit
+                    // By type, not Normal Balance: returns (Debit on Income) must reduce income.
+                    Amount      = g.Credit - g.Debit
                 }).ToList();
 
             var expenseRows = glData
@@ -431,7 +448,7 @@ namespace InventorySystem.Core.Services
                 {
                     AccountCode = g.AccountCode,
                     AccountName = g.AccountName,
-                    Amount      = g.NormalBalance == "Debit" ? g.Debit - g.Credit : g.Credit - g.Debit
+                    Amount      = g.Debit - g.Credit
                 }).ToList();
 
             return new ProfitLossResult { From = from, To = to, IncomeRows = incomeRows, ExpenseRows = expenseRows };

@@ -26,7 +26,11 @@ public class ExpenseTests
     {
         using var db=Db();var c=Controller(db);
         var codes=JsonSerializer.SerializeToElement(Assert.IsType<JsonResult>(await c.GetExpenseCategories()).Value).GetProperty("data").EnumerateArray().Select(x=>x.GetProperty("AccountCode").GetString()).ToList();
-        Assert.Contains("5205",codes);Assert.Contains("5206",codes);Assert.Contains("5207",codes);Assert.Contains("5203",codes);Assert.Contains("5103",codes);
+        Assert.Contains("5205",codes);Assert.Contains("5206",codes);Assert.Contains("5207",codes);Assert.Contains("5203",codes);Assert.Contains("5209",codes);Assert.Contains("5210",codes);
+        Assert.DoesNotContain("5103",codes);Assert.DoesNotContain("5208",codes);
+        var every=JsonSerializer.SerializeToElement(Assert.IsType<JsonResult>(await c.GetExpenseCategories(all:true)).Value).GetProperty("data").EnumerateArray().Select(x=>x.GetProperty("AccountCode").GetString()).ToList();
+        Assert.Contains("5103",every);Assert.DoesNotContain("5208",every);
+        Assert.IsType<BadRequestObjectResult>(await c.SaveExpense(Input(Cat(db,"5103"))));
         foreach(var excluded in new[] { "5101","5102","5201","5204","5301","5302","1101","4101" })Assert.DoesNotContain(excluded,codes);
         Assert.IsType<BadRequestObjectResult>(await c.SaveExpense(Input(Cat(db,"5201"))));
         Assert.IsType<BadRequestObjectResult>(await c.SaveExpense(Input(Cat(db,"1101"))));
@@ -62,6 +66,22 @@ public class ExpenseTests
         Assert.Equal(1,Count(Assert.IsType<JsonResult>(await c.GetExpenses(categoryId:b)).Value));
         Assert.Equal(1,Count(Assert.IsType<JsonResult>(await c.GetExpenses(search:"Petr")).Value));
         Assert.IsType<BadRequestObjectResult>(await c.GetExpenses("bad"));
+    }
+    [Fact] public async Task RelatedToDefaultsToOtherAndFiltersRawMaterial()
+    {
+        using var db=Db();var c=Controller(db);var cat=Cat(db,"5205");
+        await c.SaveExpense(Input(cat,100,"Tea"));
+        var rm=Input(cat,300,"Loading");rm.RelatedTo="Raw Material";await c.SaveExpense(rm);
+        Assert.Equal(new[] { "Other","Raw Material" },await db.ExpenseEntries.OrderBy(e=>e.Amount).Select(e=>e.RelatedTo).ToArrayAsync());
+        var shown=JsonSerializer.SerializeToElement(Assert.IsType<JsonResult>(await c.GetExpenses(relatedTo:"Raw Material")).Value);
+        Assert.Single(shown.GetProperty("data").EnumerateArray());Assert.Equal("Raw Material",shown.GetProperty("data")[0].GetProperty("RelatedTo").GetString());Assert.Equal(300m,shown.GetProperty("total").GetDecimal());
+        var all=JsonSerializer.SerializeToElement(Assert.IsType<JsonResult>(await c.GetExpenses()).Value);
+        Assert.Equal(2,all.GetProperty("data").GetArrayLength());
+    }
+    [Fact] public async Task UnknownRelatedToIsRejected()
+    {
+        using var db=Db();var c=Controller(db);var bad=Input(Cat(db,"5205"));bad.RelatedTo="Machinery";
+        Assert.IsType<BadRequestObjectResult>(await c.SaveExpense(bad));Assert.Empty(await db.ExpenseEntries.ToListAsync());
     }
     [Fact] public async Task MenuPageIsAddedOnceBesidePaymentVoucher()
     {

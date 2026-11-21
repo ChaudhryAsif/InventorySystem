@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using InventorySystem.Core.Models;
+using InventorySystem.Core.Services;
 using InventorySystem.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -161,6 +162,23 @@ public class GatePassController(ApplicationDbContext db,ILogger<GatePassControll
     {
         var pass=await db.GatePasses.AsNoTracking().Include(g=>g.Lines.OrderBy(l=>l.SerialNo)).SingleOrDefaultAsync(g=>g.Id==id);
         return pass==null?NotFound():View(pass);
+    }
+    public sealed class ShareRequest {public int Id{get;set;}}
+    // Creates (or renews) the customer receipt link and returns the WhatsApp link with the message already written.
+    [HttpPost]
+    public async Task<IActionResult> CreateShareLink([FromBody] ShareRequest? request)
+    {
+        if(request==null||request.Id<1)return BadRequest(new{success=false,message="Select a gate pass to share."});
+        var pass=await db.GatePasses.Include(g=>g.Lines).SingleOrDefaultAsync(g=>g.Id==request.Id);
+        if(pass==null)return NotFound(new{success=false,message="Gate pass not found."});
+        if(pass.IsCancelled)return BadRequest(new{success=false,message="A cancelled gate pass cannot be shared."});
+        var now=DateTime.UtcNow;
+        if(string.IsNullOrEmpty(pass.ShareToken)||pass.ShareExpiresUtc<=now)pass.ShareToken=GatePassShare.NewToken();
+        pass.ShareExpiresUtc=now.AddDays(GatePassShare.ValidDays);
+        try{await db.SaveChangesAsync();}catch(DbUpdateConcurrencyException){return Conflict(new{success=false,message="This gate pass changed. Reload it and try again."});}
+        var url=$"{Request.Scheme}://{Request.Host}/r/{pass.ShareToken}";
+        var message=GatePassShare.Message(pass,url);
+        return Ok(new{success=true,url,message,phone=GatePassShare.WhatsAppPhone(pass.PartyPhone),whatsappUrl=GatePassShare.WhatsAppUrl(pass.PartyPhone,message),validDays=GatePassShare.ValidDays,expiresUtc=pass.ShareExpiresUtc});
     }
     [HttpPost]
     public async Task<IActionResult> Save([FromBody] GatePass? model)

@@ -132,10 +132,10 @@ public class ManufacturingFlowTests
         Assert.IsType<OkObjectResult>(await controller.SavePayment(new PartyPaymentRequest {PartyId=900,Amount=5000,Date=DateTime.Today,Direction="Payment"}));
         Assert.Equal(25000,(await accounts.GetOutstandingReportAsync("supplier")).Single().Balance);
     }
-    [Fact] public async Task OverpaymentAndFractionalBoxes_AreRejected()
+    [Fact] public async Task InvalidPaymentAndFractionalBoxes_AreRejected()
     {
         using var db=Db();var accounts=new AccountService(db);var controller=new AccountsController(db,accounts) {ControllerContext=new ControllerContext {HttpContext=new DefaultHttpContext()}};
-        Assert.IsType<BadRequestObjectResult>(await controller.SavePayment(new PartyPaymentRequest {PartyId=901,Amount=1,Date=DateTime.Today}));
+        Assert.IsType<BadRequestObjectResult>(await controller.SavePayment(new PartyPaymentRequest {PartyId=901,Amount=0,Date=DateTime.Today}));
         var sale=Sale();sale.Items[0].Quantity=0.5m;await Assert.ThrowsAsync<InvalidOperationException>(()=>InvoiceValidation.Validate(db,sale));
     }
 }

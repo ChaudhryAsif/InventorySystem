@@ -138,6 +138,7 @@ namespace InventorySystem.Data
             modelBuilder.Entity<GatePass>().HasMany(g=>g.Lines).WithOne().HasForeignKey(l=>l.GatePassId).OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<GatePass>().Property(g=>g.Revision).IsConcurrencyToken();
             modelBuilder.Entity<GatePass>().HasIndex(g=>new { g.Direction, g.PassDate });
+            modelBuilder.Entity<GatePass>().HasIndex(g=>g.ShareToken).IsUnique().HasFilter("[ShareToken] IS NOT NULL");
             modelBuilder.Entity<GatePass>().HasQueryFilter(g=>!RestrictBranches || AllowedBranchIds.Contains(g.BranchId));
             modelBuilder.Entity<GatePass>().Property(g=>g.GrossWeightKg).HasPrecision(18,3);
             modelBuilder.Entity<GatePass>().Property(g=>g.TareWeightKg).HasPrecision(18,3);
@@ -1116,6 +1117,8 @@ namespace InventorySystem.Data
         new AccountHead { AccountHeadId=514, AccountCode="5205", AccountName="Office & Factory Expenses", AccountType="Expenses", Level=3, NormalBalance="Debit", IsSystem=false, ParentId=51 },
         new AccountHead { AccountHeadId=515, AccountCode="5206", AccountName="Repairs & Maintenance", AccountType="Expenses",  Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
         new AccountHead { AccountHeadId=516, AccountCode="5207", AccountName="Kitchen Expenses",      AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=51 },
+        new AccountHead { AccountHeadId=518, AccountCode="5209", AccountName="Freight & Cartage - Inward (Purchase)",         AccountType="Expenses", Level=3, NormalBalance="Debit", IsSystem=false, ParentId=50 },
+        new AccountHead { AccountHeadId=519, AccountCode="5210", AccountName="Freight & Cartage - Outward (Distribution)",    AccountType="Expenses", Level=3, NormalBalance="Debit", IsSystem=false, ParentId=51 },
         new AccountHead { AccountHeadId=520, AccountCode="5301", AccountName="Bank Charges",          AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=52 },
         new AccountHead { AccountHeadId=521, AccountCode="5302", AccountName="Discount Allowed",      AccountType="Expenses",    Level=3, NormalBalance="Debit",  IsSystem=false, ParentId=52 },
             };

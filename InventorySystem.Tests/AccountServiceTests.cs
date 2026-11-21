@@ -50,7 +50,7 @@ public class AccountServiceTests
 
         var accounts = await svc.GetChartOfAccountsAsync();
 
-        Assert.Equal(41, accounts.Count);
+        Assert.Equal(43, accounts.Count);
         Assert.Equal(5, accounts.Count(a => a.Level == 1));
         Assert.Contains(accounts, a => a.AccountCode == "1101" && a.AccountName == "Cash in Hand");
         // Every non-root account points to an existing parent
@@ -588,6 +588,26 @@ public class AccountServiceTests
     }
 
     [Fact]
+    public async Task ProfitLoss_ReturnsReduceIncomeAndExpense_AndBalanceSheetBalances()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        const int salesReturns = 401, purchases = 500, purchaseReturns = 501;
+        await svc.SaveVoucherAsync(BalancedVoucher("JV", 10000m, Cash, Sales));
+        await svc.SaveVoucherAsync(BalancedVoucher("JV", 2000m, salesReturns, Cash));
+        await svc.SaveVoucherAsync(BalancedVoucher("JV", 6000m, purchases, Cash));
+        await svc.SaveVoucherAsync(BalancedVoucher("JV", 1000m, Cash, purchaseReturns));
+
+        var pl = await svc.GetProfitLossAsync(DateTime.Today.AddDays(-1), DateTime.Today);
+        var bs = await svc.GetBalanceSheetAsync(DateTime.Today);
+
+        Assert.Equal(8000m, pl.TotalIncome);
+        Assert.Equal(5000m, pl.TotalExpense);
+        Assert.Equal(3000m, pl.NetProfit);
+        Assert.Equal(bs.TotalAssets, bs.TotalLiabilities + bs.TotalEquity);
+    }
+
+    [Fact]
     public async Task BalanceSheet_AssetsEqualLiabilitiesPlusEquity()
     {
         using var db = NewContext();
@@ -791,6 +811,67 @@ public class AccountServiceTests
         var after = await svc.GetBankReconAsync(Bank, null, null);
         Assert.Equal(800m, after.ClearedBalance);
         Assert.Equal(0m, after.UnclearedBalance);
+    }
+
+    [Fact]
+    public async Task EditingApprovedVoucher_DoesNotPostToLedgerUntilPosted()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        var draft = BalancedVoucher("PV", 500m, Rent, Cash);
+        draft.Status = "Draft";
+        var (_, _, id) = await svc.SaveVoucherAsync(draft);
+        await svc.ApproveVoucherAsync(id!.Value);
+
+        var edit = BalancedVoucher("PV", 600m, Rent, Cash);
+        edit.VoucherId = id.Value;
+        Assert.True((await svc.SaveVoucherAsync(edit)).success);
+        Assert.Empty(db.GeneralLedger.Where(g => g.VoucherId == id));
+
+        await svc.PostVoucherAsync(id.Value);
+        Assert.Equal(2, db.GeneralLedger.Count(g => g.VoucherId == id && !g.IsVoid));
+    }
+
+    [Fact]
+    public async Task SaveVoucher_IgnoresClientVoidFlag()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        var voucher = BalancedVoucher("PV", 500m, Rent, Cash);
+        voucher.IsVoid = true;
+
+        var (_, _, id) = await svc.SaveVoucherAsync(voucher);
+
+        Assert.False((await db.Vouchers.FindAsync(id))!.IsVoid);
+    }
+
+    [Fact]
+    public async Task SaveAccountHead_NewAccountIsNeverSystem()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+
+        var (success, message) = await svc.SaveAccountHeadAsync(new AccountHead
+        {
+            AccountCode = "9999", AccountName = "Test", AccountType = "Expenses", Level = 3,
+            NormalBalance = "Debit", OpeningBalanceType = "Debit", IsSystem = true
+        });
+
+        Assert.True(success, message);
+        Assert.False(db.AccountHeads.Single(a => a.AccountCode == "9999").IsSystem);
+    }
+
+    [Fact]
+    public async Task GetVoucherPage_ReturnsTotalAndOnePage()
+    {
+        using var db = NewContext();
+        var svc = new AccountService(db);
+        for (int i = 0; i < 3; i++) await svc.SaveVoucherAsync(BalancedVoucher("PV", 100m + i, Rent, Cash));
+
+        var (items, total) = await svc.GetVoucherPageAsync(null, null, null, 2, 2);
+
+        Assert.Equal(3, total);
+        Assert.Single(items);
     }
 
     [Fact]

@@ -78,9 +78,7 @@ namespace InventorySystem.Controllers
         [HttpGet]
         public async Task<IActionResult> GetVouchers(string? type, DateTime? from, DateTime? to, int page = 1, int pageSize = 200)
         {
-            var list = await _accounts.GetVouchersAsync(type, from, to);
-            var totalCount = list.Count;
-            var paged = list.Skip((page - 1) * pageSize).Take(pageSize);
+            var (paged, totalCount) = await _accounts.GetVoucherPageAsync(type, from, to, page, pageSize);
             return Json(new
             {
                 success = true,
@@ -88,6 +86,7 @@ namespace InventorySystem.Controllers
                 page,
                 pageSize,
                 data = paged.Select(v => new {
+                    isSystem = v.CreatedBy == "system",
                     v.VoucherId,
                     v.VoucherNo,
                     v.VoucherType,
@@ -131,6 +130,9 @@ namespace InventorySystem.Controllers
         [HttpPost]
         public async Task<IActionResult> VoidVoucher([FromBody] int id)
         {
+            // Purchase and sale entries follow their invoice; cancel the invoice instead.
+            if (await _db.Vouchers.AnyAsync(v => v.VoucherId == id && v.CreatedBy == "system"))
+                return Json(new { success = false, message = "This entry was made by a purchase or sale. Cancel the invoice instead." });
             var result = await _accounts.VoidVoucherAsync(id);
             return Json(new { result.success, result.message });
         }
@@ -231,16 +233,16 @@ namespace InventorySystem.Controllers
             var statement = await _accounts.GetPartyStatementAsync(party.PartyId, null, null);
             var balance = statement.LastOrDefault()?.Balance ?? 0;
             var position = PartyBalanceService.Position(party.PartyType, balance);
-            if (position.Amount == 0 || model.Amount > position.Amount)
-                return BadRequest(new { success = false, message = "Amount exceeds the outstanding payment or refund. Use an administrator voucher for an advance." });
-            if ((model.Direction == "Receipt") != (position.BalanceType == "Receivable"))
+            // More than the balance (or any amount for a cleared party) is kept as an advance, so only the wrong direction is refused.
+            if (position.Amount != 0 && (model.Direction == "Receipt") != (position.BalanceType == "Receivable"))
                 return BadRequest(new { success = false, message = position.BalanceType == "Receivable" ? "Use Receive Money for this balance." : "Use Pay Money for this balance." });
+            var advance = model.Amount - position.Amount;
             var cash = await _db.AccountHeads.SingleAsync(a => a.AccountCode == (model.Mode == "Cash" ? "1101" : "1102"));
             var control = await _db.AccountHeads.SingleAsync(a => a.AccountCode == position.ControlCode);
             var receipt = model.Direction == "Receipt";
             var voucher = new Voucher { VoucherType = receipt ? "RV" : "PV", VoucherDate = model.Date, PartyId = model.PartyId,
                 PaymentMode = model.Mode, ReferenceNo = model.Reference, BranchId = model.BranchId,
-                Narration = (position.IsRefund ? receipt ? "Supplier refund received" : "Customer refund paid" : receipt ? "Customer collection" : "Supplier payment") + (string.IsNullOrWhiteSpace(model.Reference) ? "" : " | " + model.Reference),
+                Narration = (position.IsRefund ? receipt ? "Supplier refund received" : "Customer refund paid" : receipt ? "Customer collection" : "Supplier payment") + (advance > 0 ? $" (includes advance of {advance:N2})" : "") + (string.IsNullOrWhiteSpace(model.Reference) ? "" : " | " + model.Reference),
                 CreatedBy = User.Identity?.Name,
                 Details = [new() { AccountHeadId = cash.AccountHeadId, Debit = receipt ? model.Amount : 0, Credit = receipt ? 0 : model.Amount },
                     new() { AccountHeadId = control.AccountHeadId, PartyId = model.PartyId, Debit = receipt ? 0 : model.Amount, Credit = receipt ? model.Amount : 0 }] };
