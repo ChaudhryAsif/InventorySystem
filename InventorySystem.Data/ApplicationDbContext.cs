@@ -25,6 +25,8 @@ namespace InventorySystem.Data
         public DbSet<Items> Items => Set<Items>();
         public DbSet<GatePass> GatePasses => Set<GatePass>();
         public DbSet<GatePassLine> GatePassLines => Set<GatePassLine>();
+        public DbSet<WhatsAppDestination> WhatsAppDestinations => Set<WhatsAppDestination>();
+        public DbSet<WhatsAppSendLog> WhatsAppSendLogs => Set<WhatsAppSendLog>();
         public DbSet<Party> Parties => Set<Party>();
 
         // ── Inventory ────────────────────────────────────────────────────────────
@@ -138,7 +140,9 @@ namespace InventorySystem.Data
             modelBuilder.Entity<GatePass>().HasMany(g=>g.Lines).WithOne().HasForeignKey(l=>l.GatePassId).OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<GatePass>().Property(g=>g.Revision).IsConcurrencyToken();
             modelBuilder.Entity<GatePass>().HasIndex(g=>new { g.Direction, g.PassDate });
-            modelBuilder.Entity<GatePass>().HasIndex(g=>g.ShareToken).IsUnique().HasFilter("[ShareToken] IS NOT NULL");
+            modelBuilder.Entity<WhatsAppDestination>().HasIndex(d=>d.DocumentType).IsUnique();
+            modelBuilder.Entity<WhatsAppSendLog>().HasIndex(l=>new{l.DocumentType,l.DocumentId});
+            modelBuilder.Entity<WhatsAppSendLog>().HasIndex(l=>l.CreatedUtc);
             modelBuilder.Entity<GatePass>().HasQueryFilter(g=>!RestrictBranches || AllowedBranchIds.Contains(g.BranchId));
             modelBuilder.Entity<GatePass>().Property(g=>g.GrossWeightKg).HasPrecision(18,3);
             modelBuilder.Entity<GatePass>().Property(g=>g.TareWeightKg).HasPrecision(18,3);

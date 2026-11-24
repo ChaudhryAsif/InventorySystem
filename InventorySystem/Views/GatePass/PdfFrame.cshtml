@@ -1,0 +1,32 @@
+@model InventorySystem.Core.Models.GatePass
+@{Layout=null;}
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="robots" content="noindex,nofollow" />
+<title>@Model.PassNumber</title>
+<link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/gatepass-sheet.css" asp-append-version="true" />
+<style>
+body.exporting{margin:0!important;max-width:none!important;padding:0!important}
+.exporting #receiptSheet{width:780px;max-width:none}
+.exporting .meta{grid-template-columns:repeat(4,minmax(0,1fr))}
+.exporting .field.wide{grid-column:span 2}
+</style></head><body>
+<div id="receiptSheet"><partial name="~/Views/GatePass/_GatePassSheet.cshtml" model="Model" /></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="~/js/pdf-pages.js" asp-append-version="true"></script>
+<script>
+// Used by the Gate Pass pages (hidden frame) to build the same PDF the staff would download.
+(function () {
+    const sheet = document.getElementById('receiptSheet');
+    const options = { margin: [10, 10, 10, 10], filename: '@(Model.PassNumber).pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true, width: 780 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: window.PdfPages ? PdfPages.options : undefined };
+    // Captured at a fixed 780px sheet width. Do not set windowWidth or scroll offsets: they cut the sheet on wide or zoomed windows.
+    window.GPReceipt = {
+        ready: () => typeof html2pdf !== 'undefined',
+        async blob() {
+            document.body.classList.add('exporting', 'pdf-exporting');
+            try { return await html2pdf().set(options).from(sheet).outputPdf('blob'); }
+            finally { document.body.classList.remove('exporting', 'pdf-exporting'); }
+        }
+    };
+})();
+</script>
+</body></html>

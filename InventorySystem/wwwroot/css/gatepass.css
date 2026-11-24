@@ -10,3 +10,6 @@
 .gp-grid>label{min-width:0}
 .gp-page input,.gp-page select,.gp-page textarea{max-width:100%}
 @media(max-width:700px){.gp-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* WhatsApp send buttons stay visible but look disabled until a group is saved on the WhatsApp page. */
+.gp-button[aria-disabled="true"]{opacity:.5;cursor:not-allowed}

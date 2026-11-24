@@ -72,6 +72,8 @@ builder.Services.AddScoped<ILedgerPostingService, LedgerPostingService>();
 builder.Services.AddScoped<IStockService, StockService>();
 
 // ── WhatsApp Chatbot Services ──────────────────────────────────────────────────
+builder.Services.AddSingleton(builder.Configuration.GetSection("WhatsAppGroup").Get<WhatsAppGroupOptions>() ?? new WhatsAppGroupOptions());
+builder.Services.AddHttpClient<IWhatsAppGroupClient, WhatsAppGroupClient>();
 builder.Services.AddHttpClient("MetaClient");
 builder.Services.AddHttpClient("GroqClient");
 builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();

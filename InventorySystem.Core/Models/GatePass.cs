@@ -35,9 +35,6 @@ public class GatePass
     public DateTime? CancelledUtc { get; set; }
     [MaxLength(100)] public string? CreatedBy { get; set; }
     public int Revision { get; set; } = 1;
-    // Secret link for the customer's copy of the receipt; valid until ShareExpiresUtc.
-    [MaxLength(64)] public string? ShareToken { get; set; }
-    public DateTime? ShareExpiresUtc { get; set; }
     public List<GatePassLine> Lines { get; set; } = [];
     public string PassNumber => (Direction == "Inward" ? "IGP-" : "OGP-") + Id.ToString("D6");
 }

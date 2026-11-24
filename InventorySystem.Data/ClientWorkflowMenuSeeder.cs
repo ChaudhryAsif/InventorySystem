@@ -38,12 +38,15 @@ public static class ClientWorkflowMenuSeeder
         var finishedStock=Find("Report","FinishedGoodsStock");if(finishedStock!=null)finishedStock.SortOrder=3;
         Page("GatePass","Outward","Outward Gate Pass",gate,1,"GatePass.View","📤");
         Page("GatePass","Inward","Inward Gate Pass",gate,2,"GatePass.View","📥");
+        // One shared WhatsApp page for every document that is sent to a group.
+        var whatsApp=Find("WhatsAppGroup","Index");
+        if(whatsApp==null){whatsApp=new(){Controller="WhatsAppGroup",Action="Index",Name="WhatsApp",Icon="💬",RequiredPermission="WhatsAppGroup.Manage",SortOrder=9,CreatedAt=DateTime.UtcNow};db.MenuItems.Add(whatsApp);rows.Add(whatsApp);}
         var roles=await db.Roles.Where(r=>r.Name=="Admin"||r.Name=="SuperAdmin").ToListAsync();
-        foreach(var action in new[]{"View","Create","Edit","Delete"})
+        foreach(var (module,action,label) in new[]{("GatePass","View","View Gate Passes"),("GatePass","Create","Create Gate Passes"),("GatePass","Edit","Edit Gate Passes"),("GatePass","Delete","Delete Gate Passes"),("WhatsAppGroup","Manage","Manage the WhatsApp number and groups")})
         {
-            var code="GatePass."+action;
+            var code=module+"."+action;
             var permission=await db.Permissions.SingleOrDefaultAsync(p=>p.Code==code);
-            if(permission==null){permission=new(){Code=code,Name=action+" Gate Passes",Module="GatePass",Action=action,CreatedAt=DateTime.UtcNow};db.Permissions.Add(permission);}
+            if(permission==null){permission=new(){Code=code,Name=label,Module=module,Action=action,CreatedAt=DateTime.UtcNow};db.Permissions.Add(permission);}
             await db.SaveChangesAsync();
             foreach(var role in roles)
                 if(!await db.RolePermissions.AnyAsync(r=>r.RoleId==role.Id&&r.PermissionId==permission.Id))db.RolePermissions.Add(new(){RoleId=role.Id,PermissionId=permission.Id,CreatedAt=DateTime.UtcNow});

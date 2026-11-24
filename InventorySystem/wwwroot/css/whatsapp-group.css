@@ -1,0 +1,47 @@
+/* WhatsApp page: centred column, status pill, tidy tables. Builds on gatepass.css (gp-page, gp-card, gp-table, gp-button). */
+.wa-page{max-width:1040px;margin-left:auto;margin-right:auto}
+.wa-head{margin-bottom:20px}
+.wa-head h2{margin:0 0 4px}
+.wa-head p{margin:0;color:#64748b;font-size:14px}
+.wa-card{margin-bottom:18px}
+.wa-card h3{margin:0 0 4px}
+.wa-card .gp-help{margin:0 0 14px}
+.wa-card .gp-table-wrap{margin-top:6px}
+
+/* Connection */
+.wa-conn{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.wa-pill{display:inline-flex;align-items:center;gap:10px;padding:8px 16px;border-radius:999px;background:#f1f5f9;color:#334155;font-size:15px}
+.wa-pill.ok{background:#dcfce7;color:#166534}.wa-pill.wait{background:#fef3c7;color:#92400e}.wa-pill.bad{background:#fee2e2;color:#991b1b}
+.wa-dot{width:10px;height:10px;border-radius:50%;background:#94a3b8;flex:none}
+.wa-dot.ok{background:#16a34a}.wa-dot.wait{background:#d97706}.wa-dot.bad{background:#dc2626}
+.wa-actions{display:flex;gap:10px;flex-wrap:wrap}
+.wa-qr{display:flex;flex-direction:column;align-items:center;text-align:center;margin-top:18px;padding-top:18px;border-top:1px solid #e2e8f0}
+.wa-qr img{display:block;border:1px solid #e2e8f0;border-radius:10px;padding:10px;background:#fff}
+.wa-qr p{margin:10px 0 0;color:#64748b;font-size:13px}
+.wa-error{margin:14px 0 0;color:#b91c1c}
+
+/* Destinations and log */
+.wa-page .gp-table-wrap{overflow-x:auto}
+.wa-page #waDestinations select{width:100%;min-width:0;max-width:380px}
+.wa-page #waDestinations td{vertical-align:middle}
+.wa-page .wa-row-actions{display:flex;gap:8px;flex-wrap:wrap}
+.wa-sent,.wa-failed{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.wa-sent{background:#dcfce7;color:#166534}.wa-failed{background:#fee2e2;color:#991b1b}
+.wa-reason{margin-left:8px;color:#64748b}
+@container (min-width:721px){
+  #waDestinations{table-layout:fixed}
+  #waDestinations th:nth-child(1){width:28%}#waDestinations th:nth-child(2){width:44%}#waDestinations th:nth-child(3){width:28%}
+}
+
+/* Narrow screens (phones, or a wide sidebar): stack each destination as a card so nothing is cut off. */
+@container (max-width:720px){
+  #waDestinations thead{display:none}
+  #waDestinations,#waDestinations tbody,#waDestinations tr,#waDestinations td{display:block;width:100%;box-sizing:border-box}
+  #waDestinations tr{border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:10px}
+  #waDestinations td{border:0;padding:6px 0;text-align:left}
+  #waDestinations select{max-width:none}
+  #waDestinations .wa-row-actions{flex-direction:column}
+  #waDestinations .gp-button{width:100%;white-space:normal}
+  .wa-conn{flex-direction:column;align-items:flex-start}
+  .wa-qr img{max-width:100%;height:auto}
+}

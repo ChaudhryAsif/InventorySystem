@@ -49,6 +49,7 @@ public sealed class OperationFilter(ApplicationDbContext db, IPermissionService 
             : action.StartsWith("Update") || action.StartsWith("Edit") || action == "SaveConsumption" || action == "Record" || action == "Reverse" || action == "Complete" || action == "Cancel" || action == "MarkFinal" ? "Edit"
             : action.StartsWith("Post") || action.StartsWith("Approve") ? "Post" : "Create";
         if (controller == "WhatsApp") verb = action is "Configure" or "RegisterWebhook" or "TestMessage" or "Playground" or "PlaygroundReply" ? "Config" : write ? "Reply" : "View";
+        if (controller == "WhatsAppGroup") verb = "Manage"; // one admin permission covers the whole WhatsApp page
         if (controller == "CostSheet" && action.Contains("Settings") && action != "GetSettings") verb = "Settings";
         if (write && action != "SavePayment" && action.StartsWith("Save") && !(controller == "Production" && action == "Save") && context.ActionArguments.Values.Any(HasExistingId)) verb = "Edit";
         if (controller != "Admin" && !isSuperAdmin)
@@ -90,7 +91,8 @@ public sealed class OperationFilter(ApplicationDbContext db, IPermissionService 
                 { context.Result = new ForbidResult(); return; }
                 context.ActionArguments[key] = BranchOptions.DefaultBranchId;
             }
-        if (!write || controller == "WhatsApp") { await next(); return; }
+        // WhatsApp calls wait on an outside service, so they run outside the serializable transaction (the send log is their own record).
+        if (!write || controller == "WhatsApp" || controller == "WhatsAppGroup" || controller == "GatePass" && action == "SendToGroup") { await next(); return; }
         var actionKey = controller + "/" + action;
         var requestId = request.Headers["X-Request-ID"].ToString();
         if (requestId.Length > 64) { context.Result = new BadRequestObjectResult(new { success = false, message = "Invalid request identifier." }); return; }

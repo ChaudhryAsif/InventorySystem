@@ -32,8 +32,8 @@
             <label>Gate Keeper Name<input id="GateKeeper" maxlength="150" value="M. Yameen" /></label><label>@(direction=="Outward"?"Issued By":"Received By")<input id="ReceivedBy" maxlength="150" value="M. Sami Ullah" /></label>
             <label>Receiver Reference<input id="ReceiverReference" maxlength="150" /></label><label>Remarks<textarea id="Remarks" rows="2" maxlength="500"></textarea></label>
         </div>
-        <div class="gp-footer"><button type="submit" class="gp-button gp-secondary" id="gpSave">Save Gate Pass</button><button type="submit" class="gp-button" id="gpSavePrint">Save &amp; Print</button><button type="submit" class="gp-button" id="gpSaveShare">Save &amp; Share</button></div>
+        <div class="gp-footer"><button type="submit" class="gp-button gp-secondary" id="gpSave">Save Gate Pass</button><button type="submit" class="gp-button" id="gpSavePrint">Save &amp; Print</button><button type="submit" class="gp-button" id="gpSaveSend" data-wa-send>Save &amp; Send PDF</button></div>
     </form>
 </div>
-<script src="~/js/gatepass-share.js" asp-append-version="true"></script>
+<script src="~/js/gatepass-send.js" asp-append-version="true"></script>
 <script src="~/js/gatepass.js" asp-append-version="true"></script>

@@ -1,0 +1,37 @@
+@{Layout="_Layout";ViewData["Title"]="WhatsApp";}
+<link rel="stylesheet" href="~/css/gatepass.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/whatsapp-group.css" asp-append-version="true" />
+<div class="gp-page wa-page" id="waApp">
+    <div class="wa-head"><h2>WhatsApp</h2><p>Send documents to a WhatsApp group from one linked number.</p></div>
+    <div id="waNotice" class="gp-notice gp-error" role="alert" hidden></div>
+
+    <div class="gp-card wa-card">
+        <h3>Connection</h3>
+        <p class="gp-help">One WhatsApp number sends every document. Link it once by scanning the code, and it stays linked.</p>
+        <div class="wa-conn">
+            <span id="waPill" class="wa-pill"><span id="waDot" class="wa-dot"></span><strong id="waStatusText">Checking…</strong></span>
+            <div class="wa-actions">
+                <button type="button" class="gp-button" id="waConnect" hidden>Connect</button>
+                <button type="button" class="gp-button gp-secondary" id="waDisconnect" hidden>Disconnect</button>
+            </div>
+        </div>
+        <div id="waQrBox" class="wa-qr" hidden>
+            <img id="waQr" alt="WhatsApp link code" width="260" height="260" />
+            <p>On the phone with this number: WhatsApp, Linked devices, Link a device, then scan.</p>
+        </div>
+        <p id="waError" class="wa-error" hidden></p>
+    </div>
+
+    <div class="gp-card wa-card">
+        <h3>Where documents go</h3>
+        <p class="gp-help">Each kind of document can go to its own group. The number must already be a member of the group. Saving a group turns sending on for that document, and "No group" turns it off.</p>
+        <div class="gp-table-wrap"><table class="gp-table" id="waDestinations"><thead><tr><th>Document</th><th>Group</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="gp-card wa-card">
+        <h3>Recent sends</h3>
+        <p class="gp-help">The last 20 documents and test messages sent from this number.</p>
+        <div class="gp-table-wrap"><table class="gp-table" id="waLog"><thead><tr><th>Time</th><th>Document</th><th>Result</th><th>By</th></tr></thead><tbody><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
+    </div>
+</div>
+<script src="~/js/whatsapp-group.js" asp-append-version="true"></script>

@@ -44,7 +44,9 @@ public class GatePassController(ApplicationDbContext db,ILogger<GatePassControll
         {
             var totalCount=await query.CountAsync();
             var rows=await query.OrderByDescending(g=>g.Id).Skip((page-1)*pageSize).Take(pageSize).Select(g=>new{g.Id,g.Direction,g.PassDate,g.PartyName,g.VehicleNumber,g.IsCancelled,g.Revision,ItemCount=g.Lines.Count}).ToListAsync();
-            return Json(new{success=true,data=rows,totalCount,page,pageSize});
+            var flags=await WhatsAppFlagsAsync(rows.Select(r=>(r.Id,r.Revision)).ToList());
+            var data=rows.Select(r=>{var f=flags.GetValueOrDefault(r.Id);return new{r.Id,r.Direction,r.PassDate,r.PartyName,r.VehicleNumber,r.IsCancelled,r.Revision,r.ItemCount,waStatus=f.Status,waSentUtc=f.SentUtc,waError=f.Error};}).ToList();
+            return Json(new{success=true,data,totalCount,page,pageSize});
         }
         catch(System.Data.Common.DbException ex)
         {
@@ -163,22 +165,72 @@ public class GatePassController(ApplicationDbContext db,ILogger<GatePassControll
         var pass=await db.GatePasses.AsNoTracking().Include(g=>g.Lines.OrderBy(l=>l.SerialNo)).SingleOrDefaultAsync(g=>g.Id==id);
         return pass==null?NotFound():View(pass);
     }
-    public sealed class ShareRequest {public int Id{get;set;}}
-    // Creates (or renews) the customer receipt link and returns the WhatsApp link with the message already written.
-    [HttpPost]
-    public async Task<IActionResult> CreateShareLink([FromBody] ShareRequest? request)
+    // For the list: was this version of the pass sent to the group ("sent"), or did the last try fail ("failed")?
+    // A missing log table must never stop the list from loading, so any database problem just means no flags.
+    private async Task<Dictionary<int,(string Status,DateTime? SentUtc,string? Error)>> WhatsAppFlagsAsync(List<(int Id,int Revision)> passes)
     {
-        if(request==null||request.Id<1)return BadRequest(new{success=false,message="Select a gate pass to share."});
-        var pass=await db.GatePasses.Include(g=>g.Lines).SingleOrDefaultAsync(g=>g.Id==request.Id);
+        var result=new Dictionary<int,(string,DateTime?,string?)>();
+        if(passes.Count==0)return result;
+        try
+        {
+            var ids=passes.Select(p=>p.Id).ToList();
+            var logs=await db.WhatsAppSendLogs.AsNoTracking().Where(l=>l.DocumentType==WhatsAppDocumentTypes.GatePass&&l.DocumentId!=null&&ids.Contains(l.DocumentId.Value))
+                .Select(l=>new{l.Id,DocId=l.DocumentId!.Value,l.Status,l.RequestId,l.CreatedUtc,l.Error}).ToListAsync();
+            foreach(var (id,revision) in passes)
+            {
+                var baseId=$"gatepass-{id}-r{revision}";
+                var mine=logs.Where(l=>l.DocId==id).OrderBy(l=>l.Id).ToList();
+                var sent=mine.LastOrDefault(l=>l.Status=="Sent"&&(l.RequestId==baseId||l.RequestId!=null&&l.RequestId.StartsWith(baseId+"-")));
+                var last=mine.LastOrDefault();
+                if(last?.Status=="Failed"&&(sent==null||last.Id>sent.Id))result[id]=("failed",null,last.Error);
+                else if(sent!=null)result[id]=("sent",sent.CreatedUtc,null);
+            }
+        }
+        catch(System.Data.Common.DbException ex){logger?.LogWarning(ex,"WhatsApp send flags could not be read for the gate pass list");}
+        return result;
+    }
+    // Staff-only page that draws one pass in a hidden frame so the browser can turn it into the PDF that goes to WhatsApp.
+    [HttpGet]
+    public async Task<IActionResult> PdfFrame(int id)
+    {
+        var pass=await db.GatePasses.AsNoTracking().Include(g=>g.Lines.OrderBy(l=>l.SerialNo)).SingleOrDefaultAsync(g=>g.Id==id);
+        return pass==null?NotFound():View(pass);
+    }
+    // Tells the Gate Pass pages whether passes go to a WhatsApp group, and whether the last send failed.
+    [HttpGet]
+    public async Task<IActionResult> GroupSendInfo()
+    {
+        var destination=await db.WhatsAppDestinations.AsNoTracking().SingleOrDefaultAsync(d=>d.DocumentType==WhatsAppDocumentTypes.GatePass);
+        var last=await db.WhatsAppSendLogs.AsNoTracking().Where(l=>l.DocumentType==WhatsAppDocumentTypes.GatePass).OrderByDescending(l=>l.Id).FirstOrDefaultAsync();
+        var enabled=destination is {GroupId.Length:>0};
+        var failed=last?.Status=="Failed";
+        return Ok(new{enabled,groupName=enabled?destination!.GroupName:null,lastFailed=failed,lastError=failed?last!.Error:null});
+    }
+    public sealed class SendToGroupRequest {public int Id{get;set;} public string? PdfBase64{get;set;} public bool Resend{get;set;}}
+    // Sends the pass PDF (built in the browser) to the WhatsApp group. Each pass revision goes once unless the user asks to send again.
+    [HttpPost]
+    public async Task<IActionResult> SendToGroup([FromBody] SendToGroupRequest? request,[FromServices] IWhatsAppGroupClient wa)
+    {
+        if(request==null||request.Id<1||string.IsNullOrWhiteSpace(request.PdfBase64))return BadRequest(new{success=false,message="Select a gate pass and attach its PDF."});
+        byte[] pdf;
+        try{pdf=Convert.FromBase64String(request.PdfBase64);}catch(FormatException){return BadRequest(new{success=false,message="The PDF is not valid."});}
+        if(pdf.Length<100||pdf.Length>8*1024*1024||pdf[0]!='%'||pdf[1]!='P'||pdf[2]!='D'||pdf[3]!='F')return BadRequest(new{success=false,message="The PDF is not valid."});
+        var pass=await db.GatePasses.AsNoTracking().Include(g=>g.Lines).SingleOrDefaultAsync(g=>g.Id==request.Id);
         if(pass==null)return NotFound(new{success=false,message="Gate pass not found."});
-        if(pass.IsCancelled)return BadRequest(new{success=false,message="A cancelled gate pass cannot be shared."});
-        var now=DateTime.UtcNow;
-        if(string.IsNullOrEmpty(pass.ShareToken)||pass.ShareExpiresUtc<=now)pass.ShareToken=GatePassShare.NewToken();
-        pass.ShareExpiresUtc=now.AddDays(GatePassShare.ValidDays);
-        try{await db.SaveChangesAsync();}catch(DbUpdateConcurrencyException){return Conflict(new{success=false,message="This gate pass changed. Reload it and try again."});}
-        var url=$"{Request.Scheme}://{Request.Host}/r/{pass.ShareToken}";
-        var message=GatePassShare.Message(pass,url);
-        return Ok(new{success=true,url,message,phone=GatePassShare.WhatsAppPhone(pass.PartyPhone),whatsappUrl=GatePassShare.WhatsAppUrl(pass.PartyPhone,message),validDays=GatePassShare.ValidDays,expiresUtc=pass.ShareExpiresUtc});
+        if(pass.IsCancelled)return BadRequest(new{success=false,message="A cancelled gate pass is not sent."});
+        var destination=await db.WhatsAppDestinations.AsNoTracking().SingleOrDefaultAsync(d=>d.DocumentType==WhatsAppDocumentTypes.GatePass);
+        if(destination==null||destination.GroupId.Length==0)return Ok(new{success=true,skipped=true,message="No WhatsApp group is saved. Open the WhatsApp page, connect the number and choose a group."});
+        var baseId=$"gatepass-{pass.Id}-r{pass.Revision}";
+        var sent=await db.WhatsAppSendLogs.AsNoTracking().Where(l=>l.DocumentType==WhatsAppDocumentTypes.GatePass&&l.DocumentId==pass.Id&&l.Status=="Sent"&&(l.RequestId==baseId||l.RequestId!.StartsWith(baseId+"-"))).OrderBy(l=>l.Id).Select(l=>l.CreatedUtc).ToListAsync();
+        if(sent.Count>0&&!request.Resend)return Conflict(new{success=false,alreadySent=true,sentUtc=sent[^1],message="This gate pass was already sent to the group."});
+        var requestId=sent.Count==0?baseId:$"{baseId}-{sent.Count+1}";
+        var result=await wa.SendPdfAsync(destination.GroupId,pass.PassNumber+".pdf",GatePassMessage.Caption(pass),pdf,requestId);
+        var error=result.Ok?null:(result.Error??"The WhatsApp service did not accept the file.");
+        db.WhatsAppSendLogs.Add(new(){DocumentType=WhatsAppDocumentTypes.GatePass,DocumentId=pass.Id,DocumentNumber=pass.PassNumber,GroupId=destination.GroupId,Status=result.Ok?"Sent":"Failed",Error=error==null?null:error[..Math.Min(error.Length,500)],RequestId=requestId,SentBy=User.Identity?.Name,CreatedUtc=DateTime.UtcNow});
+        await db.SaveChangesAsync();
+        if(!result.Ok){logger?.LogWarning("Gate pass {Pass} was not sent to WhatsApp group {Group}: {Error}",pass.PassNumber,destination.GroupId,error);return StatusCode(502,new{success=false,message=error});}
+        logger?.LogInformation("Gate pass {Pass} sent to WhatsApp group {Group} as {Request} (duplicate at service: {Duplicate})",pass.PassNumber,destination.GroupId,requestId,result.Duplicate);
+        return Ok(new{success=true,message="Sent to the WhatsApp group.",groupName=destination.GroupName});
     }
     [HttpPost]
     public async Task<IActionResult> Save([FromBody] GatePass? model)

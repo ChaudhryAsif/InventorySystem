@@ -5,8 +5,6 @@
 <link rel="stylesheet" href="~/css/company-brand.css" asp-append-version="true" />
 <link rel="stylesheet" href="~/css/gatepass-sheet.css" asp-append-version="true" />
 </head><body>
-<div class="gp-print-actions"><a href="/GatePass/@Model.Direction" style="margin-right:16px;color:#285870">Back to list</a><button onclick="window.print()">Print / Save PDF</button> @if(!Model.IsCancelled){<button type="button" id="gpShare">Share</button> }<button onclick="window.close()">Close</button></div>
+<div class="gp-print-actions"><a href="/GatePass/@Model.Direction" style="margin-right:16px;color:#285870">Back to list</a><button onclick="window.print()">Print / Save PDF</button> <button onclick="window.close()">Close</button></div>
 <partial name="_GatePassSheet" model="Model" />
-@if(!Model.IsCancelled){<script src="~/js/gatepass-share.js" asp-append-version="true"></script>
-<script>document.getElementById('gpShare').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;try{await GatePassShare.open(@Model.Id);}catch(err){alert(err.message);}finally{b.disabled=false;}});</script>}
 </body></html>
