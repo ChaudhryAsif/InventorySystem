@@ -1,60 +1,110 @@
+@using System.Text.Json
+@model InventorySystem.Controllers.AdminController.PermissionGrid
 @{
+    ViewData["Title"] = "Role Permissions";
     Layout = "_Layout";
-    ViewData["Title"] = "Manage Role Permissions";
-    var role = ViewBag.Role as InventorySystem.Core.Models.Role;
-    var groupedPermissions = ViewBag.GroupedPermissions;
-    var rolePermissionIds = ViewBag.RolePermissionIds as List<int>;
+    string[] standard = ["View", "Create", "Edit", "Delete", "Post", "EditSaved"];
+    var headers = new Dictionary<string, string> { ["View"] = "View", ["Create"] = "Create", ["Edit"] = "Edit", ["Delete"] = "Delete", ["Post"] = "Post", ["EditSaved"] = "Edit saved" };
+    var tips = new Dictionary<string, string>
+    {
+        ["View"] = "See the pages and reports",
+        ["Create"] = "Add new records",
+        ["Edit"] = "Change records (saved sales, purchases and similar also need Edit saved)",
+        ["Delete"] = "Delete or cancel records",
+        ["Post"] = "Post to the ledger or approve",
+        ["EditSaved"] = "Change a record after it was saved. Without it only a SuperAdmin can."
+    };
+    var copy = JsonSerializer.Serialize(Model.CopyFrom.Select(c => new { id = c.Id, name = c.Name, ids = c.PermissionIds }));
 }
+<link rel="stylesheet" href="~/css/access-admin.css" asp-append-version="true" />
 
 <div class="admin-page-header">
     <span class="admin-page-icon">🔐</span>
     <div>
-        <h1 class="admin-page-title">Manage Permissions</h1>
-        <p class="admin-page-subtitle">For: <strong style="color: var(--primary-color);">@role?.Name</strong></p>
+        <h1 class="admin-page-title">Permissions for @Model.Role.Name</h1>
+        <p class="admin-page-subtitle">@Model.Users user(s) have this role. Changes apply the next time they click.</p>
     </div>
 </div>
 
-<form method="post">
-    @Html.AntiForgeryToken()
+@if (TempData["Success"] != null) { <div class="acc-alert ok" role="status">✅ @TempData["Success"]</div> }
+@if (!Model.Role.IsActive) { <div class="acc-alert info">This role is switched off, so nobody gets its access until you switch it on (Roles page).</div> }
 
-    <div class="permissions-container">
-        @foreach (var group in groupedPermissions)
+<form method="post" id="permForm">
+    @Html.AntiForgeryToken()
+    <div class="perm-bar">
+        <button type="button" class="admin-btn admin-btn-primary" data-preset="none">Clear all</button>
+        <button type="button" class="admin-btn admin-btn-primary" data-preset="view">View only</button>
+        <button type="button" class="admin-btn admin-btn-primary" data-preset="all">Everything</button>
+        @if (Model.CopyFrom.Count > 0)
         {
-            var module = group.Key;
-            <div class="permission-group">
-                <div class="permission-group-title">
-                    <span class="permission-group-icon">📦</span>
-                    @module
-                </div>
-                <div class="permission-items">
-                    @foreach (var permission in group)
-                    {
-                        var isChecked = rolePermissionIds?.Contains(permission.Id) ?? false;
-                        <div class="permission-item">
-                            <input type="checkbox" name="permissions" value="@permission.Id"
-                                   id="perm@permission.Id" @(isChecked ? "checked" : "")>
-                            <label for="perm@permission.Id">
-                                <strong>@permission.Name</strong>
-                                @if (!string.IsNullOrEmpty(permission.Description))
-                                {
-                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.2rem;">
-                                        @permission.Description
-                                    </div>
-                                }
-                            </label>
-                        </div>
-                    }
-                </div>
-            </div>
+            <select id="copyFrom" class="admin-form-input" style="width:auto" aria-label="Copy permissions from another role">
+                <option value="">Copy from another role...</option>
+                @foreach (var role in Model.CopyFrom) { <option value="@role.Id">@role.Name</option> }
+            </select>
         }
+        <span class="count" id="permCount" role="status"></span>
     </div>
 
-    <div style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border-color); display: flex; gap: 1rem; justify-content: flex-end;">
-        <a asp-action="Roles" class="admin-btn admin-btn-secondary">
-            ← Back to Roles
-        </a>
-        <button type="submit" class="admin-btn admin-btn-success">
-            💾 Save Permissions
-        </button>
+    <div class="perm-grid-wrap">
+        <table class="perm-grid" id="permGrid" data-copy="@copy">
+            <thead>
+                <tr>
+                    <th>Module</th>
+                    @foreach (var verb in standard)
+                    {
+                        <th title="@tips[verb]">@headers[verb]<input type="checkbox" class="col-toggle" data-col="@verb" aria-label="Tick every @headers[verb]" /></th>
+                    }
+                    <th>Other</th>
+                    <th>All</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var module in Model.Modules)
+            {
+                <tr data-module="@module.Module">
+                    <td><strong>@module.Title</strong></td>
+                    @foreach (var verb in standard)
+                    {
+                        var cell = module.Cells.FirstOrDefault(c => c.Action == verb);
+                        <td>
+                            @if (cell != null)
+                            {
+                                <input type="checkbox" name="permissions" value="@cell.Id" data-verb="@verb" title="@cell.Code" aria-label="@module.Title @headers[verb]" @(cell.Checked ? "checked" : "") />
+                            }
+                            else { <span class="none">-</span> }
+                        </td>
+                    }
+                    <td>
+                        @{ var others = module.Cells.Where(c => !standard.Contains(c.Action)).ToList(); }
+                        @if (others.Count == 0) { <span class="none">-</span> }
+                        else
+                        {
+                            <div class="other">
+                                @foreach (var cell in others)
+                                {
+                                    <label title="@cell.Description"><input type="checkbox" name="permissions" value="@cell.Id" data-verb="Other" @(cell.Checked ? "checked" : "") /> @cell.Action</label>
+                                }
+                            </div>
+                        }
+                    </td>
+                    <td><input type="checkbox" class="row-toggle" aria-label="Tick everything for @module.Title" /></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="perm-help">
+        <b>How it works.</b> View lets a user open the pages and reports. Create, Edit, Delete and Post each allow that action in the module.
+        A write right needs View, so ticking one ticks View for you, and clearing View clears the rest of the module.
+        <b>Edit saved</b> lets the role change a record after it was saved (otherwise only a SuperAdmin can), and needs Edit.
+        <b>Other</b> holds module extras such as cost sheet settings or WhatsApp sending.
+    </div>
+
+    <div class="perm-footer">
+        <a asp-action="Roles" class="admin-btn admin-btn-secondary">← Back to Roles</a>
+        <button type="submit" class="admin-btn admin-btn-success">💾 Save Permissions</button>
     </div>
 </form>
+
+@section Scripts { <script src="~/js/role-permissions.js" asp-append-version="true"></script> }

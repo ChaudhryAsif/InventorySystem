@@ -58,21 +58,6 @@ namespace InventorySystem.Controllers
         }
 
         // ── USERS ────────────────────────────────────────────────────────────
-        [HttpGet("Users")]
-        public async Task<IActionResult> Users()
-        {
-            var check = SuperAdminOnly();
-            if (check != null) return check;
-
-            var users = await _context.AppUsers
-                .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
-                .Include(u => u.PrimaryRole)
-                .OrderBy(u => u.Username)
-                .ToListAsync();
-
-            return View(users);
-        }
 
         [HttpGet("Users/Create")]
         public async Task<IActionResult> CreateUser()
@@ -164,7 +149,9 @@ namespace InventorySystem.Controllers
                 }
             }
 
-            await _context.SaveChangesAsync();
+            var createdRoles = await _context.Roles.Where(r => (selectedRoles ?? new List<int>()).Contains(r.Id)).Select(r => r.Name).OrderBy(n => n).ToListAsync();
+            Audit("User created", model.Username, "Roles: " + (createdRoles.Count == 0 ? "none" : string.Join(", ", createdRoles)) + ".");
+            await _context.SaveChangesWithAuditAsync();
 
             TempData["Success"] = $"User '{model.Username}' created successfully!";
             return RedirectToAction("Users");
@@ -212,6 +199,20 @@ namespace InventorySystem.Controllers
                 user.FullName = model.FullName;
             }
 
+            // Never let the last SuperAdmin (or you) lose access by editing a user.
+            var superRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == SuperAdminRoleName && r.IsActive);
+            var roleNames = await _context.Roles.ToDictionaryAsync(r => r.Id, r => r.Name);
+            var wasSuper = superRole != null && user.IsActive && user.UserRoles!.Any(r => r.RoleId == superRole.Id);
+            var willBeSuper = superRole != null && model.IsActive && (selectedRoles ?? new List<int>()).Contains(superRole.Id);
+            if (wasSuper && !willBeSuper)
+            {
+                if (user.Id == ActorId) return BadRequest("You cannot remove your own SuperAdmin access or disable your own login.");
+                if (!await _context.AppUsers.AnyAsync(u => u.Id != user.Id && u.IsActive && u.UserRoles!.Any(r => r.RoleId == superRole!.Id)))
+                    return BadRequest("Keep at least one active SuperAdmin login.");
+            }
+            var oldRoleText = string.Join(", ", user.UserRoles!.Select(r => roleNames.GetValueOrDefault(r.RoleId, "#" + r.RoleId)).OrderBy(x => x));
+            var wasActive = user.IsActive;
+
             user.IsActive = model.IsActive;
             if (_branches.MultiBranchEnabled) user.BranchIds = model.BranchIds;
 
@@ -242,90 +243,11 @@ namespace InventorySystem.Controllers
                 user.Role = (await _context.Roles.FindAsync(user.PrimaryRoleId))?.Name ?? "Admin";
             }
 
-            await _context.SaveChangesAsync();
+            var newRoleText = string.Join(", ", (selectedRoles ?? new List<int>()).Where(roleNames.ContainsKey).Select(r => roleNames[r]).OrderBy(x => x));
+            Audit("User changed", user.Username, $"Roles: {(oldRoleText.Length == 0 ? "none" : oldRoleText)} -> {(newRoleText.Length == 0 ? "none" : newRoleText)}. Status: {(wasActive ? "active" : "disabled")} -> {(user.IsActive ? "active" : "disabled")}.");
+            await _context.SaveChangesWithAuditAsync();
 
             return RedirectToAction("Users");
-        }
-
-        // ── ROLES ────────────────────────────────────────────────────────────
-        [HttpGet("Roles")]
-        public async Task<IActionResult> Roles()
-        {
-            var check = SuperAdminOnly();
-            if (check != null) return check;
-
-            var roles = await _context.Roles
-                .Include(r => r.RolePermissions)
-                .OrderBy(r => r.Name)
-                .ToListAsync();
-
-            return View(roles);
-        }
-
-        [HttpGet("Roles/{id}/Permissions")]
-        public async Task<IActionResult> ManageRolePermissions(int id)
-        {
-            var check = SuperAdminOnly();
-            if (check != null) return check;
-
-            var role = await _context.Roles
-                .Include(r => r.RolePermissions)
-                .FirstOrDefaultAsync(r => r.Id == id);
-
-            if (role == null)
-                return NotFound();
-
-            var allPermissions = await _context.Permissions
-                .Where(p => p.IsActive)
-                .OrderBy(p => p.Module)
-                .ThenBy(p => p.Action)
-                .ToListAsync();
-
-            var rolePermissionIds = role.RolePermissions?.Select(rp => rp.PermissionId).ToList() ?? new List<int>();
-
-            ViewBag.Role = role;
-            ViewBag.RolePermissionIds = rolePermissionIds;
-            ViewBag.GroupedPermissions = allPermissions.GroupBy(p => p.Module);
-
-            return View(allPermissions);
-        }
-
-        [HttpPost("Roles/{id}/Permissions")]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SaveRolePermissions(int id, [FromForm] List<int> permissions)
-        {
-            var check = SuperAdminOnly();
-            if (check != null) return check;
-
-            var role = await _context.Roles
-                .Include(r => r.RolePermissions)
-                .FirstOrDefaultAsync(r => r.Id == id);
-
-            if (role == null)
-                return NotFound();
-
-            // Remove old permissions
-            _context.RolePermissions.RemoveRange(role.RolePermissions!);
-
-            // Add new permissions
-            foreach (var permissionId in permissions ?? new List<int>())
-            {
-                var permExists = await _context.Permissions.AnyAsync(p => p.Id == permissionId);
-                if (permExists)
-                {
-                    _context.RolePermissions.Add(new RolePermission
-                    {
-                        RoleId = role.Id,
-                        PermissionId = permissionId,
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-            }
-
-            await _context.SaveChangesAsync();
-
-            TempData["Success"] = "Role permissions updated successfully!";
-            return RedirectToAction("Roles");
         }
 
         // ── PERMISSIONS ──────────────────────────────────────────────────────

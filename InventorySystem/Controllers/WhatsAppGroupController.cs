@@ -10,7 +10,7 @@ namespace InventorySystem.Controllers;
 
 // The WhatsApp page: link the number, pick which group receives which document, and see what was sent.
 // Every action needs the WhatsAppGroup.Manage permission (see OperationFilter).
-[Authorize(Roles="Admin,SuperAdmin")]
+[Authorize]   // the WhatsAppGroup.Manage permission decides who may use it (see OperationFilter)
 public class WhatsAppGroupController(ApplicationDbContext db,IWhatsAppGroupClient wa) : Controller
 {
     private static readonly Regex GroupIdPattern=new(@"^\d{5,}(-\d+)?@g\.us$",RegexOptions.Compiled);

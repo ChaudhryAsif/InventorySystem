@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using InventorySystem.Core.Models;
+using InventorySystem.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 namespace InventorySystem.Controllers;
@@ -14,7 +15,7 @@ public partial class AdminController
         if(user==null)return NotFound();
         if(user.UserRoles?.Any(r=>r.Role?.IsActive==true&&r.Role.Name=="SuperAdmin")==true && !await _context.AppUsers.AnyAsync(u=>u.Id!=id&&u.IsActive&&u.UserRoles!.Any(r=>r.Role.IsActive&&r.Role.Name=="SuperAdmin")))
             return BadRequest(new { success=false,message="Keep at least one active SuperAdmin login." });
-        user.IsActive=false;await _context.SaveChangesAsync();
+        user.IsActive=false;Audit("User disabled",user.Username);await _context.SaveChangesWithAuditAsync();
         return Json(new { success=true,message="User disabled. Previous audit records were preserved." });
     }
     [HttpPost("MenuItems/{id}/DeletePage")]

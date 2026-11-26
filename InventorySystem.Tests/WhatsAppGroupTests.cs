@@ -293,9 +293,10 @@ public class WhatsAppGroupTests
     }
 
     // ---- who can use it ----
-    [Fact] public void OnlyAdminsReachThePage()
+    [Fact] public void OnlySignedInUsersWithThePermissionReachThePage()
     {
-        var attribute = typeof(WhatsAppGroupController).GetCustomAttribute<AuthorizeAttribute>(); Assert.NotNull(attribute); Assert.Contains("Admin", attribute!.Roles);
+        // The page needs a signed-in user; the WhatsAppGroup.Manage permission (OperationFilter) decides who, not a role name.
+        var attribute = typeof(WhatsAppGroupController).GetCustomAttribute<AuthorizeAttribute>(); Assert.NotNull(attribute); Assert.Null(attribute!.Roles);
         Assert.Null(typeof(WhatsAppGroupController).GetCustomAttribute<AllowAnonymousAttribute>());
     }
     [Fact] public async Task TheMenuAndPermission_AreCreatedOnce_AndGivenToAdmins()

@@ -1,7 +1,24 @@
 @inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
 @inject InventorySystem.Data.ApplicationDbContext PosDb
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @inject InventorySystem.Core.Services.IMenuService MenuService
+@inject InventorySystem.Core.Services.IPermissionService PermService
+@{
+    // Only a user with NO write permission in this page's module is treated as view-only: view-only.js then hides the write buttons.
+    // Anyone with any write right (even just Create) is left alone. The server refuses every write without its permission either way.
+    var denyVerbs = "";
+    try
+    {
+        if (User.Identity?.IsAuthenticated == true && !User.IsInRole("SuperAdmin") && int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var denyUserId))
+        {
+            var denyModule = InventorySystem.Core.Services.WriteScreens.ModuleFor(ViewContext.RouteData.Values["controller"]?.ToString() ?? "");
+            var moduleCodes = await PosDb.Permissions.Where(x => x.Code.StartsWith(denyModule + ".")).Select(x => x.Code).ToListAsync();
+            denyVerbs = InventorySystem.Core.Services.ViewOnlyMode.DenyVerbs(denyModule, moduleCodes, await PermService.GetUserPermissionsAsync(denyUserId));
+        }
+    }
+    catch (Exception) { denyVerbs = ""; }   // never let this convenience stop a page from loading
+}
 
 <!DOCTYPE html>
 <html lang="en">
@@ -27,6 +44,7 @@
     <link rel="stylesheet" href="~/css/view-popup.css" asp-append-version="true" />
     <script src="~/js/view-popup.js" asp-append-version="true"></script>
     <script src="~/js/print-tab.js" asp-append-version="true"></script>
+    <script src="~/js/view-only.js" asp-append-version="true"></script>
 
     <style>
         .sidebar-submenu {
@@ -160,7 +178,7 @@
         }
     </style>
 </head>
-<body>
+<body data-deny="@denyVerbs">
     <!-- Header -->
     <header class="main-header">
         <div class="header-content">
@@ -204,6 +222,7 @@
                         </div>
                         <div class="header-user-role">@role</div>
                     </div>
+                    <a asp-controller="Auth" asp-action="ChangePassword" class="btn-logout" title="Change my password" style="text-decoration:none;display:inline-block;margin-right:6px;">🔑 Password</a>
                     <form asp-controller="Auth" asp-action="Logout" method="post" style="margin:0;">
                         @Html.AntiForgeryToken()
                         <button type="submit" class="btn-logout">🚪 Logout</button>

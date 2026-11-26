@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InventorySystem.Controllers;
 
-[Authorize(Roles="Admin,SuperAdmin")]
+[Authorize]   // who may do what is decided by the GatePass permissions (see OperationFilter), not by role name
 public class GatePassController(ApplicationDbContext db,ILogger<GatePassController>? logger=null) : Controller
 {
     private static bool DirectionValid(string? direction)=>direction is "Inward" or "Outward";

@@ -1,0 +1,52 @@
+@model InventorySystem.Controllers.AdminController.AccessSummary
+@{
+    ViewData["Title"] = "User Access";
+    Layout = "_Layout";
+    var user = Model.User;
+}
+<link rel="stylesheet" href="~/css/access-admin.css" asp-append-version="true" />
+
+<div class="admin-page-header">
+    <span class="admin-page-icon">🔎</span>
+    <div>
+        <h1 class="admin-page-title">What @user.FullName can do</h1>
+        <p class="admin-page-subtitle">Username <strong>@user.Username</strong>. This is the result of all their roles together, as it applies right now.</p>
+    </div>
+</div>
+
+<div class="admin-table-container" style="padding:1.25rem">
+    <p>
+        Status: @if (user.IsActive) { <span class="acc-pill ok">Active</span> } else { <span class="acc-pill off">Disabled, cannot sign in</span> }
+        &nbsp; Roles:
+        @if (Model.Roles.Count == 0) { <span class="acc-pill">No role</span> } else { foreach (var role in Model.Roles) { <span class="acc-pill role">@role</span> } }
+    </p>
+
+    @if (Model.IsSuperAdmin)
+    {
+        <div class="acc-alert info">This is a SuperAdmin login. It always has full access to everything, including this Admin area.</div>
+    }
+    else if (!user.IsActive)
+    {
+        <div class="acc-alert bad">The login is disabled, so none of the access below can be used.</div>
+    }
+    else if (Model.Modules.Count == 0)
+    {
+        <div class="acc-alert bad">This user has no permissions. They can sign in but will see no pages. Give them a role in Edit.</div>
+    }
+    else
+    {
+        foreach (var module in Model.Modules)
+        {
+            <div class="acc-module">
+                <strong>@module.Module</strong>
+                <span>@foreach (var verb in module.Verbs) { <span class="acc-pill @(verb == "View" ? "ok" : "role")">@(verb == "EditSaved" ? "Edit saved" : verb)</span> }</span>
+            </div>
+        }
+        <p class="acc-muted" style="margin-top:1rem">Pages not listed here are hidden from this user. "Edit saved" means they may change a record after it was saved.</p>
+    }
+
+    <div class="acc-actions" style="margin-top:1.25rem">
+        <a asp-action="EditUser" asp-route-id="@user.Id" class="admin-btn admin-btn-primary">✏️ Edit user</a>
+        <a asp-action="Users" class="admin-btn admin-btn-secondary">← Back to Users</a>
+    </div>
+</div>

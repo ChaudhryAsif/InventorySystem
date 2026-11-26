@@ -90,6 +90,8 @@ using (var scope = app.Services.CreateScope())
     await DefaultMenuSeeder.ApplyAsync(db);
     await ClientWorkflowMenuSeeder.ApplyAsync(db);
     await AccountsFolderSeeder.ApplyAsync(db);
+    await AccessPermissionSeeder.ApplyAsync(db);
+    await OwnerViewRoleSeeder.ApplyAsync(db);   // after every seeder that creates permissions
     await DbSeeder.SeedSuperAdminAsync(db, builder.Configuration["Bootstrap:SuperAdminPassword"]);
 }
 

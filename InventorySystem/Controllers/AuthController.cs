@@ -3,6 +3,7 @@ using InventorySystem.Core.Services;
 using InventorySystem.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
@@ -123,6 +124,43 @@ namespace InventorySystem.Controllers
         public IActionResult AccessDenied()
         {
             return View();
+        }
+
+        public sealed class ChangePasswordInput
+        {
+            public string? CurrentPassword { get; set; }
+            public string? NewPassword { get; set; }
+            public string? ConfirmPassword { get; set; }
+        }
+
+        // GET /Auth/ChangePassword: any signed-in user can change their own password.
+        [Authorize]
+        [HttpGet]
+        public IActionResult ChangePassword() => View(new ChangePasswordInput());
+
+        // POST /Auth/ChangePassword
+        [Authorize]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ChangePassword(ChangePasswordInput input)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)) return Challenge();
+            var user = await _db.AppUsers.FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
+            if (user == null) return Challenge();
+            if (string.IsNullOrEmpty(input.CurrentPassword) || !BCrypt.Net.BCrypt.Verify(input.CurrentPassword, user.PasswordHash))
+                ModelState.AddModelError(nameof(input.CurrentPassword), "The current password is not correct.");
+            else if (string.IsNullOrEmpty(input.NewPassword) || input.NewPassword.Length < 6)
+                ModelState.AddModelError(nameof(input.NewPassword), "The new password must be at least 6 characters long.");
+            else if (input.NewPassword != input.ConfirmPassword)
+                ModelState.AddModelError(nameof(input.ConfirmPassword), "The two new passwords do not match.");
+            else if (input.NewPassword == input.CurrentPassword)
+                ModelState.AddModelError(nameof(input.NewPassword), "Choose a password different from the current one.");
+            if (!ModelState.IsValid) return View(new ChangePasswordInput());
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(input.NewPassword);
+            _db.AdminAuditLogs.Add(new() { ActorId = user.Id, ActorName = user.Username, Action = "Password changed", Target = user.Username, Detail = "The user changed their own password.", CreatedUtc = DateTime.UtcNow });
+            await _db.SaveChangesWithAuditAsync();
+            ViewBag.Done = true;
+            return View(new ChangePasswordInput());
         }
     }
 }

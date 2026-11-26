@@ -1,3 +1,4 @@
+@inject InventorySystem.Core.Services.IPermissionService Perms
 @{
     Layout = "_Layout";
     ViewData["Title"] = "Production Orders";
@@ -161,7 +162,7 @@
                                     <button onclick="openMaterials(@orderId)">📋 Materials</button>
                                 }
                                 <a href="/Production/Print/@orderId" target="_blank" rel="noopener">🖨 Print</a>
-                                @if (status == "Pending" && User.IsInRole("SuperAdmin"))
+                                @if (status == "Pending" && await Perms.HasPermissionAsync(User, "Production.EditSaved"))
                                 {
                                     <button onclick="location.href='/Production/Edit/@orderId'">✏️ Edit</button>
                                 }

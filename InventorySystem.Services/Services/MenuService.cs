@@ -71,7 +71,9 @@ namespace InventorySystem.Core.Services
         // permissions null = no filtering; a group shows only if one of its pages is visible.
         private static List<MenuItem> BuildMenuHierarchy(List<MenuItem> items, HashSet<string>? permissions)
         {
-            bool CanSee(MenuItem i) => permissions == null || permissions.Contains(i.RequiredPermission);
+            // Entry pages (new voucher, new cost sheet and so on) also need the matching write permission, so view-only users do not see them.
+            bool CanSee(MenuItem i) => permissions == null || permissions.Contains(i.RequiredPermission)
+                && (WriteScreens.VerbFor(i.Controller ?? "", i.Action ?? "") is not { } verb || permissions.Contains(WriteScreens.ModuleFor(i.Controller!) + "." + verb));
             var byParent = items.Where(i => i.ParentId.HasValue).ToLookup(i => i.ParentId!.Value);
             MenuItem? Build(MenuItem item, HashSet<int> ancestors)
             {

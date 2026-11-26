@@ -1,3 +1,4 @@
+@inject InventorySystem.Core.Services.IPermissionService Perms
 @{ var pageGroupType=(string?)ViewBag.GroupType??"RawMaterial"; var pageLabel=pageGroupType=="FinishedGoods"?"Finished Goods":"Raw Material"; ViewData["Title"] = pageLabel+" Groups"; }
 @model IEnumerable<InventorySystem.Core.Models.ItemCategory>
 
@@ -75,7 +76,7 @@
                                 </span>
                             </td>
                             <td>
-                                @{ var canEditGroup = User.IsInRole("SuperAdmin"); var canDeleteGroup = ViewBag.CanDelete == true; }
+                                @{ var canEditGroup = await Perms.HasPermissionAsync(User, "ItemCategory.EditSaved"); var canDeleteGroup = ViewBag.CanDelete == true; }
                                 <div class="am">
                                     <button class="btn btn-sm btn-info" onclick="viewGroup(@category.CategoryId)">👁️ View</button>
                                     @if (canEditGroup || canDeleteGroup)
@@ -176,7 +177,7 @@
 
 <script>
     const pageGroupType=@Html.Raw(System.Text.Json.JsonSerializer.Serialize(pageGroupType));
-    const canEditGroups = @(User.IsInRole("SuperAdmin") ? "true" : "false");
+    const canEditGroups = @(await Perms.HasPermissionAsync(User, "ItemCategory.EditSaved") ? "true" : "false");
 
     function viewGroup(id) {
         const type = encodeURIComponent(pageGroupType);

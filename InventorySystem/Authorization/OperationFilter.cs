@@ -44,16 +44,21 @@ public sealed class OperationFilter(ApplicationDbContext db, IPermissionService 
                 .Select(x => int.TryParse(x.Trim(), out var id) ? id : 0).Where(x => x > 0).Distinct().ToArray()
             : [BranchOptions.DefaultBranchId];
         var write = !HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method);
-        var module = controller switch { "Home" => "Dashboard", "Category" => "ItemCategory", "ItemRateList" => "Item", _ => controller };
+        var module = WriteScreens.ModuleFor(controller);
         var verb = !write ? "View" : action.StartsWith("Delete") || action.StartsWith("Void") ? "Delete"
             : action.StartsWith("Update") || action.StartsWith("Edit") || action == "SaveConsumption" || action == "Record" || action == "Reverse" || action == "Complete" || action == "Cancel" || action == "MarkFinal" ? "Edit"
             : action.StartsWith("Post") || action.StartsWith("Approve") ? "Post" : "Create";
         if (controller == "WhatsApp") verb = action is "Configure" or "RegisterWebhook" or "TestMessage" or "Playground" or "PlaygroundReply" ? "Config" : write ? "Reply" : "View";
         if (controller == "WhatsAppGroup") verb = "Manage"; // one admin permission covers the whole WhatsApp page
         if (controller == "CostSheet" && action.Contains("Settings") && action != "GetSettings") verb = "Settings";
+        // Pages that only exist to enter or change data need the matching write permission, not just View.
+        if (!write && WriteScreens.VerbFor(controller, action, int.TryParse(request.Query["id"], out var screenId) && screenId > 0) is { } screenVerb) verb = screenVerb;
         if (write && action != "SavePayment" && action.StartsWith("Save") && !(controller == "Production" && action == "Save") && context.ActionArguments.Values.Any(HasExistingId)) verb = "Edit";
         if (controller != "Admin" && !isSuperAdmin)
         {
+            // A view-only user asking for an entry form (new sale, purchase and so on) is sent to the read-only list instead.
+            if (!write && WriteScreens.IsEntryIndex(controller, action) && !await permissions.HasPermissionAsync(userId, $"{module}.Create") && !(int.TryParse(request.Query["id"], out var entryId) && entryId > 0 && await permissions.HasPermissionAsync(userId, $"{module}.Edit")) && await permissions.HasPermissionAsync(userId, $"{module}.View"))
+            { context.Result = new RedirectToActionResult("List", controller, null); return; }
             var allowed = await permissions.HasPermissionAsync(userId, $"{module}.{verb}");
             // Shared read-only lookup endpoints remain available to authorized transaction screens.
             if (!allowed && !write && ((controller == "Item" && action.StartsWith("Get")) || (controller == "Parties" && action.StartsWith("Get")) || (controller == "Category" && action.StartsWith("Get"))))
@@ -65,7 +70,8 @@ public sealed class OperationFilter(ApplicationDbContext db, IPermissionService 
             if (!allowed) { context.Result = new ForbidResult(); return; }
         }
         // Saved inventory records are edit-locked for everyone except SuperAdmin (cost sheets excepted); delete, void and workflow actions stay open.
-        if (!isSuperAdmin && InventoryEditBlocked(controller, action, write, context.ActionArguments.Values))
+        // The SuperAdmin can lift the lock for a role by giving it the module's "Edit saved records" permission.
+        if (!isSuperAdmin && InventoryEditBlocked(controller, action, write, context.ActionArguments.Values) && !await permissions.HasPermissionAsync(userId, EditSavedPermissions.Code(module)))
         {
             context.Result = write ? new ObjectResult(new { success = false, message = "Only a SuperAdmin can edit saved records. Delete and re-enter, or ask a SuperAdmin." }) { StatusCode = 403 } : new ForbidResult();
             return;

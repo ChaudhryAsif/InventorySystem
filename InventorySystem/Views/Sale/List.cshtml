@@ -1,3 +1,4 @@
+@inject InventorySystem.Core.Services.IPermissionService Perms
 @{
     Layout = "_Layout";
     ViewData["Title"] = "Sales Invoices";
@@ -89,7 +90,7 @@
 
 
 <script>
-    const canEditRecords = @(User.IsInRole("SuperAdmin") ? "true" : "false");
+    const canEditRecords = @(await Perms.HasPermissionAsync(User, "Sale.EditSaved") ? "true" : "false");
 function fmt(n){ return (parseFloat(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
 async function loadSales(){

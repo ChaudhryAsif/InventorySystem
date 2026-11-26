@@ -1,3 +1,4 @@
+@inject InventorySystem.Core.Services.IPermissionService Perms
 @{ var pageItemType = (string?)ViewBag.ItemType ?? "RawMaterial"; var pageTypeLabel = pageItemType == "FinishedGoods" ? "Finished Goods" : "Raw Material"; ViewData["Title"] = pageTypeLabel + " Items"; }
 <link href="~/css/item.css" rel="stylesheet" />
 
@@ -201,7 +202,7 @@
     let itemListLoaded = false;
     let itemGroups = [];
     let canDeleteItems = false;
-    const canEditItems = @(User.IsInRole("SuperAdmin") ? "true" : "false");
+    const canEditItems = @(await Perms.HasPermissionAsync(User, "Item.EditSaved") ? "true" : "false");
     let itemListRequestVersion = 0;
 
         document.addEventListener('DOMContentLoaded', function() {

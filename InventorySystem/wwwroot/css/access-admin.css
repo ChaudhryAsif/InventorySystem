@@ -1,0 +1,41 @@
+/* Roles, permission grid, user access and access log screens (SuperAdmin area). Builds on Admin.css. */
+.acc-alert{padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:14px;line-height:1.5}
+.acc-alert.ok{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
+.acc-alert.bad{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+.acc-alert.info{background:#e0f2fe;color:#075985;border:1px solid #bae6fd}
+.acc-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.acc-toolbar input,.acc-toolbar select{padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:#fff}
+.acc-toolbar .grow{flex:1;min-width:180px}
+.acc-pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#e2e8f0;color:#334155;white-space:nowrap}
+.acc-pill.ok{background:#dcfce7;color:#166534}.acc-pill.off{background:#fee2e2;color:#991b1b}.acc-pill.sys{background:#fef3c7;color:#92400e}.acc-pill.role{background:rgba(45,95,127,.12);color:#2d5f7f}
+.acc-actions{display:flex;gap:6px;flex-wrap:wrap}
+.acc-actions form{margin:0}
+.acc-muted{color:#64748b;font-size:13px}
+.acc-form{max-width:640px}
+.acc-error{color:#b91c1c;font-size:13px;margin-top:4px}
+
+/* Permission grid */
+.perm-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;position:sticky;top:0;z-index:5;background:#f4f6fa;padding:10px 0}
+.perm-bar .count{margin-left:auto;font-weight:600;color:#2d5f7f}
+.perm-grid-wrap{overflow-x:auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px}
+table.perm-grid{border-collapse:collapse;width:100%;min-width:760px}
+table.perm-grid th,table.perm-grid td{padding:10px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:14px}
+table.perm-grid th{background:#2d536b;color:#fff;white-space:nowrap}
+table.perm-grid th:first-child,table.perm-grid td:first-child{text-align:left;min-width:190px}
+table.perm-grid tbody tr:nth-child(even){background:#f8fafc}
+table.perm-grid input[type=checkbox]{width:18px;height:18px;accent-color:#2d5e78;cursor:pointer}
+table.perm-grid .col-toggle{display:block;margin:4px auto 0}
+table.perm-grid .none{color:#cbd5e1}
+table.perm-grid .other{display:flex;flex-direction:column;gap:4px;align-items:flex-start;text-align:left}
+table.perm-grid .other label{display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer}
+.perm-help{margin:14px 0;color:#64748b;font-size:13px;line-height:1.6}
+.perm-help b{color:#334155}
+.perm-footer{margin-top:18px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+
+/* User access summary */
+.acc-module{display:flex;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid #e2e8f0;flex-wrap:wrap}
+.acc-module strong{min-width:180px}
+.acc-log td{font-size:13px;vertical-align:top}
+.acc-log .detail{max-width:520px;word-break:break-word;color:#475569}
+.acc-pager{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:14px}
+@media (max-width:700px){.perm-bar{position:static}.acc-form{max-width:none}}

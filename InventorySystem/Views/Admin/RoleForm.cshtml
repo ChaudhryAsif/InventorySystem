@@ -1,0 +1,49 @@
+@model InventorySystem.Controllers.AdminController.RoleInput
+@{
+    var editing = Model.Id > 0;
+    var system = ViewBag.IsSystem == true;
+    ViewData["Title"] = editing ? "Edit Role" : "Create Role";
+    Layout = "_Layout";
+    var roles = ViewBag.Roles as List<InventorySystem.Core.Models.Role>;
+}
+<link rel="stylesheet" href="~/css/access-admin.css" asp-append-version="true" />
+
+<div class="admin-page-header">
+    <span class="admin-page-icon">🎭</span>
+    <div>
+        <h1 class="admin-page-title">@(editing ? "Edit Role" : "Create Role")</h1>
+        <p class="admin-page-subtitle">@(editing ? "Change the name or description. Use Permissions to change what the role can do." : "Name the role first. You choose what it can do on the next screen.")</p>
+    </div>
+</div>
+
+<form method="post" class="admin-form acc-form">
+    @Html.AntiForgeryToken()
+    <div class="admin-form-group">
+        <label class="admin-form-label" for="Name">Role name *</label>
+        <input id="Name" name="Name" value="@Model.Name" maxlength="100" required class="admin-form-input" @(system ? "readonly" : "") placeholder="For example: Manager" />
+        @if (system) { <div class="acc-muted">This is a system role, so its name is fixed.</div> }
+        @if (ViewData.ModelState["Name"]?.Errors.Count > 0) { <div class="acc-error">@ViewData.ModelState["Name"]!.Errors[0].ErrorMessage</div> }
+    </div>
+    <div class="admin-form-group">
+        <label class="admin-form-label" for="Description">Description</label>
+        <input id="Description" name="Description" value="@Model.Description" maxlength="500" class="admin-form-input" placeholder="What this role is for" />
+    </div>
+    @if (!editing && roles != null)
+    {
+        <div class="admin-form-group">
+            <label class="admin-form-label" for="CopyFromRoleId">Start from</label>
+            <select id="CopyFromRoleId" name="CopyFromRoleId" class="admin-form-input">
+                <option value="">Nothing (start empty)</option>
+                @foreach (var role in roles.Where(r => r.Name != "SuperAdmin"))
+                {
+                    <option value="@role.Id" selected="@(Model.CopyFromRoleId == role.Id)">Copy permissions of @role.Name</option>
+                }
+            </select>
+            <div class="acc-muted">You can still change every permission afterwards.</div>
+        </div>
+    }
+    <div class="acc-actions" style="margin-top:1rem">
+        <button type="submit" class="admin-btn admin-btn-success">💾 @(editing ? "Save" : "Create and choose permissions")</button>
+        <a asp-action="Roles" class="admin-btn admin-btn-secondary">Cancel</a>
+    </div>
+</form>

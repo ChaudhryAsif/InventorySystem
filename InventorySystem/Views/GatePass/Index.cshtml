@@ -1,6 +1,7 @@
+@inject InventorySystem.Core.Services.IPermissionService Perms
 @{Layout="_Layout";var direction=(string)ViewBag.Direction;ViewData["Title"]=direction+" Gate Pass";}
 <link rel="stylesheet" href="~/css/gatepass.css" asp-append-version="true" />
-<div class="gp-page" id="gatePassApp" data-mode="list" data-direction="@direction" data-can-edit="@(User.IsInRole("SuperAdmin") ? "true" : "false")">
+<div class="gp-page" id="gatePassApp" data-mode="list" data-direction="@direction" data-can-edit="@(await Perms.HasPermissionAsync(User, "GatePass.EditSaved") ? "true" : "false")">
     <div class="gp-heading"><h2>@direction Gate Pass</h2><a class="gp-button" href="@Url.Action("Create",new{direction})">+ New Gate Pass</a></div>
     <div class="gp-card gp-filters">
         <label class="gp-search-filter">Search<input id="gpSearch" placeholder="Party, vehicle or pass number" /></label>

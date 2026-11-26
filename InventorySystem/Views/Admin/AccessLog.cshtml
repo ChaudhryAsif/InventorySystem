@@ -1,0 +1,56 @@
+@model InventorySystem.Controllers.AdminController.AccessLogPage
+@{
+    ViewData["Title"] = "Access Log";
+    Layout = "_Layout";
+}
+<link rel="stylesheet" href="~/css/access-admin.css" asp-append-version="true" />
+
+<div class="admin-page-header">
+    <span class="admin-page-icon">📜</span>
+    <div>
+        <h1 class="admin-page-title">Access Log</h1>
+        <p class="admin-page-subtitle">Who changed roles, permissions and logins, and when. Passwords are never recorded.</p>
+    </div>
+</div>
+
+@if (ViewBag.Missing == true) { <div class="acc-alert bad" role="alert">❌ The access log table is not installed yet. Run AccessControl.sql on the database (or update-database), then reload this page. Role and user changes still work meanwhile; they are just not recorded.</div> }
+
+<form method="get" class="acc-toolbar">
+    <input class="grow" type="search" name="q" value="@Model.Query" placeholder="Search name, role or detail" aria-label="Search the log" />
+    <select name="kind" aria-label="What happened">
+        <option value="">Everything</option>
+        @foreach (var action in Model.Actions) { <option value="@action" selected="@(Model.Action == action)">@action</option> }
+    </select>
+    <button type="submit" class="admin-btn admin-btn-primary">Filter</button>
+    <a asp-action="AccessLog" class="admin-btn admin-btn-secondary">Clear</a>
+</form>
+
+<div class="admin-table-container">
+    @if (Model.Rows.Count == 0)
+    {
+        <div style="padding:2rem;text-align:center;color:var(--text-secondary)">Nothing recorded yet. Changes made from now on appear here.</div>
+    }
+    else
+    {
+        <table class="admin-table acc-log">
+            <thead><tr><th>When</th><th>Who</th><th>What</th><th>On</th><th>Detail</th></tr></thead>
+            <tbody>
+            @foreach (var row in Model.Rows)
+            {
+                <tr>
+                    <td style="white-space:nowrap">@InventorySystem.Core.Services.ShopTime.FromUtc(row.CreatedUtc).ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>@row.ActorName</td>
+                    <td><span class="acc-pill role">@row.Action</span></td>
+                    <td><strong>@row.Target</strong></td>
+                    <td class="detail">@row.Detail</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <div class="acc-pager">
+            @if (Model.Page > 1) { <a class="admin-btn admin-btn-secondary" asp-action="AccessLog" asp-route-q="@Model.Query" asp-route-kind="@Model.Action" asp-route-page="@(Model.Page - 1)">← Newer</a> }
+            <span class="acc-muted">Page @Model.Page of @Model.Pages (@Model.Total entries)</span>
+            @if (Model.Page < Model.Pages) { <a class="admin-btn admin-btn-secondary" asp-action="AccessLog" asp-route-q="@Model.Query" asp-route-kind="@Model.Action" asp-route-page="@(Model.Page + 1)">Older →</a> }
+        </div>
+    }
+</div>

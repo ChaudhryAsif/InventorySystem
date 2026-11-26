@@ -1,80 +1,80 @@
-﻿@model IEnumerable<InventorySystem.Core.Models.Role>
-
+﻿@model List<InventorySystem.Controllers.AdminController.RoleRow>
 @{
     ViewData["Title"] = "Manage Roles";
     Layout = "_Layout";
 }
+<link rel="stylesheet" href="~/css/access-admin.css" asp-append-version="true" />
 
 <div class="admin-page-header">
     <span class="admin-page-icon">🎭</span>
     <div>
-        <h1 class="admin-page-title">Roles Management</h1>
-        <p class="admin-page-subtitle">Manage system roles and their permissions</p>
+        <h1 class="admin-page-title">Roles</h1>
+        <p class="admin-page-subtitle">A role is a set of permissions. Give a role to a user in Users. Change what a role may do under Permissions.</p>
     </div>
 </div>
+
+@if (TempData["Success"] != null) { <div class="acc-alert ok" role="status">✅ @TempData["Success"]</div> }
+@if (TempData["Error"] != null) { <div class="acc-alert bad" role="alert">❌ @TempData["Error"]</div> }
 
 <div class="admin-table-container">
     <div class="admin-table-header">
-        <h3 class="admin-table-title">All Roles</h3>
-        @* <a asp-action="ManageRolePermissions" class="admin-btn admin-btn-success">
-            🔐 Manage Permissions
-        </a> *@
+        <h3 class="admin-table-title">All Roles (@Model.Count)</h3>
+        <a asp-action="CreateRole" class="admin-btn admin-btn-success">➕ Create Role</a>
     </div>
-
-    @if (Model.Any())
-    {
-        <table class="admin-table">
-            <thead>
-                <tr>
-                    <th>Role Name</th>
-                    <th>Description</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var role in Model)
-                {
-                    <tr>
-                        <td>
-                            <strong>@role.Name</strong>
-                        </td>
-                        <td>
-                            @if (!string.IsNullOrEmpty(role.Description))
+    <table class="admin-table">
+        <thead>
+            <tr><th>Role</th><th>Description</th><th>Users</th><th>Permissions</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model)
+        {
+            var role = row.Role;
+            var superAdmin = role.Name == "SuperAdmin";
+            <tr>
+                <td>
+                    <strong>@role.Name</strong>
+                    @if (row.IsSystem) { <span class="acc-pill sys" title="Created by the system. It can be tuned but not renamed, switched off or deleted.">🔒 System</span> }
+                </td>
+                <td>@(string.IsNullOrWhiteSpace(role.Description) ? "-" : role.Description)</td>
+                <td>@row.Users</td>
+                <td>@(superAdmin ? "Everything" : row.Permissions.ToString())</td>
+                <td>@if (role.IsActive) { <span class="acc-pill ok">Active</span> } else { <span class="acc-pill off">Switched off</span> }</td>
+                <td>
+                    @if (superAdmin)
+                    {
+                        <span class="acc-muted">Always full access</span>
+                    }
+                    else
+                    {
+                        <div class="acc-actions">
+                            <a asp-action="ManageRolePermissions" asp-route-id="@role.Id" class="admin-btn admin-btn-primary">🔐 Permissions</a>
+                            <a asp-action="EditRole" asp-route-id="@role.Id" class="admin-btn admin-btn-primary">✏️ Edit</a>
+                            <form asp-action="DuplicateRole" asp-route-id="@role.Id" method="post">@Html.AntiForgeryToken()<button type="submit" class="admin-btn admin-btn-primary">📄 Copy</button></form>
+                            @if (!row.IsSystem)
                             {
-                                <span>@role.Description</span>
+                                <form asp-action="ToggleRole" asp-route-id="@role.Id" method="post" data-confirm="@(role.IsActive ? $"Switch off '{role.Name}'? Its {row.Users} user(s) lose its access until you switch it on again." : "")">
+                                    @Html.AntiForgeryToken()<button type="submit" class="admin-btn admin-btn-primary">@(role.IsActive ? "⏸ Switch off" : "▶ Switch on")</button>
+                                </form>
+                                <form asp-action="DeleteRole" asp-route-id="@role.Id" method="post" data-confirm="@($"Delete the role '{role.Name}'? This cannot be undone.")" data-danger="1">
+                                    @Html.AntiForgeryToken()<button type="submit" class="admin-btn admin-btn-danger" @(row.Users > 0 ? "title=Move its users to another role first" : "")>🗑️ Delete</button>
+                                </form>
                             }
-                            else
-                            {
-                                <span style="color: var(--text-secondary); font-style: italic;">No description</span>
-                            }
-                        </td>
-                        <td>
-                            @if (role.IsActive)
-                            {
-                                <span class="admin-table .status-badge admin-table .status-active">Active</span>
-                            }
-                            else
-                            {
-                                <span class="admin-table .status-badge admin-table .status-inactive">Inactive</span>
-                            }
-                        </td>
-                        <td>
-                            <div class="admin-table-actions">
-                                <a asp-action="ManageRolePermissions" asp-route-id="@role.Id" class="admin-btn admin-btn-primary">
-                                    🔐 Permissions
-                                </a>
-                            </div>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    }
-    else
-    {
-        <div style="padding: 2rem; text-align: center; color: var(--text-secondary);">
-            <p>No roles found.</p>
-        </div>
-    }
+                        </div>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
 </div>
+
+@section Scripts {
+<script>
+// Forms that carry data-confirm ask first (the app's own dialog), then submit.
+document.querySelectorAll('form[data-confirm]').forEach(form => form.addEventListener('submit', async e => {
+    const message = form.dataset.confirm; if (!message || form.dataset.ok) return;
+    e.preventDefault();
+    if (await confirmDialog(message, { danger: !!form.dataset.danger })) { form.dataset.ok = '1'; form.submit(); }
+}));
+</script>
+}
